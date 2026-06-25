@@ -1,10 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { allRows, getDb, saveDb } from "../lib/database";
-import { SeveritySchema, StatusSchema, CreateReportSchema } from "../lib/types";
+import { allRows, getDb, saveDb } from "../lib/database.js";
+import { SeveritySchema, StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
 import { authMiddleware } from "./auth.js";
+import { getPlaceholderImageUrl } from "../lib/config.js";
 
 const router = Router();
 
@@ -31,7 +32,7 @@ function broadcastStats(stats: any) {
 
 function getPlaceholderPhotoUrl(id: unknown, size = 80) {
   const shortId = String(id ?? "").slice(-3) || "N/A";
-  return `https://placehold.co/${size}x${size}/1e293b/ffffff?text=${encodeURIComponent(shortId)}`;
+  return getPlaceholderImageUrl(shortId, size);
 }
 
 const mapRow = (row: any, comments: { author: string; at: string; text: string }[]): any => ({
@@ -203,7 +204,7 @@ router.post("/", async (req: Request, res: Response) => {
   const date = now.toISOString();
   const dueDate = new Date(now.getTime() + (input.severity === "Critical" ? 1 : input.severity === "High" ? 3 : 7) * 86400000);
   const slaHours = input.severity === "Critical" ? 24 : input.severity === "High" ? 72 : 168;
-  const photoUrl = input.photoUrl?.trim() || `https://placehold.co/80x80/1e293b/ffffff?text=${id.slice(-3)}`;
+  const photoUrl = input.photoUrl?.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
   const complianceRequired = Boolean(
     input.complianceRequired || input.severity === "Critical" || input.severity === "High"
   );
