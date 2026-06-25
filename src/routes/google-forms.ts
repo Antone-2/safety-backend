@@ -183,27 +183,37 @@ export interface GoogleFormsErrorInfo {
 
 export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
   const message = error instanceof Error ? error.message : String(error ?? "Unknown error");
+
+  // Node fetch errors often carry `cause` with code/hostname; be defensive.
   const cause = (error as { cause?: { code?: string; hostname?: string } } | undefined)?.cause;
   const code = cause?.code ?? (error as { code?: string } | undefined)?.code;
   const hostname = cause?.hostname ?? (error as { hostname?: string } | undefined)?.hostname;
 
-  if (code === "ENOTFOUND" || /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|fetch failed/i.test(message)) {
+  const stack = error instanceof Error ? error.stack : undefined;
+
+  // Network/DNS timeouts
+  if (
+    code === "ENOTFOUND" ||
+    /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|fetch failed|timed out/i.test(message)
+  ) {
     const hostDetails = hostname ? ` for ${hostname}` : "";
     return {
       statusCode: 502,
       message: "Unable to reach Google Sheets from the server right now.",
-      details: code === "ENOTFOUND"
-        ? `DNS lookup failed${hostDetails}`
-        : `Network error${hostDetails}: ${message}`,
-      hint: "Check network connectivity or Google Sheets access settings.",
+      details:
+        code === "ENOTFOUND"
+          ? `DNS lookup failed${hostDetails}`
+          : `Network error${hostDetails}: ${message}`,
+      hint: "Check network connectivity, firewall, and Google Sheets access settings.",
     };
   }
 
+  // Generic/unknown failures (bad key, bad spreadsheet, wrong sheet name, etc.)
   return {
     statusCode: 500,
     message: "Google Sheets request failed.",
-    details: message,
-    hint: "Check the spreadsheet ID, API key, and network connectivity.",
+    details: stack ? `${message} (stack: ${stack.slice(0, 600)})` : message,
+    hint: "Check the spreadsheet ID, API key, and which Sheets/CSV base URLs are configured.",
   };
 }
 
@@ -456,13 +466,30 @@ router.post("/fetch", async (req: Request, res: Response) => {
     return res.json({ imported: importedCount, responses, message: `Imported ${importedCount} new reports from Google Form ${formId}` });
   } catch (error: unknown) {
     const classified = classifyGoogleFormsError(error);
-    console.error("Google Forms fetch error:", classified);
+    console.error("Google Forms fetch error:", {
+      classified,
+      formId,
+      sheetName,
+      apiBaseUrl: getGoogleSheetsBaseUrl(),
+      docsBaseUrl: getGoogleDocsBaseUrl(),
+      // Avoid leaking secrets
+      hasApiKey: Boolean(apiKey),
+    });
+
     res.status(classified.statusCode).json({
       error: classified.message,
       details: classified.details,
       hint: classified.hint,
+      meta: {
+        formId,
+        sheetName,
+        apiBaseUrl: getGoogleSheetsBaseUrl(),
+        docsBaseUrl: getGoogleDocsBaseUrl(),
+        hasApiKey: Boolean(apiKey),
+      },
     });
   }
 });
+
 
 export default router;
