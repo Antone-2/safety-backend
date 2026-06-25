@@ -2,7 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { ensureSchema as runMigrations } from "./migrations";
+import { ensureSchema as runMigrations } from "./migrations.js";
 
 type SqlBindParams = (string | number | Uint8Array | null)[] | Record<string, string | number | Uint8Array | null> | null;
 
