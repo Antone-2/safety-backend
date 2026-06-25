@@ -1,0 +1,42 @@
+{
+  "name": "safety-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:seed": "tsx src/scripts/seed.ts",
+    "db:migrate": "tsx src/lib/migrations.ts",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/sql.js": "^1.4.11",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "firebase": "^12.15.0",
+    "firebase-admin": "^14.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^9.0.1",
+    "sql.js": "^1.14.1",
+    "uuid": "^11.1.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.16.5",
+    "@types/nodemailer": "^8.0.1",
+    "@types/twilio": "^3.19.2",
+    "eslint": "^9.32.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
