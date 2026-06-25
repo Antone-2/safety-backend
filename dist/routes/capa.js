@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
-import { CreateCapaSchema, CapaStatusSchema } from "../lib/types";
+import { CreateCapaSchema, CapaStatusSchema } from "../lib/types.js";
 import { authMiddleware, requireRole } from "./auth.js";
 const router = Router();
 const mapDoc = (data) => ({

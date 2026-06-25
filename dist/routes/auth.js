@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
-import { LoginSchema, CreateUserSchema } from "../lib/types";
+import { LoginSchema, CreateUserSchema } from "../lib/types.js";
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {

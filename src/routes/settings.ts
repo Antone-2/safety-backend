@@ -3,7 +3,7 @@ import { z } from "zod";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { sendTestEmail, TestEmailSchema } from "../lib/email.js";
-import type { SettingsPayload } from "../lib/types";
+import type { SettingsPayload } from "../lib/types.js";
 import { authMiddleware, requireRole } from "./auth.js";
 
 const router = Router();
