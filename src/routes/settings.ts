@@ -4,7 +4,6 @@ import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { sendTestEmail, TestEmailSchema } from "../lib/email.js";
 import type { SettingsPayload } from "../lib/types.js";
-import { authMiddleware, requireRole } from "./auth.js";
 
 const router = Router();
 const KEY = "app_settings";
@@ -75,8 +74,6 @@ router.put("/", async (req: Request, res: Response) => {
 
 router.post(
   "/test-email",
-  authMiddleware,
-  requireRole("super-admin", "sheq-manager"),
   async (req: Request, res: Response) => {
     const parsed = TestEmailSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors });

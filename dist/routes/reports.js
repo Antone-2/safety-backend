@@ -4,7 +4,6 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
-import { authMiddleware } from "./auth.js";
 import { getPlaceholderImageUrl } from "../lib/config.js";
 const router = Router();
 const sseClients = new Map();
@@ -148,7 +147,7 @@ router.get("/stats", async (_req, res) => {
     const avg = closedRows.length ? +(closedRows.reduce((s, r) => s + Number(r.resolutionDays), 0) / closedRows.length).toFixed(1) : 0;
     res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
 });
-router.get("/events", authMiddleware, async (req, res) => {
+router.get("/events", async (req, res) => {
     const origin = req.headers.origin;
     const allowedOrigin = typeof origin === "string" && /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin)
         ? origin
@@ -263,7 +262,7 @@ router.post("/", async (req, res) => {
     broadcastReport(saved);
     res.status(201).json(saved);
 });
-router.patch("/:id/status", authMiddleware, async (req, res) => {
+router.patch("/:id/status", async (req, res) => {
     const db = await getDb();
     const { status } = req.body;
     const parsed = StatusSchema.safeParse(status);
@@ -298,7 +297,7 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.patch("/:id/assign", authMiddleware, async (req, res) => {
+router.patch("/:id/assign", async (req, res) => {
     const db = await getDb();
     const { assignedTo } = req.body;
     const id = routeParam(req, "id");
@@ -320,7 +319,7 @@ router.patch("/:id/assign", authMiddleware, async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.post("/:id/comments", authMiddleware, async (req, res) => {
+router.post("/:id/comments", async (req, res) => {
     const db = await getDb();
     const { author, text } = req.body;
     if (!author || !text)
@@ -346,7 +345,7 @@ router.post("/:id/comments", authMiddleware, async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.patch("/:id", authMiddleware, async (req, res) => {
+router.patch("/:id", async (req, res) => {
     const db = await getDb();
     const id = routeParam(req, "id");
     const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]);
@@ -416,7 +415,7 @@ router.patch("/:id", authMiddleware, async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", async (req, res) => {
     const db = await getDb();
     const id = routeParam(req, "id");
     const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]);
@@ -427,7 +426,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     await saveDb(db);
     res.json({ ok: true, deleted: id });
 });
-router.post("/generate", authMiddleware, async (_req, res) => {
+router.post("/generate", async (_req, res) => {
     const db = await getDb();
     const rows = allRows(db, "SELECT * FROM reports ORDER BY date DESC");
     const headers = ["ID", "Date", "Location", "Reporter", "Severity", "Status", "Category", "Type", "Description", "AssignedTo"];
@@ -442,7 +441,7 @@ router.post("/generate", authMiddleware, async (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename=crown-hse-reports-${new Date().toISOString().split("T")[0]}.csv`);
     res.send(csv);
 });
-router.get("/selection-export", authMiddleware, async (req, res) => {
+router.get("/selection-export", async (req, res) => {
     const db = await getDb();
     const ids = req.query.ids;
     if (!ids || (Array.isArray(ids) && ids.length === 0)) {

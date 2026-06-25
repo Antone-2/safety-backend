@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from "express";
 import { isFirebaseAvailable, getFirebase, FieldValue } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { CreateCapaSchema, CapaStatusSchema } from "../lib/types.js";
-import { authMiddleware, requireRole } from "./auth.js";
 
 const router = Router();
 
@@ -22,7 +21,7 @@ const routeParam = (req: Request, name: string) => {
   return Array.isArray(value) ? value[0] : (value ?? "");
 };
 
-router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response) => {
   const incidentId = req.query.incidentId as string | undefined;
   const owner = req.query.owner as string | undefined;
 
@@ -45,7 +44,7 @@ router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager", "plan
   res.json(rows.map(mapDoc));
 });
 
-router.post("/", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   const parsed = CreateCapaSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.errors });
 
@@ -78,7 +77,7 @@ router.post("/", authMiddleware, requireRole("super-admin", "sheq-manager", "pla
   res.status(201).json(mapDoc(row));
 });
 
-router.patch("/:id/status", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req: Request, res: Response) => {
+router.patch("/:id/status", async (req: Request, res: Response) => {
   const { status } = req.body as { status: string };
   const parsed = CapaStatusSchema.safeParse(status);
   if (!parsed.success) return res.status(400).json({ error: "Invalid status" });
@@ -114,7 +113,7 @@ router.patch("/:id/status", authMiddleware, requireRole("super-admin", "sheq-man
   res.json(mapDoc({ ...row, status: parsed.data }));
 });
 
-router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req: Request, res: Response) => {
+router.patch("/:id", async (req: Request, res: Response) => {
   const id = routeParam(req, "id");
 
   if (isFirebaseAvailable()) {
@@ -149,7 +148,7 @@ router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager", 
   res.json(mapDoc(updated));
 });
 
-router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req: Request, res: Response) => {
+router.delete("/:id", async (req: Request, res: Response) => {
   const id = routeParam(req, "id");
 
   if (isFirebaseAvailable()) {
@@ -168,7 +167,7 @@ router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager")
   res.json({ ok: true, deleted: id });
 });
 
-router.get("/overdue", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (_req: Request, res: Response) => {
+router.get("/overdue", async (_req: Request, res: Response) => {
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;
     const snap = await db.collection("capa")
@@ -183,7 +182,7 @@ router.get("/overdue", authMiddleware, requireRole("super-admin", "sheq-manager"
   res.json(rows.map(mapDoc));
 });
 
-router.post("/reminders", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req: Request, res: Response) => {
+router.post("/reminders", async (req: Request, res: Response) => {
   const { daysBefore } = req.body as { daysBefore?: number };
   const targetDate = new Date();
   targetDate.setDate(targetDate.getDate() + (daysBefore || 3));

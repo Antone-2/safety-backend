@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb } from "../lib/database.js";
-import { authMiddleware } from "./auth.js";
 const router = Router();
-router.get("/locations", authMiddleware, async (_req, res) => {
+router.get("/locations", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const snap = await db.collection("reports").get();
@@ -12,7 +11,7 @@ router.get("/locations", authMiddleware, async (_req, res) => {
     const db = await getDb();
     return res.json(allRows(db, "SELECT DISTINCT location FROM reports ORDER BY location").map((r) => r.location));
 });
-router.get("/hazard-categories", authMiddleware, async (_req, res) => {
+router.get("/hazard-categories", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const snap = await db.collection("reports").get();
@@ -21,7 +20,7 @@ router.get("/hazard-categories", authMiddleware, async (_req, res) => {
     const db = await getDb();
     return res.json(allRows(db, "SELECT DISTINCT category FROM reports ORDER BY category").map((r) => r.category));
 });
-router.get("/departments", authMiddleware, async (_req, res) => {
+router.get("/departments", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const snap = await db.collection("reports").get();
@@ -30,7 +29,7 @@ router.get("/departments", authMiddleware, async (_req, res) => {
     const db = await getDb();
     return res.json(allRows(db, "SELECT DISTINCT department FROM reports ORDER BY department").map((r) => r.department));
 });
-router.get("/supervisors", authMiddleware, async (_req, res) => {
+router.get("/supervisors", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const snap = await db.collection("reports").where("assignedTo", "!=", null).get();
@@ -39,7 +38,7 @@ router.get("/supervisors", authMiddleware, async (_req, res) => {
     const db = await getDb();
     return res.json(allRows(db, "SELECT DISTINCT assignedTo FROM reports WHERE assignedTo IS NOT NULL ORDER BY assignedTo").map((r) => r.assignedTo));
 });
-router.get("/employees", authMiddleware, async (_req, res) => {
+router.get("/employees", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const snap = await db.collection("reports").get();

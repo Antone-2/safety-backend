@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from "express";
 import { allRows, getDb, saveDb } from "../lib/database.js";
-import { authMiddleware } from "./auth.js";
 
 const router = Router();
 
@@ -44,12 +43,12 @@ export async function markNotificationsRead(ids: string[]) {
   await saveDb(db);
 }
 
-router.get("/", authMiddleware, async (_req: Request, res: Response) => {
+router.get("/", async (_req: Request, res: Response) => {
   const notifications = await listNotifications();
   res.json(notifications);
 });
 
-router.post("/read", authMiddleware, async (req: Request, res: Response) => {
+router.post("/read", async (req: Request, res: Response) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   await markNotificationsRead(ids.filter((item: unknown): item is string => typeof item === "string"));
   res.json({ ok: true });

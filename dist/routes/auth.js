@@ -96,14 +96,14 @@ router.post("/register", async (req, res) => {
     const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role: parsed.data.role });
     res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role: parsed.data.role } });
 });
-router.get("/me", authMiddleware, (req, res) => {
+router.get("/me", (req, res) => {
     const user = req.user;
     res.json({ user });
 });
-router.post("/logout", authMiddleware, (_req, res) => {
+router.post("/logout", (_req, res) => {
     res.json({ ok: true });
 });
-router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
+router.post("/users", async (req, res) => {
     const parsed = CreateUserSchema.safeParse(req.body);
     const caller = req.user;
     if (!parsed.success)
@@ -136,7 +136,7 @@ router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager")
     const user = (allRows(db, "SELECT id, email, name, role, createdAt FROM users WHERE id = ?", [id])[0]);
     res.status(201).json(user);
 });
-router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager"), async (_req, res) => {
+router.get("/", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const usersSnap = await db.collection("users").orderBy("createdAt", "desc").get();
@@ -146,7 +146,7 @@ router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager"), asyn
     const users = allRows(db, "SELECT id, email, name, role, createdAt FROM users ORDER BY createdAt DESC");
     res.json(users);
 });
-router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
+router.patch("/:id", async (req, res) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     if (isFirebaseAvailable()) {
         const db = getFirebase();
@@ -182,7 +182,7 @@ router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"),
     const updated = (allRows(db, "SELECT id, email, name, role, createdAt FROM users WHERE id = ?", [id])[0]);
     res.json(updated);
 });
-router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
+router.delete("/:id", async (req, res) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     if (isFirebaseAvailable()) {
         const db = getFirebase();
@@ -200,5 +200,4 @@ router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager")
     await saveDb(db);
     res.json({ ok: true, deleted: id });
 });
-export { authMiddleware };
 export default router;

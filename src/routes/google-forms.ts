@@ -3,7 +3,6 @@ import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { v4 as uuidv4 } from "uuid";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { broadcastReport } from "./reports.js";
-import { authMiddleware, requireRole } from "./auth.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 
 const router = Router();
@@ -208,7 +207,7 @@ export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
   };
 }
 
-router.post("/import", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req: Request, res: Response) => {
+router.post("/import", async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const { spreadsheetId, apiKey } = body;
   if (!spreadsheetId) return res.status(400).json({ error: "spreadsheetId is required" });
@@ -310,7 +309,7 @@ router.get("/status", async (_req: Request, res: Response) => {
   res.json({ totalReports: total, configured: hasCreds, formId, hasCredentials: hasCreds });
 });
 
-router.post("/fetch", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req: Request, res: Response) => {
+router.post("/fetch", async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const formId = (body as any).spreadsheetId || process.env.GOOGLE_FORM_ID;
   const apiKey = (body as any).apiKey || process.env.GOOGLE_API_KEY;

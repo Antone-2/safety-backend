@@ -3,7 +3,6 @@ import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { v4 as uuidv4 } from "uuid";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { broadcastReport } from "./reports.js";
-import { authMiddleware, requireRole } from "./auth.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 const router = Router();
 function parseCsvText(text) {
@@ -168,7 +167,7 @@ export function classifyGoogleFormsError(error) {
         hint: "Check the spreadsheet ID, API key, and network connectivity.",
     };
 }
-router.post("/import", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
+router.post("/import", async (req, res) => {
     const body = req.body ?? {};
     const { spreadsheetId, apiKey } = body;
     if (!spreadsheetId)
@@ -261,7 +260,7 @@ router.get("/status", async (_req, res) => {
     const total = allRows(db, "SELECT COUNT(*) as count FROM reports")[0]?.count || 0;
     res.json({ totalReports: total, configured: hasCreds, formId, hasCredentials: hasCreds });
 });
-router.post("/fetch", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
+router.post("/fetch", async (req, res) => {
     const body = req.body ?? {};
     const formId = body.spreadsheetId || process.env.GOOGLE_FORM_ID;
     const apiKey = body.apiKey || process.env.GOOGLE_API_KEY;

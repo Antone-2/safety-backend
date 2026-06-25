@@ -4,7 +4,6 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { SeveritySchema, StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
-import { authMiddleware } from "./auth.js";
 import { getPlaceholderImageUrl } from "../lib/config.js";
 
 const router = Router();
@@ -160,7 +159,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
   res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
 });
 
-router.get("/events", authMiddleware, async (req: Request, res: Response) => {
+router.get("/events", async (req: Request, res: Response) => {
   const origin = req.headers.origin;
   const allowedOrigin = typeof origin === "string" && /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin)
     ? origin
@@ -287,7 +286,7 @@ router.post("/", async (req: Request, res: Response) => {
   res.status(201).json(saved);
 });
 
-router.patch("/:id/status", authMiddleware, async (req: Request, res: Response) => {
+router.patch("/:id/status", async (req: Request, res: Response) => {
   const db = await getDb();
   const { status } = req.body as { status: string };
   const parsed = StatusSchema.safeParse(status);
@@ -323,7 +322,7 @@ router.patch("/:id/status", authMiddleware, async (req: Request, res: Response) 
   res.json(updated);
 });
 
-router.patch("/:id/assign", authMiddleware, async (req: Request, res: Response) => {
+router.patch("/:id/assign", async (req: Request, res: Response) => {
   const db = await getDb();
   const { assignedTo } = req.body as { assignedTo: string };
   const id = routeParam(req, "id");
@@ -345,7 +344,7 @@ router.patch("/:id/assign", authMiddleware, async (req: Request, res: Response) 
   res.json(updated);
 });
 
-router.post("/:id/comments", authMiddleware, async (req: Request, res: Response) => {
+router.post("/:id/comments", async (req: Request, res: Response) => {
   const db = await getDb();
   const { author, text } = req.body as { author: string; text: string };
   if (!author || !text) return res.status(400).json({ error: "author and text required" });
@@ -370,7 +369,7 @@ router.post("/:id/comments", authMiddleware, async (req: Request, res: Response)
   res.json(updated);
 });
 
-router.patch("/:id", authMiddleware, async (req: Request, res: Response) => {
+router.patch("/:id", async (req: Request, res: Response) => {
   const db = await getDb();
   const id = routeParam(req, "id");
   const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]) as any | undefined;
@@ -410,7 +409,7 @@ router.patch("/:id", authMiddleware, async (req: Request, res: Response) => {
   res.json(updated);
 });
 
-router.delete("/:id", authMiddleware, async (req: Request, res: Response) => {
+router.delete("/:id", async (req: Request, res: Response) => {
   const db = await getDb();
   const id = routeParam(req, "id");
   const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]) as any | undefined;
@@ -423,7 +422,7 @@ router.delete("/:id", authMiddleware, async (req: Request, res: Response) => {
   res.json({ ok: true, deleted: id });
 });
 
-router.post("/generate", authMiddleware, async (_req: Request, res: Response) => {
+router.post("/generate", async (_req: Request, res: Response) => {
   const db = await getDb();
   const rows = allRows(db, "SELECT * FROM reports ORDER BY date DESC") as any[];
   const headers = ["ID","Date","Location","Reporter","Severity","Status","Category","Type","Description","AssignedTo"];
@@ -439,7 +438,7 @@ router.post("/generate", authMiddleware, async (_req: Request, res: Response) =>
   res.send(csv);
 });
 
-router.get("/selection-export", authMiddleware, async (req: Request, res: Response) => {
+router.get("/selection-export", async (req: Request, res: Response) => {
   const db = await getDb();
   const ids = req.query.ids as string | string[] | undefined;
   

@@ -3,7 +3,6 @@ import { z } from "zod";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { getDb, saveDb } from "../lib/database.js";
 import { sendTestEmail, TestEmailSchema } from "../lib/email.js";
-import { authMiddleware, requireRole } from "./auth.js";
 const router = Router();
 const KEY = "app_settings";
 const defaultSchema = z.object({
@@ -74,7 +73,7 @@ router.put("/", async (req, res) => {
     await saveDb(db);
     res.json(parsed.data);
 });
-router.post("/test-email", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
+router.post("/test-email", async (req, res) => {
     const parsed = TestEmailSchema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: parsed.error.errors });
