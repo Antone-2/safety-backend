@@ -4,7 +4,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { ensureSchema as runMigrations } from "./migrations.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, "..", "..", "..", "data.db");
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, "..", "..", "..", "data.db");
 let dbPromise = null;
 let saveQueue = Promise.resolve();
 async function getDb() {

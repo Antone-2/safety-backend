@@ -7,11 +7,11 @@ function readEnvValue(...keys: string[]) {
 }
 
 export function getGoogleSheetsBaseUrl() {
-  return readEnvValue("GOOGLE_SHEETS_API_BASE_URL", "GOOGLE_SHEETS_BASE_URL") || "https://sheets.googleapis.com/v4";
+  return readEnvValue("GOOGLE_SHEETS_API_BASE_URL", "GOOGLE_SHEETS_BASE_URL", "GOOGLE_SHEETS_FALLBACK_URL") || "https://sheets.googleapis.com/v4";
 }
 
 export function getGoogleDocsBaseUrl() {
-  return readEnvValue("GOOGLE_DOCS_EXPORT_BASE_URL", "GOOGLE_DOCS_BASE_URL") || "https://docs.google.com/spreadsheets/d";
+  return readEnvValue("GOOGLE_DOCS_EXPORT_BASE_URL", "GOOGLE_DOCS_BASE_URL", "GOOGLE_DOCS_FALLBACK_URL") || "https://docs.google.com/spreadsheets/d";
 }
 
 export function getPlaceholderImageUrl(label = "placeholder", size = 80) {

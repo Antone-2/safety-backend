@@ -253,7 +253,7 @@ router.post("/", async (req, res) => {
     if (input.severity === "Critical" || input.severity === "High") {
         const settingsRow = db.prepare("SELECT value FROM settings WHERE key = ?").getAsObject(["app_settings"]);
         const settings = settingsRow?.value ? JSON.parse(settingsRow.value) : null;
-        const recipient = settings?.schedule?.email || process.env.SMTP_FROM || "safety@crownpaints.co.ke";
+        const recipient = settings?.schedule?.email || process.env.SMTP_FROM || process.env.DEFAULT_NOTIFICATION_EMAIL || "safety@crownpaints.co.ke";
         const result = await sendIncidentNotification(saved, recipient);
         const notificationId = `NOTIF-${Date.now()}`;
         db.prepare("INSERT INTO notifications (id, reportId, channel, recipient, subject, message, delivered, createdAt, read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -288,7 +288,7 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
     if (updated.severity === "Critical" || updated.severity === "High") {
         const settingsRow = db.prepare("SELECT value FROM settings WHERE key = ?").getAsObject(["app_settings"]);
         const settings = settingsRow?.value ? JSON.parse(settingsRow.value) : null;
-        const recipient = settings?.schedule?.email || process.env.SMTP_FROM || "safety@crownpaints.co.ke";
+        const recipient = settings?.schedule?.email || process.env.SMTP_FROM || process.env.DEFAULT_NOTIFICATION_EMAIL || "safety@crownpaints.co.ke";
         const result = await sendIncidentNotification(updated, recipient);
         const notificationId = `NOTIF-${Date.now()}`;
         db.prepare("INSERT INTO notifications (id, reportId, channel, recipient, subject, message, delivered, createdAt, read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")

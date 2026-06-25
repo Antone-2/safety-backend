@@ -7,7 +7,7 @@ import { ensureSchema as runMigrations } from "./migrations.js";
 type SqlBindParams = (string | number | Uint8Array | null)[] | Record<string, string | number | Uint8Array | null> | null;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, "..", "..", "..", "data.db");
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, "..", "..", "..", "data.db");
 
 let dbPromise: Promise<SqlJsDatabase> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();

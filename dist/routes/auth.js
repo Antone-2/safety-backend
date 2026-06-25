@@ -2,19 +2,15 @@ import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { LoginSchema, CreateUserSchema } from "../lib/types.js";
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-    console.error("FATAL: JWT_SECRET environment variable is required");
-    process.exit(1);
-}
-const JWT_SECRET_VALUE = JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || randomBytes(32).toString("hex");
 const RegisterSchema = CreateUserSchema.refine((data) => data.role !== "sheq-manager", { message: "SHEQ Manager accounts must be created by an existing SHEQ Manager", path: ["role"] }).refine((data) => data.role !== "super-admin", { message: "Super Admin accounts must be created by an existing Super Admin", path: ["role"] });
 function generateToken(user) {
-    return jwt.sign({ userId: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET_VALUE, { expiresIn: "7d" });
+    return jwt.sign({ userId: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
 }
 function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
@@ -29,7 +25,7 @@ function authMiddleware(req, res, next) {
         return res.status(401).json({ error: "Missing or invalid authorization header" });
     }
     try {
-        const payload = jwt.verify(token, JWT_SECRET_VALUE);
+        const payload = jwt.verify(token, JWT_SECRET);
         req.user = payload;
         next();
     }

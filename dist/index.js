@@ -7,7 +7,7 @@ const EnvSchema = z.object({
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     PORT: z.coerce.number().default(4000),
     FRONTEND_URL: z.string().optional(),
-    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters").optional(),
     DATABASE_PATH: z.string().optional(),
 });
 const validatedEnv = (() => {

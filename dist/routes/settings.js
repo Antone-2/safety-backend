@@ -33,7 +33,7 @@ function getDefaults() {
             { name: "High", slaHours: 48, color: "#f97316" },
             { name: "Critical", slaHours: 24, color: "#ef4444" },
         ],
-        schedule: { enabled: true, freq: "weekly", email: "safety@crownpaints.co.ke" },
+        schedule: { enabled: true, freq: "weekly", email: process.env.DEFAULT_NOTIFICATION_EMAIL || "safety@crownpaints.co.ke" },
     };
 }
 router.get("/", async (_req, res) => {
