@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { allRows, getDb, saveDb } from "../lib/database";
-import { StatusSchema, CreateReportSchema } from "../lib/types";
+import { allRows, getDb, saveDb } from "../lib/database.js";
+import { StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
+import { authMiddleware } from "./auth.js";
+import { getPlaceholderImageUrl } from "../lib/config.js";
 const router = Router();
 const sseClients = new Map();
 function broadcastReport(report) {
@@ -20,7 +22,7 @@ function broadcastStats(stats) {
 }
 function getPlaceholderPhotoUrl(id, size = 80) {
     const shortId = String(id ?? "").slice(-3) || "N/A";
-    return `https://placehold.co/${size}x${size}/1e293b/ffffff?text=${encodeURIComponent(shortId)}`;
+    return getPlaceholderImageUrl(shortId, size);
 }
 const mapRow = (row, comments) => ({
     ...row,
@@ -146,7 +148,7 @@ router.get("/stats", async (_req, res) => {
     const avg = closedRows.length ? +(closedRows.reduce((s, r) => s + Number(r.resolutionDays), 0) / closedRows.length).toFixed(1) : 0;
     res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
 });
-router.get("/events", async (req, res) => {
+router.get("/events", authMiddleware, async (req, res) => {
     const origin = req.headers.origin;
     const allowedOrigin = typeof origin === "string" && /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin)
         ? origin
@@ -186,7 +188,7 @@ router.post("/", async (req, res) => {
     const date = now.toISOString();
     const dueDate = new Date(now.getTime() + (input.severity === "Critical" ? 1 : input.severity === "High" ? 3 : 7) * 86400000);
     const slaHours = input.severity === "Critical" ? 24 : input.severity === "High" ? 72 : 168;
-    const photoUrl = input.photoUrl?.trim() || `https://placehold.co/80x80/1e293b/ffffff?text=${id.slice(-3)}`;
+    const photoUrl = input.photoUrl?.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
     const complianceRequired = Boolean(input.complianceRequired || input.severity === "Critical" || input.severity === "High");
     const complianceDueAt = complianceRequired
         ? new Date(dueDate.getTime() + 86400000 * 3).toISOString()
@@ -261,7 +263,7 @@ router.post("/", async (req, res) => {
     broadcastReport(saved);
     res.status(201).json(saved);
 });
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", authMiddleware, async (req, res) => {
     const db = await getDb();
     const { status } = req.body;
     const parsed = StatusSchema.safeParse(status);
@@ -296,7 +298,7 @@ router.patch("/:id/status", async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.patch("/:id/assign", async (req, res) => {
+router.patch("/:id/assign", authMiddleware, async (req, res) => {
     const db = await getDb();
     const { assignedTo } = req.body;
     const id = routeParam(req, "id");
@@ -318,7 +320,7 @@ router.patch("/:id/assign", async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.post("/:id/comments", async (req, res) => {
+router.post("/:id/comments", authMiddleware, async (req, res) => {
     const db = await getDb();
     const { author, text } = req.body;
     if (!author || !text)
@@ -344,7 +346,7 @@ router.post("/:id/comments", async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", authMiddleware, async (req, res) => {
     const db = await getDb();
     const id = routeParam(req, "id");
     const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]);
@@ -414,7 +416,7 @@ router.patch("/:id", async (req, res) => {
     broadcastReport(updated);
     res.json(updated);
 });
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
     const db = await getDb();
     const id = routeParam(req, "id");
     const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]);
@@ -425,7 +427,7 @@ router.delete("/:id", async (req, res) => {
     await saveDb(db);
     res.json({ ok: true, deleted: id });
 });
-router.post("/generate", async (_req, res) => {
+router.post("/generate", authMiddleware, async (_req, res) => {
     const db = await getDb();
     const rows = allRows(db, "SELECT * FROM reports ORDER BY date DESC");
     const headers = ["ID", "Date", "Location", "Reporter", "Severity", "Status", "Category", "Type", "Description", "AssignedTo"];
@@ -440,7 +442,7 @@ router.post("/generate", async (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename=crown-hse-reports-${new Date().toISOString().split("T")[0]}.csv`);
     res.send(csv);
 });
-router.get("/selection-export", async (req, res) => {
+router.get("/selection-export", authMiddleware, async (req, res) => {
     const db = await getDb();
     const ids = req.query.ids;
     if (!ids || (Array.isArray(ids) && ids.length === 0)) {

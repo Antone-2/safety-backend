@@ -3,6 +3,8 @@ import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { v4 as uuidv4 } from "uuid";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { broadcastReport } from "./reports.js";
+import { authMiddleware, requireRole } from "./auth.js";
+import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 const router = Router();
 function parseCsvText(text) {
     const rows = [];
@@ -72,7 +74,8 @@ async function fetchGoogleSheetRows(formId, apiKey, requestedSheetName) {
     const candidates = getSheetCandidates(requestedSheetName);
     let lastError;
     for (const sheetName of candidates) {
-        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${formId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
+        const apiBaseUrl = getGoogleSheetsBaseUrl().replace(/\/$/, "");
+        const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
         try {
             const apiResponse = await fetch(apiUrl);
             if (apiResponse.ok) {
@@ -86,7 +89,8 @@ async function fetchGoogleSheetRows(formId, apiKey, requestedSheetName) {
         }
     }
     try {
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${formId}/export?format=csv`;
+        const docsBaseUrl = getGoogleDocsBaseUrl().replace(/\/$/, "");
+        const csvUrl = `${docsBaseUrl}/${formId}/export?format=csv`;
         const csvResponse = await fetch(csvUrl);
         if (csvResponse.ok) {
             const csvText = await csvResponse.text();
@@ -164,7 +168,7 @@ export function classifyGoogleFormsError(error) {
         hint: "Check the spreadsheet ID, API key, and network connectivity.",
     };
 }
-router.post("/import", async (req, res) => {
+router.post("/import", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const body = req.body ?? {};
     const { spreadsheetId, apiKey } = body;
     if (!spreadsheetId)
@@ -202,7 +206,7 @@ router.post("/import", async (req, res) => {
                 const dueDate = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
                 const id = `RPT-${uuidv4().slice(0, 8).toUpperCase()}`;
                 const status = normalizeStatus(rowObj.Status || rowObj["Report Status"] || rowObj["Current Status"] || rowObj["Ticket Status"] || "Open");
-                const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || `https://placehold.co/80x80/1e293b/ffffff?text=${id.slice(-3)}`;
+                const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || getPlaceholderImageUrl(id.slice(-3), 80);
                 await db.collection("reports").doc(id).set({
                     id, date, location, reporter: anonymous ? "Anonymous" : reporter,
                     description, severity, status, category, type, slaHours, dueAt: dueDate,
@@ -228,7 +232,7 @@ router.post("/import", async (req, res) => {
             const dueDate = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
             const id = `RPT-${uuidv4().slice(0, 8).toUpperCase()}`;
             const status = normalizeStatus(rowObj.Status || rowObj["Report Status"] || rowObj["Current Status"] || rowObj["Ticket Status"] || "Open");
-            const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || `https://placehold.co/80x80/1e293b/ffffff?text=${id.slice(-3)}`;
+            const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || getPlaceholderImageUrl(id.slice(-3), 80);
             db.prepare(`INSERT OR REPLACE INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
                 .run([id, date, location, anonymous ? "Anonymous" : reporter, description, severity, status, category, type, slaHours, dueDate, 0, anonymous ? 1 : 0, "Production", "Day", severity === "Critical" || severity === "High" ? 1 : 0, photoUrl]);
         }
@@ -257,7 +261,7 @@ router.get("/status", async (_req, res) => {
     const total = allRows(db, "SELECT COUNT(*) as count FROM reports")[0]?.count || 0;
     res.json({ totalReports: total, configured: hasCreds, formId, hasCredentials: hasCreds });
 });
-router.post("/fetch", async (req, res) => {
+router.post("/fetch", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const body = req.body ?? {};
     const formId = body.spreadsheetId || process.env.GOOGLE_FORM_ID;
     const apiKey = body.apiKey || process.env.GOOGLE_API_KEY;
@@ -339,8 +343,8 @@ router.post("/fetch", async (req, res) => {
             const category = categoryRaw || defaults.categories[0];
             const department = defaults.departments[0];
             const shift = "Day";
-            const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || `https://placehold.co/80x80/1e293b/ffffff?text=${id.slice(-3)}`;
             const status = normalizeStatus(rowObj.Status || rowObj["Report Status"] || rowObj["Current Status"] || rowObj["Ticket Status"] || "Open");
+            const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || getPlaceholderImageUrl(id.slice(-3), 80);
             if (isFirebaseAvailable()) {
                 const db = getFirebase();
                 const newReport = {

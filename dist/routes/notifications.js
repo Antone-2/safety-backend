@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { allRows, getDb, saveDb } from "../lib/database.js";
+import { authMiddleware } from "./auth.js";
 const router = Router();
 export async function listNotifications() {
     const db = await getDb();
@@ -24,11 +25,11 @@ export async function markNotificationsRead(ids) {
     db.prepare(`UPDATE notifications SET read = 1 WHERE id IN (${placeholders})`).run(ids);
     await saveDb(db);
 }
-router.get("/", async (_req, res) => {
+router.get("/", authMiddleware, async (_req, res) => {
     const notifications = await listNotifications();
     res.json(notifications);
 });
-router.post("/read", async (req, res) => {
+router.post("/read", authMiddleware, async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
     await markNotificationsRead(ids.filter((item) => typeof item === "string"));
     res.json({ ok: true });

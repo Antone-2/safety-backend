@@ -6,19 +6,30 @@ import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { LoginSchema, CreateUserSchema } from "../lib/types";
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret-in-production";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error("FATAL: JWT_SECRET environment variable is required");
+    process.exit(1);
+}
+const JWT_SECRET_VALUE = JWT_SECRET;
 const RegisterSchema = CreateUserSchema.refine((data) => data.role !== "sheq-manager", { message: "SHEQ Manager accounts must be created by an existing SHEQ Manager", path: ["role"] }).refine((data) => data.role !== "super-admin", { message: "Super Admin accounts must be created by an existing Super Admin", path: ["role"] });
 function generateToken(user) {
-    return jwt.sign({ userId: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+    return jwt.sign({ userId: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET_VALUE, { expiresIn: "7d" });
 }
 function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    let token;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.slice(7);
+    }
+    else if (typeof req.query.token === "string" && req.query.token) {
+        token = req.query.token;
+    }
+    if (!token) {
         return res.status(401).json({ error: "Missing or invalid authorization header" });
     }
-    const token = authHeader.slice(7);
     try {
-        const payload = jwt.verify(token, JWT_SECRET);
+        const payload = jwt.verify(token, JWT_SECRET_VALUE);
         req.user = payload;
         next();
     }
@@ -98,8 +109,13 @@ router.post("/logout", authMiddleware, (_req, res) => {
 });
 router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const parsed = CreateUserSchema.safeParse(req.body);
+    const caller = req.user;
     if (!parsed.success)
         return res.status(400).json({ error: parsed.error.errors });
+    // Only a super-admin is allowed to create another super-admin.
+    if (parsed.data.role === "super-admin" && caller?.role !== "super-admin") {
+        return res.status(403).json({ error: "Only super-admin can create super-admin users" });
+    }
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const existing = await db.collection("users").where("email", "==", parsed.data.email).limit(1).get();

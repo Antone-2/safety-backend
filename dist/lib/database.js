@@ -2,7 +2,7 @@ import initSqlJs from "sql.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { ensureSchema as runMigrations } from "./migrations";
+import { ensureSchema as runMigrations } from "./migrations.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, "..", "..", "..", "data.db");
 let dbPromise = null;

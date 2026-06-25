@@ -2,6 +2,7 @@ import { Router } from "express";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { CreateCapaSchema, CapaStatusSchema } from "../lib/types";
+import { authMiddleware, requireRole } from "./auth.js";
 const router = Router();
 const mapDoc = (data) => ({
     id: data.id,
@@ -17,7 +18,7 @@ const routeParam = (req, name) => {
     const value = req.params[name];
     return Array.isArray(value) ? value[0] : (value ?? "");
 };
-router.get("/", async (req, res) => {
+router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req, res) => {
     const incidentId = req.query.incidentId;
     const owner = req.query.owner;
     if (isFirebaseAvailable()) {
@@ -45,7 +46,7 @@ router.get("/", async (req, res) => {
     const rows = allRows(db, sql, params);
     res.json(rows.map(mapDoc));
 });
-router.post("/", async (req, res) => {
+router.post("/", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req, res) => {
     const parsed = CreateCapaSchema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: parsed.error.errors });
@@ -76,7 +77,7 @@ router.post("/", async (req, res) => {
     await saveDb(db);
     res.status(201).json(mapDoc(row));
 });
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req, res) => {
     const { status } = req.body;
     const parsed = CapaStatusSchema.safeParse(status);
     if (!parsed.success)
@@ -112,7 +113,7 @@ router.patch("/:id/status", async (req, res) => {
     await saveDb(db);
     res.json(mapDoc({ ...row, status: parsed.data }));
 });
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req, res) => {
     const id = routeParam(req, "id");
     if (isFirebaseAvailable()) {
         const db = getFirebase();
@@ -158,7 +159,7 @@ router.patch("/:id", async (req, res) => {
     const updated = db.prepare("SELECT * FROM capa WHERE id = ?").getAsObject([id]);
     res.json(mapDoc(updated));
 });
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const id = routeParam(req, "id");
     if (isFirebaseAvailable()) {
         const db = getFirebase();
@@ -176,7 +177,7 @@ router.delete("/:id", async (req, res) => {
     await saveDb(db);
     res.json({ ok: true, deleted: id });
 });
-router.get("/overdue", async (_req, res) => {
+router.get("/overdue", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const snap = await db.collection("capa")
@@ -189,7 +190,7 @@ router.get("/overdue", async (_req, res) => {
     const rows = allRows(db, "SELECT * FROM capa WHERE status != 'Verified' AND dueDate < ? ORDER BY dueDate ASC", [new Date().toISOString()]);
     res.json(rows.map(mapDoc));
 });
-router.post("/reminders", async (req, res) => {
+router.post("/reminders", authMiddleware, requireRole("super-admin", "sheq-manager", "plant-manager", "factory-manager"), async (req, res) => {
     const { daysBefore } = req.body;
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + (daysBefore || 3));

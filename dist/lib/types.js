@@ -3,14 +3,14 @@ export const SeveritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
 export const StatusSchema = z.enum(["Open", "In Progress", "Closed"]);
 export const ReportTypeSchema = z.enum(["Unsafe Act", "Unsafe Condition"]);
 export const CreateReportSchema = z.object({
-    location: z.string().min(1),
-    reporter: z.string().min(1),
-    description: z.string().min(1),
+    location: z.string().min(1).max(200),
+    reporter: z.string().min(1).max(200),
+    description: z.string().min(1).max(5000),
     severity: SeveritySchema,
-    category: z.string().min(1),
+    category: z.string().min(1).max(100),
     type: ReportTypeSchema,
-    department: z.string().min(1),
-    shift: z.string().min(1),
+    department: z.string().min(1).max(100),
+    shift: z.string().min(1).max(50),
     anonymous: z.boolean().optional().default(false),
     complianceRequired: z.boolean().optional().default(false),
     photoUrl: z
@@ -27,10 +27,10 @@ export const CapaStatusSchema = z.enum([
 ]);
 export const CapaPrioritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
 export const CreateCapaSchema = z.object({
-    incidentId: z.string().min(1),
-    rootCause: z.string().min(1),
-    action: z.string().min(1),
-    owner: z.string().min(1),
+    incidentId: z.string().min(1).max(50),
+    rootCause: z.string().min(1).max(2000),
+    action: z.string().min(1).max(5000),
+    owner: z.string().min(1).max(200),
     dueDate: z.string().min(1),
     priority: CapaPrioritySchema.optional().default("Medium"),
 });
