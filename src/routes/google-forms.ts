@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
-import { v4 as uuidv4 } from "uuid";
 import { allRows, getDb, saveDb } from "../lib/database.js";
+import { REPORT_SOURCE_GOOGLE_SHEETS } from "../lib/types.js";
 import { broadcastReport } from "./reports.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 
@@ -94,7 +94,7 @@ function getSheetCandidates(requestedSheetName?: string): string[] {
   return uniqueCandidates;
 }
 
-async function fetchGoogleSheetRows(
+export async function fetchGoogleSheetRows(
   formId: string,
   apiKey: string,
   requestedSheetName?: string,
@@ -111,7 +111,8 @@ async function fetchGoogleSheetRows(
         const data = (await apiResponse.json()) as { values?: string[][] };
         return { rows: data.values || [], sheetName };
       }
-      lastError = new Error(`Google Sheets API error: ${apiResponse.status} ${apiResponse.statusText}`);
+      const body = await apiResponse.text();
+      lastError = new Error(`Google Sheets API error: ${apiResponse.status} ${apiResponse.statusText} (body: ${body.slice(0, 500)})`);
     } catch (error) {
       lastError = error;
     }
@@ -174,6 +175,197 @@ function parseDate(dateStr?: string): string {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+function normalizeHeaderKey(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/^\d+[.)]\s*/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildHeaderLookup(headers: string[]): Record<string, number> {
+  const lookup: Record<string, number> = {};
+  headers.forEach((header, index) => {
+    const normalized = normalizeHeaderKey(header);
+    if (normalized) lookup[normalized] = index;
+  });
+  return lookup;
+}
+
+function normalizeImportedValue(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
+  id: string;
+  date: string;
+  location: string;
+  reporter: string;
+  description: string;
+  severity: string;
+  status: string;
+  category: string;
+  type: string;
+  slaHours: number;
+  dueAt: string;
+  anonymous: boolean;
+  department: string;
+  shift: string;
+  complianceRequired: boolean;
+  photoUrl: string;
+}>): void {
+  db.prepare("DELETE FROM reports WHERE source = ?").run([REPORT_SOURCE_GOOGLE_SHEETS]);
+
+  for (const report of reports) {
+    db.prepare(`INSERT INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run([
+        report.id,
+        report.date,
+        report.location,
+        report.reporter,
+        report.description,
+        report.severity,
+        report.status,
+        report.category,
+        report.type,
+        report.slaHours,
+        report.dueAt,
+        0,
+        report.anonymous ? 1 : 0,
+        report.department,
+        report.shift,
+        report.complianceRequired ? 1 : 0,
+        report.photoUrl,
+        REPORT_SOURCE_GOOGLE_SHEETS,
+      ]);
+  }
+}
+
+export function buildReportIdForImportedRecord(imported: {
+  date: string;
+  location: string;
+  reporter: string;
+  description: string;
+  category: string;
+  type: string;
+  severity: string;
+}): string {
+  const rowKey = [
+    normalizeImportedValue(imported.date),
+    normalizeImportedValue(imported.location),
+    normalizeImportedValue(imported.reporter),
+    normalizeImportedValue(imported.description),
+    normalizeImportedValue(imported.category),
+    normalizeImportedValue(imported.type),
+    normalizeImportedValue(imported.severity),
+  ].join("::");
+
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < rowKey.length; i += 1) {
+    hash ^= rowKey.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  const stableIdHash = (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
+  return `RPT-${stableIdHash}`;
+}
+
+function getMatchingCell(headers: string[], row: string[], aliases: string[], fallbackIndex?: number): string {
+  const lookup = buildHeaderLookup(headers);
+  const normalizedAliases = aliases.map(normalizeHeaderKey).filter(Boolean);
+
+  for (const alias of normalizedAliases) {
+    const headerIndex = lookup[alias];
+    if (typeof headerIndex === "number") {
+      const value = row[headerIndex];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+  }
+
+  for (const [index, header] of headers.entries()) {
+    const normalizedHeader = normalizeHeaderKey(header);
+    if (!normalizedHeader) continue;
+    for (const alias of normalizedAliases) {
+      if (normalizedHeader === alias || normalizedHeader.includes(alias) || alias.includes(normalizedHeader)) {
+        const value = row[index];
+        if (typeof value === "string" && value.trim()) {
+          return value.trim();
+        }
+      }
+    }
+  }
+
+  if (typeof fallbackIndex === "number" && row[fallbackIndex] !== undefined) {
+    return String(row[fallbackIndex] ?? "").trim();
+  }
+
+  return "";
+}
+
+export function buildReportRecordFromRow(
+  headers: string[],
+  row: string[],
+  defaults: { locations: string[]; categories: string[]; departments: string[] },
+): {
+  date: string;
+  location: string;
+  reporter: string;
+  description: string;
+  severity: "Low" | "Medium" | "High" | "Critical";
+  status: "Open" | "In Progress" | "Closed";
+  category: string;
+  type: "Unsafe Act" | "Unsafe Condition";
+  anonymous: boolean;
+  photoUrl: string;
+  department: string;
+  shift: string;
+  slaHours: number;
+  dueAt: string;
+  complianceRequired: boolean;
+} {
+  const location = getMatchingCell(headers, row, ["location", "site", "branch", "facility", "plant", "warehouse", "office"], 1) || defaults.locations[0];
+  const reporter = getMatchingCell(headers, row, ["reporter", "reporter name", "submitted by", "submitted by name", "name", "your name", "full name", "person reporting"], 2) || "Anonymous";
+  const categoryRaw = getMatchingCell(headers, row, ["category", "hazard", "incident type", "incident category", "hazard category", "type of incident"], 4) || defaults.categories[0];
+  const typeRaw = getMatchingCell(headers, row, ["type", "nature", "report type", "unsafe act condition", "unsafe act condition", "incident type"], 4) || "Unsafe Condition";
+  const type = typeRaw.toLowerCase().includes("condition") ? "Unsafe Condition" : "Unsafe Act";
+  const description = getMatchingCell(headers, row, ["description", "incident", "incident description", "details", "brief description", "hazard description", "summary", "incident summary", "details of the hazard", "briefly details"], 8) || "";
+  const dateRaw = getMatchingCell(headers, row, ["timestamp", "date", "date submitted", "created at", "submitted at"], 0);
+  const date = parseDate(dateRaw);
+  const severity = normalizeSeverity(getMatchingCell(headers, row, ["severity", "risk level", "severity level", "priority", "impact"], 7) || "Medium");
+  const status = normalizeStatus(getMatchingCell(headers, row, ["status", "report status", "current status", "ticket status"], 0) || "Open");
+  const anonymous = reporter.toLowerCase() === "anonymous";
+  const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
+  const dueAt = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
+  const photoUrl = getMatchingCell(headers, row, ["photo", "photo url", "image", "image url"], 0) || "";
+  const department = defaults.departments[0];
+  const shift = "Day";
+  const complianceRequired = severity === "Critical" || severity === "High";
+
+  return {
+    date,
+    location,
+    reporter: anonymous ? "Anonymous" : reporter,
+    description,
+    severity,
+    status,
+    category: categoryRaw,
+    type,
+    anonymous,
+    photoUrl,
+    department,
+    shift,
+    slaHours,
+    dueAt,
+    complianceRequired,
+  };
+}
+
 export interface GoogleFormsErrorInfo {
   statusCode: number;
   message: string;
@@ -208,6 +400,16 @@ export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
     };
   }
 
+  // Permission denied (403 Forbidden)
+  if (/403 Forbidden|permission denied|access denied/i.test(message)) {
+    return {
+      statusCode: 403,
+      message: "Permission denied accessing Google Sheet.",
+      details: stack ? `${message} (stack: ${stack.slice(0, 600)})` : message,
+      hint: "Make the spreadsheet shareable (anyone with link can view) and verify the API key has Sheets API enabled.",
+    };
+  }
+
   // Generic/unknown failures (bad key, bad spreadsheet, wrong sheet name, etc.)
   return {
     statusCode: 500,
@@ -231,66 +433,86 @@ router.post("/import", async (req: Request, res: Response) => {
 
     const headers = rows[0];
     const dataRows = rows.slice(1);
-
-    // Normalize headers because Google Sheets exports can contain extra whitespace.
-    const normalizeHeader = (h: string) => h.trim().replace(/\s+/g, " ");
-    const normalizedHeaders = headers.map(normalizeHeader);
-
-    // Fast lookup to map normalized header name -> column index.
-    const headerIndex: Record<string, number> = {};
-    for (let i = 0; i < normalizedHeaders.length; i++) {
-      headerIndex[normalizedHeaders[i]] = i;
-    }
+    const defaults = getDefaults();
 
     if (isFirebaseAvailable()) {
       const db = getFirebase()!;
       for (const row of dataRows) {
-        const rowObj = headers.reduce((acc, h, i) => ({ ...acc, [h]: row[i] }), {} as Record<string, string>);
-        const location = rowObj.Location || rowObj["Site"] || rowObj["Branch"] || "";
-        const description = rowObj.Description || rowObj["Incident"] || "";
-        const severity = normalizeSeverity(rowObj.Severity || rowObj["Risk Level"]);
-        const category = rowObj.Category || rowObj["Hazard"] || rowObj["Incident Type"] || "";
-        const type = normalizeType(rowObj.Type || rowObj["Nature"]);
-        const reporter = rowObj.Reporter || rowObj["Submitted By"] || "Anonymous";
-        const anonymous = (rowObj.Anonymous || "").toString().toLowerCase() === "true" || reporter.toLowerCase() === "anonymous";
-        const date = parseDate(rowObj.Timestamp || rowObj.Date);
-        const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
-        const dueDate = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
-        const id = `RPT-${uuidv4().slice(0, 8).toUpperCase()}`;
-        const status = normalizeStatus(rowObj.Status || rowObj["Report Status"] || rowObj["Current Status"] || rowObj["Ticket Status"] || "Open");
-        const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || getPlaceholderImageUrl(id.slice(-3), 80);
+        const imported = buildReportRecordFromRow(headers, row, defaults);
+        const id = buildReportIdForImportedRecord(imported);
+        const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
 
         await db.collection("reports").doc(id).set({
-          id, date, location, reporter: anonymous ? "Anonymous" : reporter,
-          description, severity, status, category, type, slaHours, dueAt: dueDate,
-          isNearMiss: false, anonymous: anonymous ? 1 : 0, department: "Production", shift: "Day",
-          complianceRequired: severity === "Critical" || severity === "High" ? 1 : 0,
-          photoUrl, comments: [],
+          id,
+          source: REPORT_SOURCE_GOOGLE_SHEETS,
+          date: imported.date,
+          location: imported.location,
+          reporter: imported.reporter,
+          description: imported.description,
+          severity: imported.severity,
+          status: imported.status,
+          category: imported.category,
+          type: imported.type,
+          slaHours: imported.slaHours,
+          dueAt: imported.dueAt,
+          isNearMiss: false,
+          anonymous: imported.anonymous ? 1 : 0,
+          department: imported.department,
+          shift: imported.shift,
+          complianceRequired: imported.complianceRequired ? 1 : 0,
+          photoUrl,
+          comments: [],
         });
       }
       return res.json({ imported: dataRows.length, skipped: 0, message: `Imported ${dataRows.length} reports` });
     }
 
     const db = await getDb();
-    for (const row of dataRows) {
-      const rowObj = headers.reduce((acc, h, i) => ({ ...acc, [h]: row[i] }), {} as Record<string, string>);
-      const location = rowObj.Location || rowObj["Site"] || rowObj["Branch"] || "";
-      const description = rowObj.Description || rowObj["Incident"] || "";
-      const severity = normalizeSeverity(rowObj.Severity || rowObj["Risk Level"]);
-      const category = rowObj.Category || rowObj["Hazard"] || rowObj["Incident Type"] || "";
-      const type = normalizeType(rowObj.Type || rowObj["Nature"]);
-      const reporter = rowObj.Reporter || rowObj["Submitted By"] || "Anonymous";
-      const anonymous = (rowObj.Anonymous || "").toString().toLowerCase() === "true" || reporter.toLowerCase() === "anonymous";
-      const date = parseDate(rowObj.Timestamp || rowObj.Date);
-      const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
-      const dueDate = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
-      const id = `RPT-${uuidv4().slice(0, 8).toUpperCase()}`;
-      const status = normalizeStatus(rowObj.Status || rowObj["Report Status"] || rowObj["Current Status"] || rowObj["Ticket Status"] || "Open");
-      const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || getPlaceholderImageUrl(id.slice(-3), 80);
+    const importedReports: Array<{
+      id: string;
+      date: string;
+      location: string;
+      reporter: string;
+      description: string;
+      severity: string;
+      status: string;
+      category: string;
+      type: string;
+      slaHours: number;
+      dueAt: string;
+      anonymous: boolean;
+      department: string;
+      shift: string;
+      complianceRequired: boolean;
+      photoUrl: string;
+    }> = [];
 
-      db.prepare(`INSERT OR REPLACE INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run([id, date, location, anonymous ? "Anonymous" : reporter, description, severity, status, category, type, slaHours, dueDate, 0, anonymous ? 1 : 0, "Production", "Day", severity === "Critical" || severity === "High" ? 1 : 0, photoUrl]);
+    for (const row of dataRows) {
+      const imported = buildReportRecordFromRow(headers, row, defaults);
+      const id = buildReportIdForImportedRecord(imported);
+      const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
+
+      importedReports.push({
+        id,
+        date: imported.date,
+        location: imported.location,
+        reporter: imported.reporter,
+        description: imported.description,
+        severity: imported.severity,
+        status: imported.status,
+        category: imported.category,
+        type: imported.type,
+        slaHours: imported.slaHours,
+        dueAt: imported.dueAt,
+        anonymous: imported.anonymous,
+        department: imported.department,
+        shift: imported.shift,
+        complianceRequired: imported.complianceRequired,
+        photoUrl,
+      });
     }
+
+    replaceGoogleSheetReportsInSqlite(db, importedReports);
     await saveDb(db);
     return res.json({ imported: dataRows.length, skipped: 0, message: `Imported ${dataRows.length} reports` });
   } catch (error: unknown) {
@@ -315,7 +537,7 @@ router.get("/status", async (_req: Request, res: Response) => {
   }
 
   const db = await getDb();
-  const total = allRows(db, "SELECT COUNT(*) as count FROM reports")[0]?.count || 0;
+  const total = allRows(db, "SELECT COUNT(*) as count FROM reports WHERE source = ?", [REPORT_SOURCE_GOOGLE_SHEETS])[0]?.count || 0;
   res.json({ totalReports: total, configured: hasCreds, formId, hasCredentials: hasCreds });
 });
 
@@ -340,121 +562,100 @@ router.post("/fetch", async (req: Request, res: Response) => {
     const defaults = getDefaults();
 
     let importedCount = 0;
-    for (const row of dataRows) {
-      const rowObj = headers.reduce((acc, h, i) => ({ ...acc, [h]: row[i] }), {} as Record<string, string>);
-      const location =
-        rowObj["1. Location"] ||
-        rowObj["Location "] ||
-        rowObj.Location ||
-        row[1] ||
-        defaults.locations[0];
-      const reporter =
-        rowObj["Enter your name here. First name and Last name"] ||
-        rowObj["Kindly Provide Your Name (First name and Last name)"] ||
-        rowObj.Reporter ||
-        row[2] ||
-        "Anonymous";
-      const categoryRaw =
-        rowObj["1. Category?"] ||
-        rowObj.Category ||
-        rowObj["4. Incident Category"] ||
-        row[4] ||
-        defaults.categories[0];
-      const typeRaw =
-        rowObj.Type ||
-        rowObj["Do you want to Report an Incident or an Unsafe Act/ Condition?"] ||
-        row[4] ||
-        "Unsafe Condition";
-      const type = typeRaw.toLowerCase().includes("condition") ? "Unsafe Condition" : "Unsafe Act";
-      const severity = normalizeSeverity(
-        rowObj["2. Risk Level"] ||
-          rowObj.Severity ||
-          rowObj["Risk Level"] ||
-          row[7] ||
-          "Medium",
-      );
-      const description =
-        rowObj["3. Describe/ list (Briefly) details of the hazard"] ||
-        rowObj["5. Give a brief a description of the incident"] ||
-        rowObj.Description ||
-        rowObj["Incident"] ||
-        row[8] ||
-        "";
-      const dateRaw = rowObj.Timestamp || rowObj.Date || row[0];
-      const date = parseDate(dateRaw);
-      const anonymous = reporter.toLowerCase() === "anonymous";
-      const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
-      const dueDate = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
-      // Use a deterministic id per Google row so repeated syncs don't create duplicates.
-      // Stable deterministic id so repeated syncs don't create duplicates.
-      // Avoid JSON.stringify(rowObj) because header whitespace/extra columns can change between exports.
-      // Use a normalized signature from the actual business fields.
-      const normalize = (v: unknown) => (v ?? "").toString().trim().replace(/\s+/g, " ");
-      const rowKey = [
-        normalize(dateRaw),
-        normalize(location),
-        normalize(reporter),
-        normalize(description),
-        normalize(categoryRaw),
-        normalize(typeRaw),
-        normalize(severity),
-      ].join("::");
+    const dbForSqlite = isFirebaseAvailable() ? null : await getDb();
+    const newReports: Array<{
+      id: string;
+      date: string;
+      location: string;
+      reporter: string;
+      description: string;
+      severity: string;
+      status: string;
+      category: string;
+      type: string;
+      slaHours: number;
+      dueAt: string;
+      anonymous: boolean;
+      department: string;
+      shift: string;
+      complianceRequired: boolean;
+      photoUrl: string;
+    }> = [];
 
-      // Simple deterministic hash (no extra dependencies): FNV-1a 32-bit
-      let hash = 0x811c9dc5;
-      for (let i = 0; i < rowKey.length; i++) {
-        hash ^= rowKey.charCodeAt(i);
-        hash = Math.imul(hash, 0x01000193);
-      }
-      const stableIdHash = (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
-      const id = `RPT-${stableIdHash}`;
-      const category = categoryRaw || defaults.categories[0];
-      const department = defaults.departments[0];
-      const shift = "Day";
-      const status = normalizeStatus(rowObj.Status || rowObj["Report Status"] || rowObj["Current Status"] || rowObj["Ticket Status"] || "Open");
-      const photoUrl = (rowObj.Photo || rowObj["Photo URL"] || rowObj.Image || rowObj["Image URL"] || "").toString().trim() || getPlaceholderImageUrl(id.slice(-3), 80);
-      
+    for (const row of dataRows) {
+      const imported = buildReportRecordFromRow(headers, row, defaults);
+      const id = buildReportIdForImportedRecord(imported);
+      const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
+      const newReport = {
+        id,
+        source: REPORT_SOURCE_GOOGLE_SHEETS,
+        date: imported.date,
+        location: imported.location,
+        reporter: imported.reporter,
+        description: imported.description,
+        severity: imported.severity,
+        status: imported.status,
+        category: imported.category,
+        type: imported.type,
+        slaHours: imported.slaHours,
+        dueAt: imported.dueAt,
+        isNearMiss: false,
+        anonymous: imported.anonymous ? 1 : 0,
+        department: imported.department,
+        shift: imported.shift,
+        complianceRequired: imported.complianceRequired ? 1 : 0,
+        photoUrl,
+        comments: [],
+      };
+
       if (isFirebaseAvailable()) {
         const db = getFirebase()!;
-        const newReport = {
-          id, date, location, reporter: anonymous ? "Anonymous" : reporter,
-          description, severity, status, category, type, slaHours, dueAt: dueDate,
-          isNearMiss: false, anonymous: anonymous ? 1 : 0, department, shift,
-          complianceRequired: severity === "Critical" || severity === "High" ? 1 : 0,
-          photoUrl, comments: [],
-        };
         await db.collection("reports").doc(id).set(newReport);
         broadcastReport(newReport as any);
-      } else {
-        const db = await getDb();
-        db.prepare(`INSERT OR REPLACE INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run([id, date, location, anonymous ? "Anonymous" : reporter, description, severity, status, category, type, slaHours, dueDate, 0, anonymous ? 1 : 0, department, shift, severity === "Critical" || severity === "High" ? 1 : 0, photoUrl]);
-        await saveDb(db);
-        broadcastReport({
-          id, date, location, reporter: anonymous ? "Anonymous" : reporter,
-          description, severity, status, category, type, slaHours, dueAt: dueDate,
-          isNearMiss: false, anonymous, comments: [], department, shift,
-          complianceRequired: severity === "Critical" || severity === "High",
+      } else if (dbForSqlite) {
+        newReports.push({
+          id,
+          date: imported.date,
+          location: imported.location,
+          reporter: imported.reporter,
+          description: imported.description,
+          severity: imported.severity,
+          status: imported.status,
+          category: imported.category,
+          type: imported.type,
+          slaHours: imported.slaHours,
+          dueAt: imported.dueAt,
+          anonymous: imported.anonymous,
+          department: imported.department,
+          shift: imported.shift,
+          complianceRequired: imported.complianceRequired,
           photoUrl,
+        });
+        broadcastReport({
+          ...newReport,
+          anonymous: imported.anonymous,
+          complianceRequired: imported.complianceRequired,
         } as any);
       }
       importedCount++;
     }
 
+    if (dbForSqlite && newReports.length > 0) {
+      replaceGoogleSheetReportsInSqlite(dbForSqlite, newReports);
+    }
+
     // Update sync timestamp
     const maxTimestamp = dataRows.reduce((max, row) => {
-      const ts = row[0] || ""; // Column A = Timestamp
+      const ts = row[0] || "";
       return ts && (!max || ts > max) ? ts : max;
     }, "");
-
 
     if (isFirebaseAvailable()) {
       const db = getFirebase()!;
       await db.collection("syncMeta").doc("googleForms").set({ lastTimestamp: maxTimestamp, lastSync: new Date().toISOString() });
-    } else if (maxTimestamp) {
-      const db = await getDb();
-      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('google_forms_sync', ?)").run([JSON.stringify({ lastTimestamp: maxTimestamp, lastSync: new Date().toISOString() })]);
-      await saveDb(db);
+    } else if (maxTimestamp && dbForSqlite) {
+      dbForSqlite.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('google_forms_sync', ?)").run([JSON.stringify({ lastTimestamp: maxTimestamp, lastSync: new Date().toISOString() })]);
+      await saveDb(dbForSqlite);
     }
 
     const responses = dataRows.map((row) => {

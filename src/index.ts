@@ -34,7 +34,13 @@ function isAllowedOrigin(origin: string | undefined) {
 
   if (configuredOrigins.includes(origin)) return true;
 
-  return /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin);
+  // Allow localhost for development
+  if (/^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin)) return true;
+
+  // Allow Vercel preview/production URLs
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+
+  return false;
 }
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();

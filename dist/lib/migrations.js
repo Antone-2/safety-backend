@@ -127,6 +127,10 @@ const MIGRATIONS = [
       createdAt TEXT NOT NULL
     )`,
     },
+    {
+        name: "011_add_report_source",
+        sql: `ALTER TABLE reports ADD COLUMN source TEXT NOT NULL DEFAULT 'google-sheets'`,
+    },
 ];
 export async function runMigrations(db) {
     db.run(MIGRATIONS_TABLE);

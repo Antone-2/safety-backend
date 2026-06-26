@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { allRows, getDb, saveDb } from "../lib/database.js";
-import { SeveritySchema, StatusSchema, CreateReportSchema } from "../lib/types.js";
+import { SeveritySchema, StatusSchema, CreateReportSchema, REPORT_SOURCE_GOOGLE_SHEETS, REPORT_SOURCE_MANUAL } from "../lib/types.js";
 import { sendIncidentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
 import { getPlaceholderImageUrl } from "../lib/config.js";
@@ -115,9 +115,9 @@ router.get("/", async (req: Request, res: Response) => {
   const limit = Number(req.query.limit) || 50;
   const offset = (page - 1) * limit;
 
-  let sql = "SELECT * FROM reports WHERE 1=1";
-  const countSql = "SELECT COUNT(*) as total FROM reports WHERE 1=1";
-  const params: any[] = [];
+  let sql = "SELECT * FROM reports WHERE source = ?";
+  const countSql = "SELECT COUNT(*) as total FROM reports WHERE source = ?";
+  const params: any[] = [REPORT_SOURCE_GOOGLE_SHEETS];
 
   if (status) { sql += " AND status = ?"; params.push(status); }
   if (severity) { sql += " AND severity = ?"; params.push(severity); }
@@ -147,14 +147,14 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.get("/stats", async (_req: Request, res: Response) => {
   const db = await getDb();
-  const total = Number(db.prepare("SELECT COUNT(*) as c FROM reports").getAsObject().c ?? 0);
-  const open = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE status = 'Open'").getAsObject().c ?? 0);
-  const closed = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE status = 'Closed'").getAsObject().c ?? 0);
+  const total = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE source = ?").getAsObject([REPORT_SOURCE_GOOGLE_SHEETS]).c ?? 0);
+  const open = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE source = ? AND status = 'Open'").getAsObject([REPORT_SOURCE_GOOGLE_SHEETS]).c ?? 0);
+  const closed = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE source = ? AND status = 'Closed'").getAsObject([REPORT_SOURCE_GOOGLE_SHEETS]).c ?? 0);
   const today = new Date(); today.setHours(0,0,0,0);
-  const todayCount = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE date >= ?").getAsObject([today.toISOString()]).c ?? 0);
+  const todayCount = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE source = ? AND date >= ?").getAsObject([REPORT_SOURCE_GOOGLE_SHEETS, today.toISOString()]).c ?? 0);
   const week = new Date(); week.setDate(week.getDate() - 7);
-  const weekCount = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE date >= ?").getAsObject([week.toISOString()]).c ?? 0);
-  const closedRows = allRows(db, "SELECT resolutionDays FROM reports WHERE status = 'Closed' AND resolutionDays IS NOT NULL") as { resolutionDays: number }[];
+  const weekCount = Number(db.prepare("SELECT COUNT(*) as c FROM reports WHERE source = ? AND date >= ?").getAsObject([REPORT_SOURCE_GOOGLE_SHEETS, week.toISOString()]).c ?? 0);
+  const closedRows = allRows(db, "SELECT resolutionDays FROM reports WHERE source = ? AND status = 'Closed' AND resolutionDays IS NOT NULL", [REPORT_SOURCE_GOOGLE_SHEETS]) as { resolutionDays: number }[];
   const avg = closedRows.length ? +(closedRows.reduce((s, r) => s + Number(r.resolutionDays), 0) / closedRows.length).toFixed(1) : 0;
   res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
 });
@@ -232,8 +232,9 @@ router.post("/", async (req: Request, res: Response) => {
       shift,
       complianceRequired,
       complianceDueAt,
-      photoUrl
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      photoUrl,
+      source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run([
@@ -257,6 +258,7 @@ router.post("/", async (req: Request, res: Response) => {
     complianceRequired ? 1 : 0,
     complianceDueAt,
     photoUrl,
+    REPORT_SOURCE_MANUAL,
   ]);
 
   const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]) as any;

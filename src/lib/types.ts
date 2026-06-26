@@ -3,6 +3,9 @@ import { z } from "zod";
 export const SeveritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
 export type Severity = z.infer<typeof SeveritySchema>;
 
+export const REPORT_SOURCE_GOOGLE_SHEETS = "google-sheets";
+export const REPORT_SOURCE_MANUAL = "manual";
+
 export const StatusSchema = z.enum(["Open", "In Progress", "Closed"]);
 export type Status = z.infer<typeof StatusSchema>;
 

@@ -1,6 +1,8 @@
 import { z } from "zod";
 export declare const SeveritySchema: z.ZodEnum<["Low", "Medium", "High", "Critical"]>;
 export type Severity = z.infer<typeof SeveritySchema>;
+export declare const REPORT_SOURCE_GOOGLE_SHEETS = "google-sheets";
+export declare const REPORT_SOURCE_MANUAL = "manual";
 export declare const StatusSchema: z.ZodEnum<["Open", "In Progress", "Closed"]>;
 export type Status = z.infer<typeof StatusSchema>;
 export declare const ReportTypeSchema: z.ZodEnum<["Unsafe Act", "Unsafe Condition"]>;
