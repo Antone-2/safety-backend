@@ -33,6 +33,26 @@ test("maps alternate Google Form headers into report fields", () => {
     assert.equal(report.severity, "High");
     assert.equal(report.description, "Chemical spill");
 });
+test("maps employee name headers into reporter field", () => {
+    const headers = ["Timestamp", "Location", "Employee Name", "Incident Summary", "Hazard Category", "Type", "Risk Level"];
+    const row = ["2024-01-01", "Factory A", "John Smith", "Chemical spill", "Chemical", "Unsafe Condition", "High"];
+    const report = buildReportRecordFromRow(headers, row, {
+        locations: ["Factory A"],
+        categories: ["Chemical"],
+        departments: ["Production"],
+    });
+    assert.equal(report.reporter, "John Smith");
+});
+test("maps staff name headers into reporter field", () => {
+    const headers = ["Timestamp", "Location", "Staff Name", "Incident Description", "Hazard Category", "Type", "Risk Level"];
+    const row = ["2024-01-01", "Factory A", "Mary Johnson", "Chemical spill", "Chemical", "Unsafe Condition", "High"];
+    const report = buildReportRecordFromRow(headers, row, {
+        locations: ["Factory A"],
+        categories: ["Chemical"],
+        departments: ["Production"],
+    });
+    assert.equal(report.reporter, "Mary Johnson");
+});
 test("creates a deterministic report ID for repeated imports of the same content", () => {
     const headers = ["Timestamp", "Location", "Reporter Name", "Incident Summary", "Hazard Category", "Type", "Risk Level"];
     const row = ["2024-01-01", "Factory A", "Jane Doe", "Chemical spill", "Chemical", "Unsafe Condition", "High"];

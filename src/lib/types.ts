@@ -34,6 +34,7 @@ export interface Report {
   complianceRequired: boolean;
   complianceDueAt?: string;
   photoUrl: string;
+  photos?: string[];
 }
 
 export const CreateReportSchema = z.object({

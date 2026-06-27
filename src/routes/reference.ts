@@ -37,11 +37,16 @@ router.get("/departments", async (_req: Request, res: Response) => {
 router.get("/supervisors", async (_req: Request, res: Response) => {
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;
-    const snap = await db.collection("reports").where("assignedTo", "!=", null).get();
-    return res.json([...new Set(snap.docs.map((doc) => doc.data().assignedTo))].sort());
+    const snap = await db.collection("users").get();
+    const names = snap.docs
+      .map((doc) => doc.data().name as string | undefined)
+      .filter((name): name is string => Boolean(name));
+    return res.json(names.sort());
   }
   const db = await getDb();
-  return res.json(allRows(db, "SELECT DISTINCT assignedTo FROM reports WHERE assignedTo IS NOT NULL ORDER BY assignedTo").map((r) => (r as any).assignedTo));
+  return res.json(
+    allRows(db, "SELECT name FROM users WHERE role IN ('super-admin','gm','sheq-manager','plant-manager','factory-manager','depot-admin') ORDER BY name").map((r) => (r as any).name),
+  );
 });
 
 router.get("/employees", async (_req: Request, res: Response) => {

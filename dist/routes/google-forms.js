@@ -244,7 +244,7 @@ function getMatchingCell(headers, row, aliases, fallbackIndex) {
 }
 export function buildReportRecordFromRow(headers, row, defaults) {
     const location = getMatchingCell(headers, row, ["location", "site", "branch", "facility", "plant", "warehouse", "office"], 1) || defaults.locations[0];
-    const reporter = getMatchingCell(headers, row, ["reporter", "reporter name", "submitted by", "submitted by name", "name", "your name", "full name", "person reporting"], 2) || "Anonymous";
+    const reporter = getMatchingCell(headers, row, ["reporter", "reporter name", "submitted by", "submitted by name", "name", "your name", "full name", "person reporting", "employee", "employee name", "staff", "staff name"], 2) || "Anonymous";
     const categoryRaw = getMatchingCell(headers, row, ["category", "hazard", "incident type", "incident category", "hazard category", "type of incident"], 4) || defaults.categories[0];
     const typeRaw = getMatchingCell(headers, row, ["type", "nature", "report type", "unsafe act condition", "unsafe act condition", "incident type"], 4) || "Unsafe Condition";
     const type = typeRaw.toLowerCase().includes("condition") ? "Unsafe Condition" : "Unsafe Act";

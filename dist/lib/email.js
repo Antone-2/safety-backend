@@ -134,6 +134,47 @@ export function buildIncidentNotification(report, recipient) {
     ].join("\n\n");
     return { recipient, subject, message };
 }
+export function buildAssignmentNotification(report, assignee) {
+    const subject = `Task assigned: ${report.id}`;
+    const message = [
+        `Report ${report.id} has been assigned to ${assignee}.`,
+        `Severity: ${report.severity}`,
+        `Location: ${report.location}`,
+        `Reporter: ${report.reporter}`,
+        `Description: ${report.description}`,
+        `Please review the incident and complete the required follow-up steps.`,
+    ].join("\n\n");
+    return { recipient: assignee, subject, message };
+}
+export async function sendAssignmentNotification(report, assignee) {
+    const notification = buildAssignmentNotification(report, assignee);
+    const recipient = notification.recipient.includes("@")
+        ? notification.recipient
+        : process.env.DEFAULT_NOTIFICATION_EMAIL || process.env.SMTP_FROM || "safety@crownpaints.co.ke";
+    if (!hasSmtpConfig() || !notification.recipient.includes("@")) {
+        return {
+            ok: true,
+            delivered: false,
+            mode: "internal",
+            message: `Assignment notification queued locally for ${assignee}.`,
+            recipient,
+        };
+    }
+    await createTransporter().sendMail({
+        from: process.env.SMTP_FROM,
+        to: recipient,
+        subject: notification.subject,
+        text: notification.message,
+        html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
+    });
+    return {
+        ok: true,
+        delivered: true,
+        mode: "smtp",
+        message: `Assignment notification sent to ${recipient}.`,
+        recipient,
+    };
+}
 export async function sendIncidentNotification(report, recipient) {
     const notification = buildIncidentNotification(report, recipient);
     if (!hasSmtpConfig()) {

@@ -80,6 +80,7 @@ import referenceRouter from "./routes/reference.js";
 import googleFormsRouter from "./routes/google-forms.js";
 import authRouter from "./routes/auth.js";
 import notificationsRouter from "./routes/notifications.js";
+import { maybeRunMonthlyLeaderboardJob } from "./lib/leaderboard.js";
 
 initFirebase();
 
@@ -99,16 +100,18 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(null, false);
-  },
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(rateLimitMiddleware);
@@ -129,6 +132,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: "Internal server error" });
 });
 
+const db = await import("./lib/database.js").then((m) => m.getDb());
+import("./lib/migrations.js").then((m) => m.seedAdminUsers(db));
+await maybeRunMonthlyLeaderboardJob(db);
+
 const PORT = validatedEnv.PORT;
 const server = app.listen(PORT, () => console.log(`HSE Backend running on http://localhost:${PORT}`));
 
@@ -147,3 +154,4 @@ function gracefulShutdown(signal: string) {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+

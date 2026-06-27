@@ -274,6 +274,32 @@ export function buildReportIdForImportedRecord(imported: {
   return `RPT-${stableIdHash}`;
 }
 
+function extractPhotoUrl(headers: string[], row: string[]): string {
+  const matched = getMatchingCell(headers, row, [
+    "photo",
+    "photo url",
+    "image",
+    "image url",
+    "photo link",
+    "image link",
+    "attachment",
+    "attachments",
+    "upload photo",
+    "upload image",
+    "hazard photo",
+    "incident photo",
+  ]);
+  if (matched && matched.trim()) return matched.trim();
+
+  const urlRegex = /https?:\/\/[^\s,]+/g;
+  const candidates: string[] = [];
+  for (const cell of row) {
+    const matches = cell.match(urlRegex);
+    if (matches) candidates.push(...matches);
+  }
+  return candidates.join(", ");
+}
+
 function getMatchingCell(headers: string[], row: string[], aliases: string[], fallbackIndex?: number): string {
   const lookup = buildHeaderLookup(headers);
   const normalizedAliases = aliases.map(normalizeHeaderKey).filter(Boolean);
@@ -330,7 +356,7 @@ export function buildReportRecordFromRow(
   complianceRequired: boolean;
 } {
   const location = getMatchingCell(headers, row, ["location", "site", "branch", "facility", "plant", "warehouse", "office"], 1) || defaults.locations[0];
-  const reporter = getMatchingCell(headers, row, ["reporter", "reporter name", "submitted by", "submitted by name", "name", "your name", "full name", "person reporting"], 2) || "Anonymous";
+  const reporter = getMatchingCell(headers, row, ["reporter", "reporter name", "submitted by", "submitted by name", "name", "your name", "full name", "person reporting", "employee", "employee name", "staff", "staff name"], 2) || "Anonymous";
   const categoryRaw = getMatchingCell(headers, row, ["category", "hazard", "incident type", "incident category", "hazard category", "type of incident"], 4) || defaults.categories[0];
   const typeRaw = getMatchingCell(headers, row, ["type", "nature", "report type", "unsafe act condition", "unsafe act condition", "incident type"], 4) || "Unsafe Condition";
   const type = typeRaw.toLowerCase().includes("condition") ? "Unsafe Condition" : "Unsafe Act";
@@ -342,7 +368,7 @@ export function buildReportRecordFromRow(
   const anonymous = reporter.toLowerCase() === "anonymous";
   const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
   const dueAt = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
-  const photoUrl = getMatchingCell(headers, row, ["photo", "photo url", "image", "image url"], 0) || "";
+  const photoUrl = extractPhotoUrl(headers, row);
   const department = defaults.departments[0];
   const shift = "Day";
   const complianceRequired = severity === "Critical" || severity === "High";

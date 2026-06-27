@@ -1,4 +1,6 @@
 
+import { saveDb } from "./database.js";
+
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS migrations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -78,21 +80,21 @@ const MIGRATIONS: { name: string; sql: string }[] = [
           UPDATE users SET role = 'factory-manager' WHERE role = 'supervisor';
           UPDATE users SET role = 'depot-admin' WHERE role = 'user';`,
   },
-  {
+{
     name: "007_alter_users_role_constraint",
     sql: `CREATE TABLE IF NOT EXISTS users_new (
-          id TEXT PRIMARY KEY,
-          email TEXT NOT NULL UNIQUE,
-          passwordHash TEXT NOT NULL,
-          name TEXT NOT NULL,
-          role TEXT NOT NULL CHECK(role IN ('sheq-manager','gm','plant-manager','factory-manager','depot-admin')),
-          createdAt TEXT NOT NULL
-        );
-        INSERT OR IGNORE INTO users_new (id, email, passwordHash, name, role, createdAt)
-        SELECT id, email, passwordHash, name, role, createdAt FROM users;
-        DROP TABLE users;
-        ALTER TABLE users_new RENAME TO users;
-        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            passwordHash TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('super-admin','sheq-manager','gm','plant-manager','factory-manager','depot-admin')),
+            createdAt TEXT NOT NULL
+          );
+          INSERT OR IGNORE INTO users_new (id, email, passwordHash, name, role, createdAt)
+          SELECT id, email, passwordHash, name, role, createdAt FROM users;
+          DROP TABLE users;
+          ALTER TABLE users_new RENAME TO users;
+          CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
   },
   {
     name: "008_create_indexes",
@@ -133,7 +135,79 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     name: "011_add_report_source",
     sql: `ALTER TABLE reports ADD COLUMN source TEXT NOT NULL DEFAULT 'google-sheets'`,
   },
+  {
+    name: "012_create_reporter_points",
+    sql: `CREATE TABLE IF NOT EXISTS reporter_points (
+      month TEXT NOT NULL,
+      reporter TEXT NOT NULL,
+      reportCount INTEGER NOT NULL DEFAULT 0,
+      points INTEGER NOT NULL DEFAULT 0,
+      updatedAt TEXT NOT NULL,
+      PRIMARY KEY (month, reporter)
+    )`,
+  },
+  {
+    name: "013_create_leaderboard_awards",
+    sql: `CREATE TABLE IF NOT EXISTS leaderboard_awards (
+      id TEXT PRIMARY KEY,
+      month TEXT NOT NULL,
+      reporter TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      reportCount INTEGER NOT NULL,
+      points INTEGER NOT NULL,
+      createdAt TEXT NOT NULL,
+      UNIQUE(month, reporter, rank)
+    )`,
+  },
+  {
+    name: "014_create_leaderboard_indexes",
+    sql: `CREATE INDEX IF NOT EXISTS idx_reporter_points_month ON reporter_points(month);
+          CREATE INDEX IF NOT EXISTS idx_reporter_points_reporter ON reporter_points(reporter);
+          CREATE INDEX IF NOT EXISTS idx_leaderboard_awards_month ON leaderboard_awards(month);
+          CREATE INDEX IF NOT EXISTS idx_leaderboard_awards_reporter ON leaderboard_awards(reporter);`,
+  },
+  {
+    name: "015_add_assigned_to_copy",
+    sql: `ALTER TABLE reports ADD COLUMN assignedToCopy TEXT`,
+  },
 ];
+
+export async function seedAdminUsers(db: any) {
+  const countRow = db.prepare("SELECT COUNT(*) as c FROM users").getAsObject() as { c: number | string | null };
+  const count = Number(countRow.c ?? 0);
+
+  if (count === 0) {
+    const { v4: uuidv4 } = await import("uuid");
+    const bcrypt = await import("bcryptjs");
+
+    const superAdminId = uuidv4();
+    const sheqManagerId = uuidv4();
+
+    const superAdminPassword = await bcrypt.hash("admin123", 10);
+    const sheqManagerPassword = await bcrypt.hash("sheq123", 10);
+
+    db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([
+      superAdminId,
+      "admin@crownpaints.co.ke",
+      superAdminPassword,
+      "Super Admin",
+      "super-admin",
+      new Date().toISOString(),
+    ]);
+
+    db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([
+      sheqManagerId,
+      "sheq@crownpaints.co.ke",
+      sheqManagerPassword,
+      "SHEQ Manager",
+      "sheq-manager",
+      new Date().toISOString(),
+    ]);
+
+    await saveDb(db);
+    console.log("Seeded default users: super-admin@crownpaints.co.ke / sheq-manager@crownpaints.co.ke");
+  }
+}
 
 export async function runMigrations(db: any) {
 

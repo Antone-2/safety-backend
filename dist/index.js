@@ -68,6 +68,7 @@ import referenceRouter from "./routes/reference.js";
 import googleFormsRouter from "./routes/google-forms.js";
 import authRouter from "./routes/auth.js";
 import notificationsRouter from "./routes/notifications.js";
+import { maybeRunMonthlyLeaderboardJob } from "./lib/leaderboard.js";
 initFirebase();
 const app = express();
 app.set("trust proxy", 1);
@@ -107,6 +108,8 @@ app.use((err, _req, res, _next) => {
     console.error("Unhandled error:", err);
     res.status(500).json({ error: "Internal server error" });
 });
+const db = await import("./lib/database.js").then((m) => m.getDb());
+await maybeRunMonthlyLeaderboardJob(db);
 const PORT = validatedEnv.PORT;
 const server = app.listen(PORT, () => console.log(`HSE Backend running on http://localhost:${PORT}`));
 function gracefulShutdown(signal) {

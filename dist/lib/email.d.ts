@@ -59,6 +59,36 @@ export declare function buildIncidentNotification(report: {
     subject: string;
     message: string;
 };
+export declare function buildAssignmentNotification(report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+}, assignee: string): {
+    recipient: string;
+    subject: string;
+    message: string;
+};
+export declare function sendAssignmentNotification(report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+}, assignee: string): Promise<{
+    ok: boolean;
+    delivered: boolean;
+    mode: string;
+    message: string;
+    recipient: string;
+}>;
 export declare function sendIncidentNotification(report: {
     id: string;
     severity: string;

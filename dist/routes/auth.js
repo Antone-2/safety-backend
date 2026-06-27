@@ -8,11 +8,11 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { LoginSchema, CreateUserSchema } from "../lib/types.js";
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || randomBytes(32).toString("hex");
-const RegisterSchema = CreateUserSchema.refine((data) => data.role !== "sheq-manager", { message: "SHEQ Manager accounts must be created by an existing SHEQ Manager", path: ["role"] }).refine((data) => data.role !== "super-admin", { message: "Super Admin accounts must be created by an existing Super Admin", path: ["role"] });
+const RegisterSchema = CreateUserSchema;
 function generateToken(user) {
     return jwt.sign({ userId: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
 }
-function authMiddleware(req, res, next) {
+export function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
     let token;
     if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -70,9 +70,10 @@ router.post("/login", async (req, res) => {
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
 });
 router.post("/register", async (req, res) => {
-    const parsed = RegisterSchema.safeParse(req.body);
+    const parsed = CreateUserSchema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: parsed.error.errors });
+    const role = "depot-admin";
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const existing = await db.collection("users").where("email", "==", parsed.data.email).limit(1).get();
@@ -80,9 +81,9 @@ router.post("/register", async (req, res) => {
             return res.status(409).json({ error: "Email already registered" });
         const id = uuidv4();
         const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-        await db.collection("users").doc(id).set({ email: parsed.data.email, passwordHash, name: parsed.data.name, role: parsed.data.role, createdAt: new Date().toISOString() });
-        const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role: parsed.data.role });
-        return res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role: parsed.data.role } });
+        await db.collection("users").doc(id).set({ email: parsed.data.email, passwordHash, name: parsed.data.name, role, createdAt: new Date().toISOString() });
+        const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role });
+        return res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role } });
     }
     // SQLite fallback
     const db = await getDb();
@@ -91,19 +92,19 @@ router.post("/register", async (req, res) => {
         return res.status(409).json({ error: "Email already registered" });
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-    db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([id, parsed.data.email, passwordHash, parsed.data.name, parsed.data.role, new Date().toISOString()]);
+    db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([id, parsed.data.email, passwordHash, parsed.data.name, role, new Date().toISOString()]);
     await saveDb(db);
-    const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role: parsed.data.role });
-    res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role: parsed.data.role } });
+    const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role });
+    res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role } });
 });
-router.get("/me", (req, res) => {
+router.get("/me", authMiddleware, (req, res) => {
     const user = req.user;
     res.json({ user });
 });
-router.post("/logout", (_req, res) => {
+router.post("/logout", authMiddleware, (_req, res) => {
     res.json({ ok: true });
 });
-router.post("/users", async (req, res) => {
+router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const parsed = CreateUserSchema.safeParse(req.body);
     const caller = req.user;
     if (!parsed.success)
@@ -136,7 +137,7 @@ router.post("/users", async (req, res) => {
     const user = (allRows(db, "SELECT id, email, name, role, createdAt FROM users WHERE id = ?", [id])[0]);
     res.status(201).json(user);
 });
-router.get("/", async (_req, res) => {
+router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager"), async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const usersSnap = await db.collection("users").orderBy("createdAt", "desc").get();
@@ -146,7 +147,7 @@ router.get("/", async (_req, res) => {
     const users = allRows(db, "SELECT id, email, name, role, createdAt FROM users ORDER BY createdAt DESC");
     res.json(users);
 });
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     if (isFirebaseAvailable()) {
         const db = getFirebase();
@@ -182,7 +183,7 @@ router.patch("/:id", async (req, res) => {
     const updated = (allRows(db, "SELECT id, email, name, role, createdAt FROM users WHERE id = ?", [id])[0]);
     res.json(updated);
 });
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req, res) => {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     if (isFirebaseAvailable()) {
         const db = getFirebase();
