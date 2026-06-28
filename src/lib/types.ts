@@ -103,6 +103,8 @@ export interface SettingsPayload {
 export const UserRoleSchema = z.enum([
   "super-admin",
   "sheq-manager",
+  "she-committee-member",
+  "supervisor",
   "gm",
   "plant-manager",
   "factory-manager",

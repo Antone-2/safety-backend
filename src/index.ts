@@ -80,6 +80,7 @@ import referenceRouter from "./routes/reference.js";
 import googleFormsRouter from "./routes/google-forms.js";
 import authRouter from "./routes/auth.js";
 import notificationsRouter from "./routes/notifications.js";
+import committeeRouter from "./routes/committee.js";
 import { maybeRunMonthlyLeaderboardJob } from "./lib/leaderboard.js";
 
 initFirebase();
@@ -124,6 +125,7 @@ app.use("/api/reference", referenceRouter);
 app.use("/api/google-forms", googleFormsRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/committee", committeeRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true, env: validatedEnv.NODE_ENV }));
 

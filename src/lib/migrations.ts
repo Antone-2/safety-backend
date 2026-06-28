@@ -170,46 +170,79 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     name: "015_add_assigned_to_copy",
     sql: `ALTER TABLE reports ADD COLUMN assignedToCopy TEXT`,
   },
+  {
+    name: "016_allow_new_roles",
+    sql: `CREATE TABLE IF NOT EXISTS users_new (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            passwordHash TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('super-admin','sheq-manager','she-committee-member','supervisor','gm','plant-manager','factory-manager','depot-admin')),
+            createdAt TEXT NOT NULL
+          );
+          INSERT OR IGNORE INTO users_new (id, email, passwordHash, name, role, createdAt)
+          SELECT id, email, passwordHash, name, role, createdAt FROM users;
+          DROP TABLE users;
+          ALTER TABLE users_new RENAME TO users;
+          CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+  },
 ];
 
 export async function seedAdminUsers(db: any) {
-  const countRow = db.prepare("SELECT COUNT(*) as c FROM users").getAsObject() as { c: number | string | null };
-  const count = Number(countRow.c ?? 0);
+  // Idempotent seeding: ensure these admin emails exist without ever violating UNIQUE(email).
+  // This prevents startup crashes when the DB is partially seeded.
+  const requiredUsers = [
+    {
+      email: "admin@crownpaints.co.ke",
+      name: "Super Admin",
+      role: "super-admin",
+      password: "admin123",
+    },
+    {
+      email: "sheq@crownpaints.co.ke",
+      name: "SHEQ Manager",
+      role: "sheq-manager",
+      password: "sheq123",
+    },
+  ] as const;
 
-  if (count === 0) {
-    const { v4: uuidv4 } = await import("uuid");
-    const bcrypt = await import("bcryptjs");
-
-    const superAdminId = uuidv4();
-    const sheqManagerId = uuidv4();
-
-    const superAdminPassword = await bcrypt.hash("admin123", 10);
-    const sheqManagerPassword = await bcrypt.hash("sheq123", 10);
-
-    db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([
-      superAdminId,
-      "admin@crownpaints.co.ke",
-      superAdminPassword,
-      "Super Admin",
-      "super-admin",
-      new Date().toISOString(),
-    ]);
-
-    db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([
-      sheqManagerId,
-      "sheq@crownpaints.co.ke",
-      sheqManagerPassword,
-      "SHEQ Manager",
-      "sheq-manager",
-      new Date().toISOString(),
-    ]);
-
-    await saveDb(db);
-    console.log("Seeded default users: super-admin@crownpaints.co.ke / sheq-manager@crownpaints.co.ke");
+  const existingEmails = new Set<string>();
+  const stmt = db.prepare("SELECT email FROM users");
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { email?: unknown };
+    if (row?.email) existingEmails.add(String(row.email));
   }
+  stmt.free();
+
+
+  const toInsert = requiredUsers.filter((u) => !existingEmails.has(u.email));
+  if (toInsert.length === 0) return;
+
+  const { v4: uuidv4 } = await import("uuid");
+  const bcrypt = await import("bcryptjs");
+
+  for (const u of toInsert) {
+    const passwordHash = await bcrypt.hash(u.password, 10);
+    db.prepare(
+      "INSERT OR IGNORE INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run([
+      uuidv4(),
+      u.email,
+      passwordHash,
+      u.name,
+      u.role,
+      new Date().toISOString(),
+    ]);
+  }
+
+  await saveDb(db);
+  console.log(
+    `Seeded missing default users: ${toInsert.map((u) => u.email).join(", ")}`,
+  );
 }
 
 export async function runMigrations(db: any) {
+
 
   db.run(MIGRATIONS_TABLE);
 

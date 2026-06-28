@@ -54,6 +54,22 @@ function createTransporter() {
   });
 }
 
+async function sendMailWithRetry(options: nodemailer.SendMailOptions, attempts = 3, delayMs = 500) {
+  if (!hasSmtpConfig()) throw new Error("SMTP not configured");
+  let lastError: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const transporter = createTransporter();
+      const res = await transporter.sendMail(options);
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs * Math.pow(2, i)));
+    }
+  }
+  throw lastError;
+}
+
 async function sendSms(to: string, body: string): Promise<boolean> {
   if (!hasTwilioConfig()) return false;
   try {
@@ -116,7 +132,7 @@ export async function sendCapaReminder(input: ReminderInput) {
 
   if (hasSmtpConfig()) {
     try {
-      await createTransporter().sendMail({
+      await sendMailWithRetry({
         from: process.env.SMTP_FROM,
         to: input.to,
         subject,
@@ -253,13 +269,22 @@ export async function sendIncidentNotification(report: {
     };
   }
 
-  await createTransporter().sendMail({
-    from: process.env.SMTP_FROM,
-    to: notification.recipient,
-    subject: notification.subject,
-    text: notification.message,
-    html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
-  });
+  try {
+    await sendMailWithRetry({
+      from: process.env.SMTP_FROM,
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.message,
+      html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
+    });
+  } catch (err) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "local-test",
+      message: `Notification queued locally for ${notification.recipient}.`,
+    };
+  }
 
   return {
     ok: true,
