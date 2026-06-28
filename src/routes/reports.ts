@@ -10,6 +10,7 @@ import {
 } from "../lib/types.js";
 import { authMiddleware } from "./auth.js";
 import { sendIncidentNotification, sendAssignmentNotification } from "../lib/email.js";
+import { getCommitteeMembers } from "./committee.js";
 import { getPlaceholderImageUrl } from "../lib/config.js";
 import { awardPointsForReport } from "../lib/leaderboard.js";
 
@@ -599,7 +600,16 @@ router.patch("/:id/assign", authMiddleware, async (req: Request, res: Response) 
   const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]) as any | undefined;
   if (!row) return res.status(404).json({ error: "Not found" });
 
-  const copyValue = Array.isArray(assignedToCopy) && assignedToCopy.length > 0 ? JSON.stringify(assignedToCopy) : null;
+  const committeeMembers = await getCommitteeMembers();
+  const requestedCopies = Array.isArray(assignedToCopy)
+    ? assignedToCopy.filter((item): item is string => Boolean(item))
+    : [];
+  const allCopies = Array.from(
+    new Set([...(assignedTo ? [assignedTo] : []), ...requestedCopies, ...committeeMembers].filter(Boolean)),
+  );
+  const copyRecipients = allCopies.filter((recipient) => recipient !== assignedTo);
+  const copyValue = copyRecipients.length > 0 ? JSON.stringify(copyRecipients) : null;
+
   db.prepare("UPDATE reports SET assignedTo = ?, assignedToCopy = ? WHERE id = ?").run([
     assignedTo,
     copyValue,
@@ -617,9 +627,7 @@ router.patch("/:id/assign", authMiddleware, async (req: Request, res: Response) 
     "System",
     "Assignment updated",
     `Assigned to: ${assignedTo || "Unassigned"}${
-      assignedToCopy && assignedToCopy.length > 0
-        ? `; Copied: ${assignedToCopy.join(", ")}`
-        : ""
+      copyRecipients.length > 0 ? `; Copied: ${copyRecipients.join(", ")}` : ""
     }`,
     new Date().toISOString(),
   ]);
@@ -647,20 +655,36 @@ router.patch("/:id/assign", authMiddleware, async (req: Request, res: Response) 
     await saveDb(db);
   }
 
-  if (Array.isArray(assignedToCopy)) {
-    for (const copyName of assignedToCopy) {
-      if (copyName && copyName !== assignedTo) {
-        db.prepare(
-          "INSERT INTO report_audit (id, reportId, actor, action, detail, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
-        ).run([
-          `AUD-${Date.now()}-${copyName}`,
-          updated.id,
-          "System",
-          "Copied supervisor notified",
-          `Copied: ${copyName}`,
-          new Date().toISOString(),
-        ]);
-      }
+  if (copyRecipients.length > 0) {
+    for (const recipient of copyRecipients) {
+      if (!recipient || recipient === assignedTo) continue;
+      const result = await sendAssignmentNotification(updated as any, recipient);
+      const notificationId = `NOTIF-${Date.now()}-${recipient}`;
+
+      db.prepare(
+        "INSERT INTO notifications (id, reportId, channel, recipient, subject, message, delivered, createdAt, read) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run([
+        notificationId,
+        updated.id,
+        String(result.mode),
+        recipient,
+        `Task CC: ${updated.id}`,
+        `CC recipient ${recipient} notified for ${updated.id}. ${updated.description}`,
+        result.delivered ? 1 : 0,
+        new Date().toISOString(),
+        0,
+      ]);
+
+      db.prepare(
+        "INSERT INTO report_audit (id, reportId, actor, action, detail, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run([
+        `AUD-${Date.now()}-${recipient}`,
+        updated.id,
+        "System",
+        "Committee member notified",
+        `Copied: ${recipient}`,
+        new Date().toISOString(),
+      ]);
     }
     await saveDb(db);
   }
