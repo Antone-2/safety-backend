@@ -8,7 +8,8 @@ import {
   REPORT_SOURCE_GOOGLE_SHEETS,
   REPORT_SOURCE_MANUAL,
 } from "../lib/types.js";
-import { authMiddleware } from "./auth.js";
+import { authMiddleware, requireRole } from "./auth.js";
+
 import { sendIncidentNotification, sendAssignmentNotification } from "../lib/email.js";
 import { getCommitteeMembers } from "./committee.js";
 import { getPlaceholderImageUrl } from "../lib/config.js";
@@ -56,10 +57,14 @@ function getPhotoUrlForDisplay(photoUrl: unknown, reportId: unknown) {
   const fallback = getPlaceholderPhotoUrl(reportId);
   if (!raw) return fallback;
 
-  const driveMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([^/&?]+)/i);
-  if (driveMatch?.[1]) {
-    const fileId = driveMatch[1];
-    return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`;
+  const driveIdMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([^/&?]+)/i)
+    || raw.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i)
+    || raw.match(/docs\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i);
+
+  if (driveIdMatch?.[1]) {
+    const fileId = driveIdMatch[1];
+    // Return proxied URL under our API so frontend doesn't load Drive directly
+    return `/api/photos/drive/${encodeURIComponent(fileId)}`;
   }
 
   return raw || fallback;
@@ -589,7 +594,7 @@ router.patch("/:id/status", authMiddleware, async (req: Request, res: Response) 
   res.json(updated);
 });
 
-router.patch("/:id/assign", authMiddleware, async (req: Request, res: Response) => {
+router.patch("/:id/assign", authMiddleware, requireRole("super-admin", "sheq-manager", "gm", "plant-manager", "factory-manager", "depot-admin", "supervisor"), async (req: Request, res: Response) => {
   const db = await getDb();
   const { assignedTo, assignedToCopy } = req.body as {
     assignedTo: string;

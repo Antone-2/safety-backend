@@ -74,6 +74,7 @@ function requestTimeoutMiddleware(req: express.Request, res: express.Response, n
 }
 
 import reportsRouter from "./routes/reports.js";
+import photosRouter from "./routes/photos.js";
 import capaRouter from "./routes/capa.js";
 import settingsRouter from "./routes/settings.js";
 import referenceRouter from "./routes/reference.js";
@@ -119,6 +120,7 @@ app.use(rateLimitMiddleware);
 app.use(requestTimeoutMiddleware);
 
 app.use("/api/reports", reportsRouter);
+app.use("/api/photos", photosRouter);
 app.use("/api/capa", capaRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/reference", referenceRouter);
