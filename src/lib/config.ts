@@ -6,12 +6,21 @@ function readEnvValue(...keys: string[]) {
   return "";
 }
 
+// Default to the public Google Sheets API v4 endpoint when no base URL is
+// configured. Without this, the sync silently fails because the request URL
+// becomes relative/empty.
 export function getGoogleSheetsBaseUrl() {
-  return readEnvValue("GOOGLE_SHEETS_API_BASE_URL", "GOOGLE_SHEETS_BASE_URL", "GOOGLE_SHEETS_FALLBACK_URL");
+  return (
+    readEnvValue("GOOGLE_SHEETS_API_BASE_URL", "GOOGLE_SHEETS_BASE_URL", "GOOGLE_SHEETS_FALLBACK_URL") ||
+    "https://sheets.googleapis.com/v4"
+  );
 }
 
 export function getGoogleDocsBaseUrl() {
-  return readEnvValue("GOOGLE_DOCS_EXPORT_BASE_URL", "GOOGLE_DOCS_BASE_URL", "GOOGLE_DOCS_FALLBACK_URL");
+  return (
+    readEnvValue("GOOGLE_DOCS_EXPORT_BASE_URL", "GOOGLE_DOCS_BASE_URL", "GOOGLE_DOCS_FALLBACK_URL") ||
+    "https://docs.google.com/spreadsheets/d"
+  );
 }
 
 export function getGoogleDriveDownloadBaseUrl() {

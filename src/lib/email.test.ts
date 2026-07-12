@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildIncidentNotification,
   buildReportAssignmentNotification,
+  sendOtpEmail,
   sendReportAssignmentNotifications,
 } from "./email.js";
 
@@ -18,6 +19,31 @@ afterEach(() => {
 });
 
 describe("email notifications", () => {
+  it("sends OTP with branded digital HTML and a plain-text fallback", async () => {
+    let payload: Record<string, unknown> | undefined;
+    process.env.BREVO_API_KEY = "test-brevo-key";
+    process.env.BREVO_SENDER_EMAIL = "safety@crownpaints.co.ke";
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      payload = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 201 });
+    }) as typeof fetch;
+
+    const result = await sendOtpEmail({
+      to: "user@example.com",
+      code: "482913",
+      expiresMinutes: 10,
+    });
+
+    expect(result.delivered).toBe(true);
+    expect(payload?.htmlContent).toMatch(/CROWN PAINTS/);
+    // Six digits rendered in order, regardless of the per-digit box markup.
+    expect(payload?.htmlContent).toMatch(/4[\s\S]*?8[\s\S]*?2[\s\S]*?9[\s\S]*?1[\s\S]*?3/);
+    expect(payload?.htmlContent).toMatch(/One-time passcode/);
+    expect(payload?.htmlContent).toMatch(/Valid for/);
+    expect(payload?.htmlContent).toMatch(/Anti-phishing warning/);
+    expect(payload?.textContent).toMatch(/482913/);
+  });
+
   it("buildIncidentNotification includes severity, location, and report details", () => {
     const report = {
       id: "RPT-1001",
@@ -140,5 +166,9 @@ describe("email notifications", () => {
       "primary@example.com",
       "copy@example.com",
     ]);
+    expect(calls.every((call: any) => call.htmlContent.includes("CROWN PAINTS"))).toBe(true);
+    expect(calls.every((call: any) => call.htmlContent.includes("EHS digital notification"))).toBe(
+      true,
+    );
   });
 });

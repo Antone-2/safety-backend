@@ -36,8 +36,202 @@ function getSenderEmail() {
   );
 }
 
-function htmlFromText(message: string) {
-  return `<p>${message.replace(/\n/g, "<br />")}</p>`;
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function htmlFromText(message: string, title = "Crown EHS notification") {
+  const content = message
+    .split(/\n{2,}/)
+    .map((section) => {
+      const safeSection = escapeHtml(section.trim()).replace(/\n/g, "<br />");
+      return `<div style="margin:0 0 14px;padding:15px 17px;border:1px solid #e3eaf2;border-radius:12px;background:#f8fafc;color:#445268;font-size:14px;line-height:1.65;">${safeSection}</div>`;
+    })
+    .join("");
+  const safeTitle = escapeHtml(title);
+
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${safeTitle}</title></head>
+  <body style="margin:0;padding:0;background:#eef3f8;color:#172033;font-family:Inter,Segoe UI,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(message).slice(0, 140)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eef3f8;">
+      <tr><td align="center" style="padding:36px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 16px 48px rgba(8,45,99,.14);">
+          <tr><td style="padding:28px 34px;background:#082d63;background-image:linear-gradient(135deg,#082d63 0%,#0b4b91 100%);">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+              <td><div style="display:inline-block;padding:8px 12px;border:1px solid rgba(255,255,255,.28);border-radius:10px;color:#ffffff;font-size:13px;font-weight:800;letter-spacing:.08em;">CROWN PAINTS</div><div style="margin-top:13px;color:#d9eaff;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Environment, Health &amp; Safety</div></td>
+              <td align="right" valign="top"><div style="display:inline-block;width:44px;height:44px;line-height:44px;text-align:center;border-radius:14px;background:rgba(255,255,255,.14);color:#ffffff;font-size:21px;">&#128276;</div></td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:34px 34px 12px;">
+            <div style="color:#0b4b91;font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;">EHS digital notification</div>
+            <h1 style="margin:9px 0 10px;color:#172033;font-size:25px;line-height:1.3;">${safeTitle}</h1>
+            <p style="margin:0;color:#697587;font-size:14px;line-height:1.6;">A new update is available in your Crown Paints EHS workspace.</p>
+          </td></tr>
+          <tr><td style="padding:16px 34px 22px;">${content}</td></tr>
+          <tr><td style="padding:18px 34px;border-top:1px solid #e8edf3;background:#fafbfd;color:#7a8494;font-size:12px;line-height:1.65;">
+            This is an automated operational notification. Please do not reply directly to this email.<br />
+            <span style="color:#9aa3b1;">Crown Paints EHS &bull; Safer work through timely action</span>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function otpEmailHtml(code: string, expiresMinutes: number) {
+  const expiryLabel = `${expiresMinutes} minute${expiresMinutes === 1 ? "" : "s"}`;
+  const safeCode = code.replace(/[^\d]/g, "").slice(0, 6) || "000000";
+  const preheader = `Your Crown Paints EHS login code is ${safeCode}. It expires in ${expiryLabel}. Never share this code with anyone.`;
+
+  // Digital one-time-passcode panel: one bordered box per digit.
+  const digitCells = safeCode
+    .split("")
+    .map(
+      (digit) =>
+        `<td align="center" valign="middle" style="padding:0 4px;"><div class="otp-box" style="width:52px;height:66px;line-height:66px;background:#082d63;border-radius:12px;color:#ffffff;font-family:'Courier New',Consolas,monospace;font-size:32px;font-weight:800;letter-spacing:1px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18);">${digit}</div></td>`,
+    )
+    .join("");
+
+  return `<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Your Crown Paints EHS login code</title>
+    <!--[if mso]>
+    <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+    <![endif]-->
+    <style>
+      html, body { margin: 0 !important; padding: 0 !important; height: 100% !important; width: 100% !important; }
+      * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt !important; mso-table-rspace: 0pt !important; border-collapse: collapse !important; }
+      img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+      a { text-decoration: none; }
+      .otp-box { font-family: 'Courier New', Consolas, monospace !important; }
+      @media only screen and (max-width: 480px) {
+        .cp-container { width: 100% !important; }
+        .cp-pad { padding-left: 20px !important; padding-right: 20px !important; }
+        .cp-title { font-size: 23px !important; line-height: 1.25 !important; }
+        .otp-box { width: 40px !important; height: 52px !important; line-height: 52px !important; font-size: 25px !important; }
+        .cp-digits td { padding: 0 3px !important; }
+      }
+      @media (prefers-color-scheme: dark) {
+        .cp-body { background: #0f172a !important; }
+        .cp-card { background: #111c33 !important; }
+        .cp-soft { background: #16233f !important; color: #c7d2e3 !important; }
+      }
+    </style>
+  </head>
+  <body class="cp-body" style="margin:0;padding:0;background:#eef3f8;color:#172033;font-family:Inter,Segoe UI,Arial,sans-serif;width:100%;">
+    <!-- Hidden inbox preview text -->
+    <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;opacity:0;visibility:hidden;font-size:1px;line-height:1px;color:#eef3f8;">${preheader}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#eef3f8;width:100%;">
+      <tr>
+        <td align="center" style="padding:32px 14px;">
+          <table role="presentation" class="cp-container" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 18px 50px rgba(8,45,99,.16);">
+            <!-- Branded header -->
+            <tr>
+              <td class="cp-pad" style="padding:28px 36px;background:#082d63;background-image:linear-gradient(135deg,#082d63 0%,#0b4b91 60%,#0e5bb0 100%);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td>
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+                        <td style="width:10px;height:10px;background:#e2231a;border-radius:3px;"></td>
+                        <td width="10"></td>
+                        <td><div style="color:#ffffff;font-size:15px;font-weight:800;letter-spacing:.1em;">CROWN PAINTS</div></td>
+                      </tr></table>
+                      <div style="margin-top:14px;color:#cfe2ff;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;">Environment, Health &amp; Safety</div>
+                    </td>
+                    <td align="right" valign="top">
+                      <div style="display:inline-block;width:46px;height:46px;line-height:46px;text-align:center;border-radius:14px;background:rgba(255,255,255,.14);color:#ffffff;font-size:22px;">&#128274;</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <!-- Intro -->
+            <tr>
+              <td class="cp-pad" style="padding:34px 36px 14px;">
+                <div style="display:inline-block;padding:5px 11px;border-radius:999px;background:#eaf2fc;color:#0b4b91;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;">Secure authentication</div>
+                <h1 class="cp-title" style="margin:12px 0 8px;color:#172033;font-size:26px;line-height:1.25;font-weight:800;">Your login code is ready</h1>
+                <p style="margin:0;color:#5d687a;font-size:15px;line-height:1.7;">Enter the one-time passcode below on the Crown EHS sign-in screen to verify it&rsquo;s really you. This is the only step needed to finish signing in.</p>
+              </td>
+            </tr>
+            <!-- Digital OTP panel -->
+            <tr>
+              <td class="cp-pad" style="padding:14px 36px 22px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #d4e3f6;border-radius:18px;background:#f5f9fe;">
+                  <tr>
+                    <td style="padding:24px 18px 8px;">
+                      <div style="text-align:center;color:#6d7a8d;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;">One-time passcode</div>
+                      <table role="presentation" class="cp-digits" align="center" cellspacing="0" cellpadding="0" border="0" style="margin:14px auto 0;border-collapse:separate;">
+                        <tr>${digitCells}</tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center" style="padding:6px 18px 24px;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display:inline-table;">
+                        <tr>
+                          <td style="color:#0b4b91;font-size:15px;padding-right:7px;">&#9201;</td>
+                          <td style="color:#445268;font-size:14px;line-height:1.4;">Valid for <strong style="color:#172033;">${expiryLabel}</strong> &bull; Expires in <strong style="color:#172033;">${expiresMinutes}:00</strong></td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <!-- Secure authentication messaging -->
+            <tr>
+              <td class="cp-pad" style="padding:4px 36px 14px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-radius:14px;background:#eef7f0;">
+                  <tr>
+                    <td valign="top" style="padding:16px 0 16px 16px;color:#1f7a47;font-size:18px;">&#128273;</td>
+                    <td style="padding:15px 18px 15px 10px;color:#235c41;font-size:13px;line-height:1.65;">
+                      <strong style="color:#173f2d;">Securing your sign-in.</strong> This passcode is encrypted in transit and can be used only once. If the request wasn&rsquo;t you, simply close this email &mdash; no action is required.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <!-- Anti-phishing warning -->
+            <tr>
+              <td class="cp-pad" style="padding:6px 36px 26px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-radius:14px;background:#fff8e8;border:1px solid #f3e2bd;">
+                  <tr>
+                    <td valign="top" style="padding:16px 0 16px 16px;color:#b66a00;font-size:18px;">&#9888;</td>
+                    <td style="padding:15px 18px 15px 10px;color:#6c531d;font-size:13px;line-height:1.65;">
+                      <strong style="color:#4d390e;">Anti-phishing warning.</strong> Crown Paints staff will <u>never</u> ask for this code by phone, email, or chat &mdash; not even to &ldquo;verify your account.&rdquo; Always confirm this message was sent from <strong style="color:#4d390e;">safety@crownpaints.co.ke</strong>. Never forward this code.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <!-- Footer -->
+            <tr>
+              <td class="cp-pad" style="padding:20px 36px;border-top:1px solid #e8edf3;background:#fafbfd;color:#7a8494;font-size:12px;line-height:1.65;">
+                If you did not request this code, you can safely ignore this email or contact your EHS administrator.<br />
+                <span style="color:#9aa3b1;">Automated security notification &bull; Crown Paints EHS &bull; Safer work through timely action</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 function hasBrevoConfig() {
@@ -67,7 +261,7 @@ async function sendBrevoEmail(input: {
       },
       to: [{ email: input.to }],
       subject: input.subject,
-      htmlContent: input.html || htmlFromText(input.text),
+      htmlContent: input.html || htmlFromText(input.text, input.subject),
       textContent: input.text,
     }),
   });
@@ -83,12 +277,18 @@ export async function sendOtpEmail(input: {
   code: string;
   expiresMinutes: number;
 }) {
-  const subject = "Your Crown EHS login code";
+  const subject = "Your Crown Paints EHS login code";
   const message = [
     `Your one-time login code is ${input.code}.`,
-    `This code expires in ${input.expiresMinutes} minutes.`,
-    "If you did not request this code, contact your EHS administrator immediately.",
+    `This code expires in ${input.expiresMinutes} minutes and can be used only once.`,
+    "Security tips:",
+    "- Crown Paints will never ask for this code by phone, email, or chat.",
+    "- Never share or forward this code with anyone.",
+    "- Always confirm this message came from safety@crownpaints.co.ke.",
+    "If you did not request this code, you can safely ignore this email.",
+    "Crown Paints EHS",
   ].join("\n\n");
+  const html = otpEmailHtml(input.code, input.expiresMinutes);
 
   if (!hasBrevoConfig() && !hasSmtpConfig()) {
     return {
@@ -104,7 +304,7 @@ export async function sendOtpEmail(input: {
       to: input.to,
       subject,
       text: message,
-      html: htmlFromText(message),
+      html,
     });
     return {
       ok: true,
@@ -119,7 +319,7 @@ export async function sendOtpEmail(input: {
     to: input.to,
     subject,
     text: message,
-    html: htmlFromText(message),
+    html,
   });
 
   return {
@@ -213,7 +413,7 @@ export async function sendTestEmail(input: TestEmailInput) {
       to: input.to,
       subject: input.subject,
       text: input.message,
-      html: htmlFromText(input.message),
+      html: htmlFromText(input.message, input.subject),
     });
 
     return {
@@ -229,7 +429,7 @@ export async function sendTestEmail(input: TestEmailInput) {
     to: input.to,
     subject: input.subject,
     text: input.message,
-    html: htmlFromText(input.message),
+    html: htmlFromText(input.message, input.subject),
   });
 
   return {
@@ -262,7 +462,7 @@ export async function sendCapaReminder(input: ReminderInput) {
         to: input.to,
         subject,
         text: message,
-        html: htmlFromText(message),
+        html: htmlFromText(message, subject),
       });
       emailDelivered = true;
     } catch (e) {
@@ -275,7 +475,7 @@ export async function sendCapaReminder(input: ReminderInput) {
         to: input.to,
         subject,
         text: message,
-        html: htmlFromText(message),
+        html: htmlFromText(message, subject),
       });
       emailDelivered = true;
     } catch (e) {
@@ -490,7 +690,7 @@ export async function sendReportAssignmentNotifications(
           to: notification.recipient,
           subject: notification.subject,
           text: notification.message,
-          html: htmlFromText(notification.message),
+          html: htmlFromText(notification.message, notification.subject),
         });
         results.push({ ...notification, delivered: true, mode: "brevo" });
       } else if (transporter) {
@@ -499,7 +699,7 @@ export async function sendReportAssignmentNotifications(
           to: notification.recipient,
           subject: notification.subject,
           text: notification.message,
-          html: htmlFromText(notification.message),
+          html: htmlFromText(notification.message, notification.subject),
         });
         results.push({ ...notification, delivered: true, mode: "smtp" });
       }
@@ -552,7 +752,7 @@ export async function sendAssignmentNotification(
       to: recipient,
       subject: notification.subject,
       text: notification.message,
-      html: htmlFromText(notification.message),
+      html: htmlFromText(notification.message, notification.subject),
     });
     return {
       ok: true,
@@ -568,7 +768,7 @@ export async function sendAssignmentNotification(
     to: recipient,
     subject: notification.subject,
     text: notification.message,
-    html: htmlFromText(notification.message),
+    html: htmlFromText(notification.message, notification.subject),
   });
 
   return {
@@ -609,7 +809,7 @@ export async function sendIncidentNotification(
       to: notification.recipient,
       subject: notification.subject,
       text: notification.message,
-      html: htmlFromText(notification.message),
+      html: htmlFromText(notification.message, notification.subject),
     });
     return {
       ok: true,
@@ -624,7 +824,7 @@ export async function sendIncidentNotification(
     to: notification.recipient,
     subject: notification.subject,
     text: notification.message,
-    html: htmlFromText(notification.message),
+    html: htmlFromText(notification.message, notification.subject),
   });
 
   return {

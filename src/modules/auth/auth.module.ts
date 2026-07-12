@@ -10,7 +10,10 @@ import {
   OtpVerifySchema,
 } from "./auth.types.js";
 import { getEnv } from "../../config/index.js";
-import { ConflictError } from "../../shared/domain/errors/index.js";
+import {
+  ConflictError,
+  ExternalServiceError,
+} from "../../shared/domain/errors/index.js";
 import { AuthRequest } from "../../shared/middleware/auth.middleware.js";
 import {
   isFirebaseAvailable,
@@ -170,8 +173,11 @@ export function createAuthRouter() {
           [email],
         );
         return result.rows[0];
-      } catch {
-        // Fall through to SQLite fallback.
+      } catch (error) {
+        throw new ExternalServiceError(
+          "PostgreSQL",
+          "Account lookup is temporarily unavailable. Please try again.",
+        );
       }
     }
 
@@ -1007,7 +1013,10 @@ export function createAuthRouter() {
         ) {
           throw new ConflictError("Email already registered");
         }
-        // Fall through to SQLite fallback when Postgres is configured but unavailable.
+        throw new ExternalServiceError(
+          "PostgreSQL",
+          "The account could not be saved. Please try again.",
+        );
       }
     }
 
