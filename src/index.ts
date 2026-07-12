@@ -6,6 +6,7 @@ import { loadEnv } from "./config/index.js";
 import { initFirebase } from "./lib/firebase.js";
 import { connectRedis } from "./shared/infrastructure/redis/redis.client.js";
 import { runPostgresMigrations } from "./shared/infrastructure/database/migrations.js";
+import { pgPool } from "./shared/infrastructure/database/postgres.client.js";
 import { correlationIdMiddleware } from "./shared/middleware/correlation-id.middleware.js";
 import { rateLimitMiddleware } from "./shared/middleware/rate-limit.middleware.js";
 import { csrfProtectionMiddleware } from "./shared/middleware/csrf.middleware.js";
@@ -67,6 +68,23 @@ function mountAll(prefixes: string[], path: string, router: express.Router) {
 }
 
 const env = loadEnv();
+
+async function ensureConfiguredDemoAdmin() {
+  if (env.ENABLE_DEMO_LOGIN !== "true" || !env.DEMO_EMAIL || !env.DATABASE_URL) return;
+
+  const role = env.DEMO_ROLE === "EHS-manager" ? "EHS-manager" : "super-admin";
+  await pgPool.query(
+    `INSERT INTO users (email, password_hash, name, role, active)
+     VALUES (lower($1), $2, $3, $4, TRUE)
+     ON CONFLICT (email) DO UPDATE SET
+       name = EXCLUDED.name,
+       role = EXCLUDED.role,
+       active = TRUE,
+       updated_at = NOW()`,
+    [env.DEMO_EMAIL, "!otp-only-account!", env.DEMO_NAME || "Demo Administrator", role],
+  );
+  logger.info({ email: env.DEMO_EMAIL, role }, "Configured demo administrator is ready.");
+}
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -256,6 +274,7 @@ async function bootstrap() {
     } else {
       try {
         await runPostgresMigrations();
+        await ensureConfiguredDemoAdmin();
       } catch (pgError) {
         postgresAvailable = false;
         logger.warn(

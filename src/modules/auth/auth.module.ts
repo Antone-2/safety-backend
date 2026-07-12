@@ -876,6 +876,7 @@ export function createAuthRouter() {
     const normalized = normalizeEmail(email);
 
     if (
+      !isPgConfigured() &&
       env.ENABLE_DEMO_LOGIN === "true" &&
       env.DEMO_EMAIL &&
       normalized === normalizeEmail(env.DEMO_EMAIL)
