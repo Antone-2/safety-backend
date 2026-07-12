@@ -10,6 +10,7 @@ import { createHealthRouter } from "./health/health.module.js";
 import { createSdsRouter } from "./sds/sds.module.js";
 import { createFireRouter } from "./fire/fire.module.js";
 import { createHeightWorkRouter } from "./heightwork/heightwork.module.js";
+import { createScaffoldRouter } from "./scaffolding/scaffolding.module.js";
 import governanceRouter from "../routes/governance.js";
 import analyticsRouter from "../routes/analytics.js";
 import { createDocumentsRouter } from "./documents/documents.module.js";
@@ -44,6 +45,8 @@ export { createSdsRouter } from "./sds/sds.module.js";
 export { createFireRouter } from "./fire/fire.module.js";
 
 export { createHeightWorkRouter } from "./heightwork/heightwork.module.js";
+
+export { createScaffoldRouter } from "./scaffolding/scaffolding.module.js";
 
 export function createGovernanceRouter() {
   return governanceRouter;

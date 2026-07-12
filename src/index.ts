@@ -34,6 +34,7 @@ import {
   createEnvironmentalRouter,
   createHealthRouter,
   createHeightWorkRouter,
+  createScaffoldRouter,
   createGovernanceRouter,
   createAnalyticsRouter,
   createReportsRouter,
@@ -187,6 +188,7 @@ mountAll(API_PREFIXES, "/health", createHealthRouter());
 mountAll(API_PREFIXES, "/sds", createSdsRouter());
 mountAll(API_PREFIXES, "/fire", createFireRouter());
 mountAll(API_PREFIXES, "/heightwork", createHeightWorkRouter());
+mountAll(API_PREFIXES, "/scaffolding", createScaffoldRouter());
 mountAll(API_PREFIXES, "/governance", createGovernanceRouter());
 mountAll(API_PREFIXES, "/analytics", createAnalyticsRouter());
 mountAll(API_PREFIXES, "/operations", operationsRouter);
