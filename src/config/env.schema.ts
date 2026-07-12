@@ -1,22 +1,27 @@
 import { z } from "zod";
 
 const optionalString = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
   z.string().optional(),
 );
 
 const optionalEmail = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
   z.string().email().optional(),
 );
 
 const optionalUrl = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
   z.string().url().optional(),
 );
 
 export const EnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
   PORT: z.coerce.number().default(4000),
   LOG_LEVEL: optionalString,
   FRONTEND_URL: optionalString,
@@ -38,6 +43,9 @@ export const EnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: optionalString,
   S3_PUBLIC_URL: optionalString,
   RESEND_API_KEY: optionalString,
+  BREVO_API_KEY: optionalString,
+  BREVO_SENDER_EMAIL: optionalEmail,
+  BREVO_SENDER_NAME: optionalString,
   DEFAULT_NOTIFICATION_EMAIL: optionalEmail,
   RATE_LIMIT_WINDOW_MS: z.coerce.number().optional(),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().optional(),
@@ -70,7 +78,8 @@ export const EnvSchema = z.object({
   ENABLE_DEMO_LOGIN: optionalString,
   DEMO_EMAIL: optionalEmail,
   DEMO_PASSWORD: z.preprocess(
-    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
     z.string().min(12).optional(),
   ),
   DEMO_NAME: optionalString,

@@ -11,6 +11,7 @@ export { createHealthRouter } from "./health/health.module.js";
 export { createSdsRouter } from "./sds/sds.module.js";
 export { createFireRouter } from "./fire/fire.module.js";
 export { createHeightWorkRouter } from "./heightwork/heightwork.module.js";
+export { createScaffoldRouter } from "./scaffolding/scaffolding.module.js";
 export declare function createGovernanceRouter(): import("express-serve-static-core").Router;
 export declare function createAnalyticsRouter(): import("express-serve-static-core").Router;
 export declare function createReportsRouter(): import("express-serve-static-core").Router;

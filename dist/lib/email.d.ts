@@ -105,7 +105,7 @@ export interface AssignmentDeliveryResult {
     subject: string;
     message: string;
     delivered: boolean;
-    mode: "smtp" | "internal" | "failed";
+    mode: "brevo" | "smtp" | "internal" | "failed";
     error?: string;
 }
 export declare function buildReportAssignmentNotification(report: {

@@ -22,6 +22,9 @@ export declare const EnvSchema: z.ZodObject<{
     S3_SECRET_ACCESS_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     S3_PUBLIC_URL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     RESEND_API_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    BREVO_API_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    BREVO_SENDER_EMAIL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    BREVO_SENDER_NAME: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     DEFAULT_NOTIFICATION_EMAIL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     RATE_LIMIT_WINDOW_MS: z.ZodOptional<z.ZodNumber>;
     RATE_LIMIT_MAX_REQUESTS: z.ZodOptional<z.ZodNumber>;
@@ -79,6 +82,9 @@ export declare const EnvSchema: z.ZodObject<{
     S3_SECRET_ACCESS_KEY?: string | undefined;
     S3_PUBLIC_URL?: string | undefined;
     RESEND_API_KEY?: string | undefined;
+    BREVO_API_KEY?: string | undefined;
+    BREVO_SENDER_EMAIL?: string | undefined;
+    BREVO_SENDER_NAME?: string | undefined;
     DEFAULT_NOTIFICATION_EMAIL?: string | undefined;
     RATE_LIMIT_WINDOW_MS?: number | undefined;
     RATE_LIMIT_MAX_REQUESTS?: number | undefined;
@@ -136,6 +142,9 @@ export declare const EnvSchema: z.ZodObject<{
     S3_SECRET_ACCESS_KEY?: unknown;
     S3_PUBLIC_URL?: unknown;
     RESEND_API_KEY?: unknown;
+    BREVO_API_KEY?: unknown;
+    BREVO_SENDER_EMAIL?: unknown;
+    BREVO_SENDER_NAME?: unknown;
     DEFAULT_NOTIFICATION_EMAIL?: unknown;
     RATE_LIMIT_WINDOW_MS?: number | undefined;
     RATE_LIMIT_MAX_REQUESTS?: number | undefined;

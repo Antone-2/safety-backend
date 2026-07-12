@@ -121,7 +121,17 @@ describe("AiService query", () => {
     expect((result.data as any).managementActions).toEqual(
       expect.arrayContaining([expect.stringContaining("Escalate")]),
     );
+    expect((result.data as any).citations.dataset).toEqual([
+      "RPT-1",
+      "RPT-2",
+      "RPT-3",
+    ]);
+    expect((result.data as any).citations.kpis.unsafeConditions).toEqual([
+      "RPT-2",
+      "RPT-3",
+    ]);
     expect((result.metadata as any).feature).toBe("ai-query");
+    expect((result.metadata as any).confidenceLevel).toBe("medium");
     expect((result.metadata as any).warnings).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Recordable and LTI values"),

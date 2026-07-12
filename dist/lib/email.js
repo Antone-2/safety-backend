@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { z } from "zod";
+const BREVO_TRANSACTIONAL_URL = "https://api.brevo.com/v3/smtp/email";
 export const TestEmailSchema = z.object({
     to: z.string().email(),
     subject: z
@@ -18,6 +19,45 @@ export const ReminderSchema = z.object({
     action: z.string(),
     dueDate: z.string(),
 });
+function getSenderEmail() {
+    return (process.env.BREVO_SENDER_EMAIL ||
+        process.env.SMTP_FROM ||
+        process.env.NOTIFICATION_FROM_EMAIL ||
+        "safety@crownpaints.co.ke");
+}
+function htmlFromText(message) {
+    return `<p>${message.replace(/\n/g, "<br />")}</p>`;
+}
+function hasBrevoConfig() {
+    return Boolean(process.env.BREVO_API_KEY && getSenderEmail());
+}
+async function sendBrevoEmail(input) {
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey)
+        throw new Error("BREVO_API_KEY is not configured");
+    const response = await fetch(BREVO_TRANSACTIONAL_URL, {
+        method: "POST",
+        headers: {
+            accept: "application/json",
+            "api-key": apiKey,
+            "content-type": "application/json",
+        },
+        body: JSON.stringify({
+            sender: {
+                name: process.env.BREVO_SENDER_NAME || "Crown Paints Safety",
+                email: getSenderEmail(),
+            },
+            to: [{ email: input.to }],
+            subject: input.subject,
+            htmlContent: input.html || htmlFromText(input.text),
+            textContent: input.text,
+        }),
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`Brevo email failed with HTTP ${response.status}: ${body}`);
+    }
+}
 export async function sendOtpEmail(input) {
     const subject = "Your Crown EHS login code";
     const message = [
@@ -25,7 +65,7 @@ export async function sendOtpEmail(input) {
         `This code expires in ${input.expiresMinutes} minutes.`,
         "If you did not request this code, contact your EHS administrator immediately.",
     ].join("\n\n");
-    if (!hasSmtpConfig()) {
+    if (!hasBrevoConfig() && !hasSmtpConfig()) {
         return {
             ok: true,
             delivered: false,
@@ -33,12 +73,26 @@ export async function sendOtpEmail(input) {
             message: "SMTP is not configured. OTP generated locally only.",
         };
     }
+    if (hasBrevoConfig()) {
+        await sendBrevoEmail({
+            to: input.to,
+            subject,
+            text: message,
+            html: htmlFromText(message),
+        });
+        return {
+            ok: true,
+            delivered: true,
+            mode: "brevo",
+            message: `OTP sent to ${input.to}.`,
+        };
+    }
     await createTransporter().sendMail({
-        from: process.env.SMTP_FROM,
+        from: getSenderEmail(),
         to: input.to,
         subject,
         text: message,
-        html: `<p>${message.replace(/\n/g, "<br />")}</p>`,
+        html: htmlFromText(message),
     });
     return {
         ok: true,
@@ -94,7 +148,7 @@ export async function sendSmsNotification(report, phone) {
     return sendSms(phone, body);
 }
 export async function sendTestEmail(input) {
-    if (!hasSmtpConfig()) {
+    if (!hasBrevoConfig() && !hasSmtpConfig()) {
         return {
             ok: true,
             delivered: false,
@@ -102,12 +156,26 @@ export async function sendTestEmail(input) {
             message: "SMTP is not configured. Test notification recorded locally only.",
         };
     }
+    if (hasBrevoConfig()) {
+        await sendBrevoEmail({
+            to: input.to,
+            subject: input.subject,
+            text: input.message,
+            html: htmlFromText(input.message),
+        });
+        return {
+            ok: true,
+            delivered: true,
+            mode: "brevo",
+            message: `Test email sent to ${input.to}.`,
+        };
+    }
     await createTransporter().sendMail({
-        from: process.env.SMTP_FROM,
+        from: getSenderEmail(),
         to: input.to,
         subject: input.subject,
         text: input.message,
-        html: `<p>${input.message.replace(/\n/g, "<br />")}</p>`,
+        html: htmlFromText(input.message),
     });
     return {
         ok: true,
@@ -121,7 +189,7 @@ export async function sendCapaReminder(input) {
     const message = `This is a reminder that CAPA ${input.capaId} is due on ${input.dueDate}.\n\nAction: ${input.action}\n\nPlease ensure this corrective action is completed.`;
     let emailDelivered = false;
     let smsDelivered = false;
-    if (!hasSmtpConfig() && !hasTwilioConfig()) {
+    if (!hasBrevoConfig() && !hasSmtpConfig() && !hasTwilioConfig()) {
         return {
             ok: true,
             delivered: false,
@@ -129,14 +197,28 @@ export async function sendCapaReminder(input) {
             message: "SMTP and Twilio not configured. Reminder recorded locally.",
         };
     }
-    if (hasSmtpConfig()) {
+    if (hasBrevoConfig()) {
         try {
-            await createTransporter().sendMail({
-                from: process.env.SMTP_FROM,
+            await sendBrevoEmail({
                 to: input.to,
                 subject,
                 text: message,
-                html: `<p>${message.replace(/\n/g, "<br />")}</p>`,
+                html: htmlFromText(message),
+            });
+            emailDelivered = true;
+        }
+        catch (e) {
+            console.error("Brevo email send failed:", e);
+        }
+    }
+    else if (hasSmtpConfig()) {
+        try {
+            await createTransporter().sendMail({
+                from: getSenderEmail(),
+                to: input.to,
+                subject,
+                text: message,
+                html: htmlFromText(message),
             });
             emailDelivered = true;
         }
@@ -150,8 +232,14 @@ export async function sendCapaReminder(input) {
     return {
         ok: true,
         delivered: emailDelivered || smsDelivered,
-        mode: emailDelivered && smsDelivered ? "both" : emailDelivered ? "email" : smsDelivered ? "sms" : "none",
-        message: `Reminder ${input.phone ? 'sent' : 'processed'} for ${input.capaId}.`,
+        mode: emailDelivered && smsDelivered
+            ? "both"
+            : emailDelivered
+                ? "email"
+                : smsDelivered
+                    ? "sms"
+                    : "none",
+        message: `Reminder ${input.phone ? "sent" : "processed"} for ${input.capaId}.`,
     };
 }
 export function buildIncidentNotification(report, recipient) {
@@ -218,7 +306,9 @@ export function buildReportAssignmentNotification(report, recipient, assignedBy,
         `Description: ${report.description}`,
         reportUrl ? `Open report: ${reportUrl}` : "",
         action,
-    ].filter(Boolean).join("\n\n");
+    ]
+        .filter(Boolean)
+        .join("\n\n");
     return { recipient: recipient.email, role: recipient.role, subject, message };
 }
 export async function sendReportAssignmentNotifications(report, recipients, assignedBy, primaryRecipient) {
@@ -229,11 +319,11 @@ export async function sendReportAssignmentNotifications(report, recipients, assi
             continue;
         uniqueRecipients.set(email, { ...recipient, email });
     }
-    const transporter = hasSmtpConfig() ? createTransporter() : null;
+    const transporter = !hasBrevoConfig() && hasSmtpConfig() ? createTransporter() : null;
     const results = [];
     for (const recipient of uniqueRecipients.values()) {
         const notification = buildReportAssignmentNotification(report, recipient, assignedBy, primaryRecipient);
-        if (!transporter) {
+        if (!hasBrevoConfig() && !transporter) {
             results.push({
                 ...notification,
                 delivered: false,
@@ -243,14 +333,25 @@ export async function sendReportAssignmentNotifications(report, recipients, assi
             continue;
         }
         try {
-            await transporter.sendMail({
-                from: process.env.SMTP_FROM,
-                to: notification.recipient,
-                subject: notification.subject,
-                text: notification.message,
-                html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
-            });
-            results.push({ ...notification, delivered: true, mode: "smtp" });
+            if (hasBrevoConfig()) {
+                await sendBrevoEmail({
+                    to: notification.recipient,
+                    subject: notification.subject,
+                    text: notification.message,
+                    html: htmlFromText(notification.message),
+                });
+                results.push({ ...notification, delivered: true, mode: "brevo" });
+            }
+            else if (transporter) {
+                await transporter.sendMail({
+                    from: getSenderEmail(),
+                    to: notification.recipient,
+                    subject: notification.subject,
+                    text: notification.message,
+                    html: htmlFromText(notification.message),
+                });
+                results.push({ ...notification, delivered: true, mode: "smtp" });
+            }
         }
         catch (error) {
             results.push({
@@ -267,8 +368,9 @@ export async function sendAssignmentNotification(report, assignee) {
     const notification = buildAssignmentNotification(report, assignee);
     const recipient = notification.recipient.includes("@")
         ? notification.recipient
-        : process.env.DEFAULT_NOTIFICATION_EMAIL || process.env.SMTP_FROM || "";
-    if (!hasSmtpConfig() || !notification.recipient.includes("@")) {
+        : process.env.DEFAULT_NOTIFICATION_EMAIL || getSenderEmail() || "";
+    if ((!hasBrevoConfig() && !hasSmtpConfig()) ||
+        !notification.recipient.includes("@")) {
         return {
             ok: true,
             delivered: false,
@@ -277,12 +379,27 @@ export async function sendAssignmentNotification(report, assignee) {
             recipient,
         };
     }
+    if (hasBrevoConfig()) {
+        await sendBrevoEmail({
+            to: recipient,
+            subject: notification.subject,
+            text: notification.message,
+            html: htmlFromText(notification.message),
+        });
+        return {
+            ok: true,
+            delivered: true,
+            mode: "brevo",
+            message: `Assignment notification sent to ${recipient}.`,
+            recipient,
+        };
+    }
     await createTransporter().sendMail({
-        from: process.env.SMTP_FROM,
+        from: getSenderEmail(),
         to: recipient,
         subject: notification.subject,
         text: notification.message,
-        html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
+        html: htmlFromText(notification.message),
     });
     return {
         ok: true,
@@ -294,7 +411,7 @@ export async function sendAssignmentNotification(report, assignee) {
 }
 export async function sendIncidentNotification(report, recipient) {
     const notification = buildIncidentNotification(report, recipient);
-    if (!hasSmtpConfig()) {
+    if (!hasBrevoConfig() && !hasSmtpConfig()) {
         return {
             ok: true,
             delivered: false,
@@ -302,12 +419,26 @@ export async function sendIncidentNotification(report, recipient) {
             message: `Notification queued locally for ${notification.recipient}.`,
         };
     }
+    if (hasBrevoConfig()) {
+        await sendBrevoEmail({
+            to: notification.recipient,
+            subject: notification.subject,
+            text: notification.message,
+            html: htmlFromText(notification.message),
+        });
+        return {
+            ok: true,
+            delivered: true,
+            mode: "brevo",
+            message: `Notification sent to ${notification.recipient}.`,
+        };
+    }
     await createTransporter().sendMail({
-        from: process.env.SMTP_FROM,
+        from: getSenderEmail(),
         to: notification.recipient,
         subject: notification.subject,
         text: notification.message,
-        html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
+        html: htmlFromText(notification.message),
     });
     return {
         ok: true,

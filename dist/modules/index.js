@@ -19,6 +19,7 @@ export { createHealthRouter } from "./health/health.module.js";
 export { createSdsRouter } from "./sds/sds.module.js";
 export { createFireRouter } from "./fire/fire.module.js";
 export { createHeightWorkRouter } from "./heightwork/heightwork.module.js";
+export { createScaffoldRouter } from "./scaffolding/scaffolding.module.js";
 export function createGovernanceRouter() {
     return governanceRouter;
 }

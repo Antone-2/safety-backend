@@ -1271,6 +1271,41 @@ export const POSTGRES_MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_sds_next_review_date ON sds_library(next_review_date);
     `,
     },
+    {
+        id: "024_foundation_scaffolding",
+        description: "Create scaffolding table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS scaffolding (
+        id TEXT PRIMARY KEY,
+        scaffold_no TEXT,
+        location TEXT NOT NULL,
+        building TEXT NOT NULL,
+        floor TEXT,
+        room TEXT,
+        type TEXT NOT NULL,
+        height NUMERIC NOT NULL,
+        length NUMERIC,
+        width NUMERIC,
+        erected_by TEXT NOT NULL,
+        erected_date TIMESTAMPTZ,
+        inspected_by TEXT,
+        inspected_date TIMESTAMPTZ,
+        next_inspection_date TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'Erected',
+        tag_number TEXT,
+        photos JSONB NOT NULL DEFAULT '[]'::jsonb,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_scaffolding_location ON scaffolding(location);
+      CREATE INDEX IF NOT EXISTS idx_scaffolding_building ON scaffolding(building);
+      CREATE INDEX IF NOT EXISTS idx_scaffolding_status ON scaffolding(status);
+      CREATE INDEX IF NOT EXISTS idx_scaffolding_type ON scaffolding(type);
+      CREATE INDEX IF NOT EXISTS idx_scaffolding_next_inspection_date ON scaffolding(next_inspection_date);
+    `,
+    },
 ];
 async function ensureMigrationsTable(client) {
     await client.query(`

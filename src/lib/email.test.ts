@@ -1,74 +1,144 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { buildIncidentNotification, buildReportAssignmentNotification } from "./email.js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  buildIncidentNotification,
+  buildReportAssignmentNotification,
+  sendReportAssignmentNotifications,
+} from "./email.js";
 
-test("buildIncidentNotification includes severity, location, and report details", () => {
-  const report = {
-    id: "RPT-1001",
-    severity: "Critical",
-    location: "Mombasa - Factory",
-    reporter: "Jane Doe",
-    description: "Chemical spill near mixing bay",
-    category: "Chemical Spill",
-    type: "Unsafe Condition",
-    date: "2026-06-23T10:00:00.000Z",
-  };
+const originalFetch = globalThis.fetch;
+const originalBrevoKey = process.env.BREVO_API_KEY;
+const originalSender = process.env.BREVO_SENDER_EMAIL;
 
-  const result = buildIncidentNotification(report as any, "safety@example.com");
-
-  assert.equal(result.recipient, "safety@example.com");
-  assert.match(result.subject, /Critical incident/i);
-  assert.match(result.message, /RPT-1001/);
-  assert.match(result.message, /Mombasa - Factory/);
-  assert.match(result.message, /Chemical spill/);
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalBrevoKey === undefined) delete process.env.BREVO_API_KEY;
+  else process.env.BREVO_API_KEY = originalBrevoKey;
+  if (originalSender === undefined) delete process.env.BREVO_SENDER_EMAIL;
+  else process.env.BREVO_SENDER_EMAIL = originalSender;
 });
 
-test("buildReportAssignmentNotification creates assigner confirmation content", () => {
-  const report = {
-    id: "RPT-2002",
-    severity: "High",
-    location: "Nakuru - Depot",
-    reporter: "John Doe",
-    description: "Forklift near miss",
-    category: "Vehicle / Forklift",
-    type: "Unsafe Act",
-    date: "2026-07-10T08:00:00.000Z",
-  };
+describe("email notifications", () => {
+  it("buildIncidentNotification includes severity, location, and report details", () => {
+    const report = {
+      id: "RPT-1001",
+      severity: "Critical",
+      location: "Mombasa - Factory",
+      reporter: "Jane Doe",
+      description: "Chemical spill near mixing bay",
+      category: "Chemical Spill",
+      type: "Unsafe Condition",
+      date: "2026-06-23T10:00:00.000Z",
+    };
 
-  const result = buildReportAssignmentNotification(
-    report,
-    { email: "assigner@example.com", role: "assigner" },
-    "assigner@example.com",
-    "primary@example.com",
-  );
+    const result = buildIncidentNotification(
+      report as any,
+      "safety@example.com",
+    );
 
-  assert.equal(result.recipient, "assigner@example.com");
-  assert.equal(result.role, "assigner");
-  assert.match(result.subject, /Assignment confirmation/i);
-  assert.match(result.message, /assigned report RPT-2002 to primary@example.com/i);
-});
+    expect(result.recipient).toBe("safety@example.com");
+    expect(result.subject).toMatch(/Critical incident/i);
+    expect(result.message).toMatch(/RPT-1001/);
+    expect(result.message).toMatch(/Mombasa - Factory/);
+    expect(result.message).toMatch(/Chemical spill/);
+  });
 
-test("buildReportAssignmentNotification creates copied recipient content", () => {
-  const report = {
-    id: "RPT-2003",
-    severity: "Medium",
-    location: "Mombasa - Factory",
-    reporter: "Jane Doe",
-    description: "Missing PPE",
-    category: "PPE Violation",
-    type: "Unsafe Condition",
-    date: "2026-07-10T09:00:00.000Z",
-  };
+  it("buildReportAssignmentNotification creates assigner confirmation content", () => {
+    const report = {
+      id: "RPT-2002",
+      severity: "High",
+      location: "Nakuru - Depot",
+      reporter: "John Doe",
+      description: "Forklift near miss",
+      category: "Vehicle / Forklift",
+      type: "Unsafe Act",
+      date: "2026-07-10T08:00:00.000Z",
+    };
 
-  const result = buildReportAssignmentNotification(
-    report,
-    { email: "copy@example.com", role: "secondary" },
-    "assigner@example.com",
-    "primary@example.com",
-  );
+    const result = buildReportAssignmentNotification(
+      report,
+      { email: "assigner@example.com", role: "assigner" },
+      "assigner@example.com",
+      "primary@example.com",
+    );
 
-  assert.equal(result.recipient, "copy@example.com");
-  assert.equal(result.role, "secondary");
-  assert.match(result.subject, /copied/i);
-  assert.match(result.message, /copied you on report RPT-2003/i);
+    expect(result.recipient).toBe("assigner@example.com");
+    expect(result.role).toBe("assigner");
+    expect(result.subject).toMatch(/Assignment confirmation/i);
+    expect(result.message).toMatch(
+      /assigned report RPT-2002 to primary@example.com/i,
+    );
+  });
+
+  it("buildReportAssignmentNotification creates copied recipient content", () => {
+    const report = {
+      id: "RPT-2003",
+      severity: "Medium",
+      location: "Mombasa - Factory",
+      reporter: "Jane Doe",
+      description: "Missing PPE",
+      category: "PPE Violation",
+      type: "Unsafe Condition",
+      date: "2026-07-10T09:00:00.000Z",
+    };
+
+    const result = buildReportAssignmentNotification(
+      report,
+      { email: "copy@example.com", role: "secondary" },
+      "assigner@example.com",
+      "primary@example.com",
+    );
+
+    expect(result.recipient).toBe("copy@example.com");
+    expect(result.role).toBe("secondary");
+    expect(result.subject).toMatch(/copied/i);
+    expect(result.message).toMatch(/copied you on report RPT-2003/i);
+  });
+
+  it("sendReportAssignmentNotifications delivers to assigner, primary, and secondary recipients through Brevo", async () => {
+    const report = {
+      id: "RPT-2004",
+      severity: "High",
+      location: "Nairobi - Factory",
+      reporter: "Jane Doe",
+      description: "Guarding defect",
+      category: "Machine Guarding",
+      type: "Unsafe Condition",
+      date: "2026-07-10T09:00:00.000Z",
+    };
+    const calls: unknown[] = [];
+
+    process.env.BREVO_API_KEY = "test-brevo-key";
+    process.env.BREVO_SENDER_EMAIL = "safety@crownpaints.co.ke";
+    globalThis.fetch = (async (
+      _url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      calls.push(JSON.parse(String(init?.body)));
+      return new Response("{}", { status: 201 });
+    }) as typeof fetch;
+
+    const results = await sendReportAssignmentNotifications(
+      report,
+      [
+        { email: "assigner@example.com", role: "assigner" },
+        { email: "primary@example.com", role: "primary" },
+        { email: "copy@example.com", role: "secondary" },
+      ],
+      "assigner@example.com",
+      "primary@example.com",
+    );
+
+    expect(results).toHaveLength(3);
+    expect(results.every((result) => result.delivered)).toBe(true);
+    expect(results.map((result) => result.role)).toEqual([
+      "assigner",
+      "primary",
+      "secondary",
+    ]);
+    expect(calls.map((call: any) => call.to[0].email)).toEqual([
+      "assigner@example.com",
+      "primary@example.com",
+      "copy@example.com",
+    ]);
+  });
 });

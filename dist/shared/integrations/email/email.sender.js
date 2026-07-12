@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { getEnv } from "../../../config/index.js";
+const BREVO_TRANSACTIONAL_URL = "https://api.brevo.com/v3/smtp/email";
 function createTransporter() {
     return nodemailer.createTransport({
         host: getEnv().SMTP_HOST,
@@ -20,6 +21,38 @@ export class SmtpEmailTransport {
             subject,
             html,
         });
+    }
+    async sendBulk(to, subject, html) {
+        await Promise.all(to.map((email) => this.send(email, subject, html)));
+    }
+}
+export class BrevoEmailTransport {
+    async send(to, subject, html) {
+        const env = getEnv();
+        if (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL) {
+            throw new Error("Brevo email transport is not configured");
+        }
+        const response = await fetch(BREVO_TRANSACTIONAL_URL, {
+            method: "POST",
+            headers: {
+                accept: "application/json",
+                "api-key": env.BREVO_API_KEY,
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({
+                sender: {
+                    name: env.BREVO_SENDER_NAME || "Crown Paints Safety",
+                    email: env.BREVO_SENDER_EMAIL,
+                },
+                to: [{ email: to }],
+                subject,
+                htmlContent: html,
+            }),
+        });
+        if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            throw new Error(`Brevo email failed with HTTP ${response.status}: ${body}`);
+        }
     }
     async sendBulk(to, subject, html) {
         await Promise.all(to.map((email) => this.send(email, subject, html)));
@@ -49,6 +82,9 @@ export class EtherealEmailTransport {
 }
 export function getEmailTransport() {
     const env = getEnv();
+    if (env.BREVO_API_KEY && env.BREVO_SENDER_EMAIL) {
+        return new BrevoEmailTransport();
+    }
     if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM) {
         return new SmtpEmailTransport();
     }
