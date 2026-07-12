@@ -173,11 +173,8 @@ export function createAuthRouter() {
           [email],
         );
         return result.rows[0];
-      } catch (error) {
-        throw new ExternalServiceError(
-          "PostgreSQL",
-          "Account lookup is temporarily unavailable. Please try again.",
-        );
+      } catch {
+        // Fall through to SQLite fallback.
       }
     }
 
@@ -923,7 +920,10 @@ export function createAuthRouter() {
           ? { id: row.id, email: row.email, name: row.name, role: row.role }
           : null;
       } catch {
-        // Fall through to SQLite fallback.
+        throw new ExternalServiceError(
+          "PostgreSQL",
+          "Account lookup is temporarily unavailable. Please try again.",
+        );
       }
     }
 
