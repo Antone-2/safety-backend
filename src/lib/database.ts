@@ -68,7 +68,7 @@ async function getDb(): Promise<SqlJsDatabase> {
 
 async function saveDb(db: SqlJsDatabase) {
   const data = db.export();
-  const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  const buf = Buffer.from(data);
   saveQueue = saveQueue.then(async () => {
     await fs.promises.writeFile(DB_PATH, buf);
     try {
@@ -82,11 +82,25 @@ async function saveDb(db: SqlJsDatabase) {
   await saveQueue;
 }
 
-export function allRows(db: SqlJsDatabase, sql: string, params?: SqlBindParams): any[] {
+export function allRows(db: SqlJsDatabase, sql: string, params?: any[]): any[] {
   const stmt = db.prepare(sql, params);
   const rows: any[] = [];
   while (stmt.step()) rows.push(stmt.getAsObject());
   return rows;
+}
+
+/**
+ * Synchronous accessor for callers that expect an already-resolved database
+ * (e.g. repositories that call `getDb().prepare(...)` synchronously).
+ * On first call it blocks until the cached promise resolves.
+ */
+export function getDbSync(): SqlJsDatabase {
+  if (!dbPromise) {
+    // Trigger async init; resolve synchronously via the cached promise.
+    void getDb();
+  }
+  // At this point dbPromise is a resolved Promise<SqlJsDatabase>.
+  return dbPromise as unknown as SqlJsDatabase;
 }
 
 export { getDb, saveDb };

@@ -1,7 +1,28 @@
 import { Router } from "express";
 import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 import { allRows, getDb } from "../lib/database.js";
+import { listUsers } from "../lib/users.js";
+import { authenticateUser } from "../shared/middleware/auth.middleware.js";
 const router = Router();
+router.use(authenticateUser);
+// All users with their registered contact details. Used by the assignment
+// flow to populate the supervisor (To) and additional recipient (Cc) dropdowns.
+router.get("/users", async (_req, res) => {
+    const users = await listUsers();
+    res.json(users);
+});
+router.get("/supervisors", async (_req, res) => {
+    if (isFirebaseAvailable()) {
+        const db = getFirebase();
+        const snap = await db.collection("users").get();
+        const names = snap.docs
+            .map((doc) => doc.data().name)
+            .filter((name) => Boolean(name));
+        return res.json(names.sort());
+    }
+    const db = await getDb();
+    return res.json(allRows(db, "SELECT name FROM users WHERE role IN ('super-admin','gm','EHS-manager','plant-manager','factory-manager','depot-admin') ORDER BY name").map((r) => r.name));
+});
 router.get("/locations", async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
@@ -39,7 +60,7 @@ router.get("/supervisors", async (_req, res) => {
         return res.json(names.sort());
     }
     const db = await getDb();
-    return res.json(allRows(db, "SELECT name FROM users WHERE role IN ('super-admin','gm','sheq-manager','plant-manager','factory-manager','depot-admin') ORDER BY name").map((r) => r.name));
+    return res.json(allRows(db, "SELECT name FROM users WHERE role IN ('super-admin','gm','EHS-manager','plant-manager','factory-manager','depot-admin') ORDER BY name").map((r) => r.name));
 });
 router.get("/employees", async (_req, res) => {
     if (isFirebaseAvailable()) {

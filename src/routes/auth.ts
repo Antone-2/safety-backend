@@ -2,17 +2,29 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
-import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
+import { isFirebaseAvailable, getFirebase, sanitizeForFirestore } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { LoginSchema, CreateUserSchema } from "../lib/types.js";
+import { getEnv } from "../config/index.js";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || randomBytes(32).toString("hex");
+const env = getEnv();
+const JWT_SECRET = env.JWT_SECRET;
 const RegisterSchema = CreateUserSchema;
 
 function generateToken(user: { id: string; email: string; name: string; role: string }) {
   return jwt.sign({ userId: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+}
+
+function getDemoUser(password: string) {
+  if (env.ENABLE_DEMO_LOGIN !== "true" || !env.DEMO_EMAIL || !env.DEMO_PASSWORD) return null;
+  if (password !== env.DEMO_PASSWORD) return null;
+  return {
+    id: "local-demo",
+    email: env.DEMO_EMAIL,
+    name: env.DEMO_NAME || "Demo User",
+    role: env.DEMO_ROLE || "EHS-manager",
+  };
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -21,8 +33,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
 
   if (authHeader && authHeader.startsWith("Bearer ")) {
     token = authHeader.slice(7);
-  } else if (typeof req.query.token === "string" && req.query.token) {
-    token = req.query.token as string;
+  } else if (typeof String(String(req.query.token)) === "string" && String(String(req.query.token))) {
+    token = String(String(req.query.token)) as string;
   }
 
   if (!token) {
@@ -52,6 +64,11 @@ router.post("/login", async (req: Request, res: Response) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.errors });
 
   if (isFirebaseAvailable()) {
+    const demoUser = parsed.data.email === env.DEMO_EMAIL ? getDemoUser(parsed.data.password) : null;
+    if (demoUser) {
+      const token = generateToken(demoUser);
+      return res.json({ token, user: demoUser });
+    }
     const db = getFirebase()!;
     const userSnap = await db.collection("users").where("email", "==", parsed.data.email).limit(1).get();
     if (userSnap.empty) return res.status(401).json({ error: "Invalid credentials" });
@@ -65,7 +82,14 @@ router.post("/login", async (req: Request, res: Response) => {
   // SQLite fallback
   const db = await getDb();
   const user = (allRows(db, "SELECT * FROM users WHERE email = ?", [parsed.data.email])[0]) as any | undefined;
-  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+  if (!user) {
+    const demoUser = parsed.data.email === env.DEMO_EMAIL ? getDemoUser(parsed.data.password) : null;
+    if (demoUser) {
+      const token = generateToken(demoUser);
+      return res.json({ token, user: demoUser });
+    }
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
   const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
   if (!valid) return res.status(401).json({ error: "Invalid credentials" });
   const token = generateToken({ id: user.id, email: user.email, name: user.name, role: user.role });
@@ -84,7 +108,7 @@ router.post("/register", async (req: Request, res: Response) => {
     if (!existing.empty) return res.status(409).json({ error: "Email already registered" });
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-    await db.collection("users").doc(id).set({ email: parsed.data.email, passwordHash, name: parsed.data.name, role, createdAt: new Date().toISOString() });
+    await db.collection("users").doc(id).set(sanitizeForFirestore({ email: parsed.data.email, passwordHash, name: parsed.data.name, role, phone: parsed.data.phone ?? null, createdAt: new Date().toISOString() }));
     const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role });
     return res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role } });
   }
@@ -95,7 +119,7 @@ router.post("/register", async (req: Request, res: Response) => {
   if (existing.length > 0) return res.status(409).json({ error: "Email already registered" });
   const id = uuidv4();
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-  db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([id, parsed.data.email, passwordHash, parsed.data.name, role, new Date().toISOString()]);
+  db.prepare("INSERT INTO users (id, email, passwordHash, name, role, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)").run([id, parsed.data.email, passwordHash, parsed.data.name, role, parsed.data.phone ?? null, new Date().toISOString()]);
   await saveDb(db);
   const token = generateToken({ id, email: parsed.data.email, name: parsed.data.name, role });
   res.status(201).json({ token, user: { id, email: parsed.data.email, name: parsed.data.name, role } });
@@ -110,7 +134,7 @@ router.post("/logout", authMiddleware, (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req: Request, res: Response) => {
+router.post("/users", authMiddleware, requireRole("super-admin", "EHS-manager"), async (req: Request, res: Response) => {
   const parsed = CreateUserSchema.safeParse(req.body);
   const caller = (req as any).user as { role?: string };
 
@@ -128,7 +152,7 @@ router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager")
     if (!existing.empty) return res.status(409).json({ error: "Email already registered" });
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-    await db.collection("users").doc(id).set({ email: parsed.data.email, passwordHash, name: parsed.data.name, role: parsed.data.role, createdAt: new Date().toISOString() });
+    await db.collection("users").doc(id).set(sanitizeForFirestore({ email: parsed.data.email, passwordHash, name: parsed.data.name, role: parsed.data.role, phone: parsed.data.phone ?? null, createdAt: new Date().toISOString() }));
     const userSnap = await db.collection("users").doc(id).get();
     const user = userSnap.data();
     return res.status(201).json({ id, ...user });
@@ -140,13 +164,13 @@ router.post("/users", authMiddleware, requireRole("super-admin", "sheq-manager")
   if (existing.length > 0) return res.status(409).json({ error: "Email already registered" });
   const id = uuidv4();
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-  db.prepare("INSERT INTO users (id, email, passwordHash, name, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)").run([id, parsed.data.email, passwordHash, parsed.data.name, parsed.data.role, new Date().toISOString()]);
+  db.prepare("INSERT INTO users (id, email, passwordHash, name, role, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)").run([id, parsed.data.email, passwordHash, parsed.data.name, parsed.data.role, parsed.data.phone ?? null, new Date().toISOString()]);
   await saveDb(db);
   const user = (allRows(db, "SELECT id, email, name, role, createdAt FROM users WHERE id = ?", [id])[0]);
   res.status(201).json(user);
 });
 
-router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager"), async (_req: Request, res: Response) => {
+router.get("/", authMiddleware, requireRole("super-admin", "EHS-manager"), async (_req: Request, res: Response) => {
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;
     const usersSnap = await db.collection("users").orderBy("createdAt", "desc").get();
@@ -157,17 +181,18 @@ router.get("/", authMiddleware, requireRole("super-admin", "sheq-manager"), asyn
   res.json(users);
 });
 
-router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req: Request, res: Response) => {
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+router.patch("/:id", authMiddleware, requireRole("super-admin", "EHS-manager"), async (req: Request, res: Response) => {
+  const id = Array.isArray(String(String(req.params.id))) ? String(String(req.params.id))[0] : String(String(req.params.id));
 
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;
     const doc = await db.collection("users").doc(id).get();
     if (!doc.exists) return res.status(404).json({ error: "User not found" });
-    const { name, role, password } = req.body as { name?: string; role?: string; password?: string };
+    const { name, role, password, phone } = req.body as { name?: string; role?: string; password?: string; phone?: string };
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (role !== undefined) updates.role = role;
+    if (phone !== undefined) updates.phone = phone;
     if (password !== undefined) updates.passwordHash = await bcrypt.hash(password, 10);
     await doc.ref.update(updates);
     const updated = await doc.ref.get();
@@ -177,9 +202,10 @@ router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"),
   const db = await getDb();
   const row = (allRows(db, "SELECT * FROM users WHERE id = ?", [id])[0]) as any | undefined;
   if (!row) return res.status(404).json({ error: "User not found" });
-  const { name, role, password } = req.body as any;
+  const { name, role, password, phone } = req.body as any;
   if (name !== undefined) db.prepare("UPDATE users SET name = ? WHERE id = ?").run([name, id]);
   if (role !== undefined) db.prepare("UPDATE users SET role = ? WHERE id = ?").run([role, id]);
+  if (phone !== undefined) db.prepare("UPDATE users SET phone = ? WHERE id = ?").run([phone, id]);
   if (password !== undefined) {
     const passwordHash = await bcrypt.hash(password, 10);
     db.prepare("UPDATE users SET passwordHash = ? WHERE id = ?").run([passwordHash, id]);
@@ -189,8 +215,8 @@ router.patch("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"),
   res.json(updated);
 });
 
-router.delete("/:id", authMiddleware, requireRole("super-admin", "sheq-manager"), async (req: Request, res: Response) => {
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+router.delete("/:id", authMiddleware, requireRole("super-admin", "EHS-manager"), async (req: Request, res: Response) => {
+  const id = Array.isArray(String(String(req.params.id))) ? String(String(req.params.id))[0] : String(String(req.params.id));
 
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;

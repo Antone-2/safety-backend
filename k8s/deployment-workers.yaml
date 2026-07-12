@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: safety-backend-workers
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: safety-backend-workers
+  template:
+    metadata:
+      labels:
+        app: safety-backend-workers
+    spec:
+      containers:
+        - name: workers
+          image: ghcr.io/OWNER/safety-backend:latest
+          command: ["node", "dist/jobs/scheduler.js"]
+          envFrom:
+            - configMapRef:
+                name: safety-backend-config
+            - secretRef:
+                name: safety-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi

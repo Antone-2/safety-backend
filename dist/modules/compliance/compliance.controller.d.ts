@@ -1,0 +1,22 @@
+import { type Response } from "express";
+import { ComplianceService } from "./compliance.service.js";
+import { type AuthRequest } from "../../shared/middleware/auth.middleware.js";
+export declare function createComplianceController(service: ComplianceService): {
+    getObligations(req: AuthRequest, res: Response): Promise<void>;
+    getObligationById(req: AuthRequest, res: Response): Promise<void>;
+    createObligation(req: AuthRequest, res: Response): Promise<void>;
+    updateObligation(req: AuthRequest, res: Response): Promise<void>;
+    deleteObligation(req: AuthRequest, res: Response): Promise<void>;
+    getAudits(req: AuthRequest, res: Response): Promise<void>;
+    getAuditById(req: AuthRequest, res: Response): Promise<void>;
+    createAudit(req: AuthRequest, res: Response): Promise<void>;
+    updateAudit(req: AuthRequest, res: Response): Promise<void>;
+    deleteAudit(req: AuthRequest, res: Response): Promise<void>;
+    getLegalUpdates(req: AuthRequest, res: Response): Promise<void>;
+    getLegalUpdateById(req: AuthRequest, res: Response): Promise<void>;
+    createLegalUpdate(req: AuthRequest, res: Response): Promise<void>;
+    updateLegalUpdate(req: AuthRequest, res: Response): Promise<void>;
+    deleteLegalUpdate(req: AuthRequest, res: Response): Promise<void>;
+    getDashboard(req: AuthRequest, res: Response): Promise<void>;
+};
+export declare function createComplianceRouter(): import("express-serve-static-core").Router;

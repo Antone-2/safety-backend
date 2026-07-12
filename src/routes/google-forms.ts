@@ -1,11 +1,129 @@
+import fs from "fs";
 import { Router, type Request, type Response } from "express";
-import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
+import { isFirebaseAvailable, getFirebase, sanitizeForFirestore } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { REPORT_SOURCE_GOOGLE_SHEETS } from "../lib/types.js";
-import { broadcastReport } from "./reports.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { broadcastReport } from "../modules/reports/reports.module.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
+import { logger } from "../shared/utils/logger.js";
 
 const router = Router();
+const SYNC_STATE_ID = "google_forms";
+const DEFAULT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+let syncInFlight: Promise<GoogleSheetsSyncResult> | null = null;
+let syncSchedulerStarted = false;
+let postgresAvailableForGoogleSheets = true;
+
+const googleSheetsQuotaCooldownUntil = { timestamp: 0 };
+
+export function setGoogleSheetsPostgresAvailability(available: boolean): void {
+  postgresAvailableForGoogleSheets = available;
+}
+
+function assertGoogleSheetsPostgresAvailable(): void {
+  if (!postgresAvailableForGoogleSheets) {
+    throw new Error("PostgreSQL is unavailable; Google Sheets sync requires the local database.");
+  }
+}
+
+function isGoogleSheetsQuotaCooldownActive(): boolean {
+  return Date.now() < googleSheetsQuotaCooldownUntil.timestamp;
+}
+
+function setGoogleSheetsQuotaCooldown(seconds: number): void {
+  googleSheetsQuotaCooldownUntil.timestamp = Date.now() + seconds * 1000;
+}
+
+function sanitizeSqliteBindValue(value: unknown, fallback: string | number = ""): string | number {
+  // sqlite drivers like better-sqlite3/bindings can throw if you pass `undefined`.
+  if (value === undefined) return fallback;
+  if (value === null) return fallback;
+
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  if (typeof value === "boolean") return value ? 1 : 0;
+
+  // For Date objects or other primitives, String() is safe.
+  return String(value);
+}
+
+function isPermissionBlockedGoogleSheetsError(message: string): boolean {
+  // Your logs show: API_KEY_SERVICE_BLOCKED
+  return /API_KEY_SERVICE_BLOCKED|403 Forbidden|permission denied|access denied/i.test(message);
+}
+
+function isQuotaExhaustedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /RESOURCE_EXHAUSTED|quota exceeded/i.test(message);
+}
+
+async function fetchWithTimeout(url: string, init?: RequestInit, ms = 25000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+
+// Falls back to a service-account bearer token when the API key is blocked.
+// Requires the spreadsheet to be shared with the service-account email and
+// the Sheets API enabled in the service account's project.
+let lastServiceAccountError: unknown = null;
+
+async function getServiceAccountAccessToken(): Promise<string | null> {
+  try {
+    const saPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (!saPath) return null;
+    if (!fs.existsSync(saPath)) return null;
+    const creds = JSON.parse(await fs.promises.readFile(saPath, "utf8")) as {
+      client_email?: string;
+      private_key?: string;
+    };
+    if (!creds.client_email || !creds.private_key) return null;
+
+    const { JWT } = await import("google-auth-library");
+    const client = new JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const token = await client.getAccessToken();
+    return token.token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function tryServiceAccountSheet(
+  formId: string,
+  sheetName: string,
+): Promise<{ rows: string[][]; sheetName: string } | null> {
+  try {
+    const token = await getServiceAccountAccessToken();
+    if (!token) return null;
+    const apiBaseUrl = getGoogleSheetsBaseUrl().replace(/\/$/, "");
+    const rangePath = `${encodeURIComponent(`'${sheetName}'`)}!A:ZZ`;
+    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${rangePath}`;
+    const res = await fetchWithTimeout(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      lastServiceAccountError = new Error(
+        `Google Sheets service-account error: ${res.status} ${res.statusText} (body: ${body.slice(0, 500)})`,
+      );
+      return null;
+    }
+    const data = (await res.json()) as { values?: string[][] };
+    return { rows: data.values || [], sheetName };
+  } catch (error) {
+    lastServiceAccountError = error;
+    return null;
+  }
+}
+
 
 interface GoogleSheetRow {
   Timestamp?: string;
@@ -99,36 +217,72 @@ export async function fetchGoogleSheetRows(
   apiKey: string,
   requestedSheetName?: string,
 ): Promise<{ rows: string[][]; sheetName: string }> {
+  if (isGoogleSheetsQuotaCooldownActive()) {
+    throw new Error("Google API quota exceeded. Please wait before retrying.");
+  }
+
+  lastServiceAccountError = null;
   const candidates = getSheetCandidates(requestedSheetName);
   let lastError: unknown;
 
   for (const sheetName of candidates) {
     const apiBaseUrl = getGoogleSheetsBaseUrl().replace(/\/$/, "");
-    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${encodeURIComponent(sheetName)}!A:ZZ?key=${apiKey}`;
+    const rangePath = `${encodeURIComponent(`'${sheetName}'`)}!A:ZZ`;
+    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${rangePath}?key=${apiKey}`;
     try {
-      const apiResponse = await fetch(apiUrl);
+      const apiResponse = await fetchWithTimeout(apiUrl);
       if (apiResponse.ok) {
         const data = (await apiResponse.json()) as { values?: string[][] };
         return { rows: data.values || [], sheetName };
       }
       const body = await apiResponse.text();
       lastError = new Error(`Google Sheets API error: ${apiResponse.status} ${apiResponse.statusText} (body: ${body.slice(0, 500)})`);
+
+      // API key blocked/forbidden -> attempt service-account bearer token.
+      if (apiResponse.status === 403 && isPermissionBlockedGoogleSheetsError(body)) {
+        const saResult = await tryServiceAccountSheet(formId, sheetName);
+        if (saResult) return saResult;
+      }
     } catch (error) {
       lastError = error;
+      if (isQuotaExhaustedError(error)) {
+        setGoogleSheetsQuotaCooldown(300);
+        break;
+      }
     }
   }
 
   try {
-    const docsBaseUrl = getGoogleDocsBaseUrl().replace(/\/$/, "");
-    const csvUrl = `${docsBaseUrl}/${formId}/export?format=csv`;
-    const csvResponse = await fetch(csvUrl);
-    if (csvResponse.ok) {
-      const csvText = await csvResponse.text();
-      return { rows: parseCsvText(csvText), sheetName: candidates[0] || "Sheet1" };
+    const docsBaseUrlRaw = getGoogleDocsBaseUrl();
+    const docsBaseUrl = docsBaseUrlRaw.trim().replace(/\/$/, "");
+
+    // If export base URL isn't configured, the CSV fallback would become a relative URL
+    // like `/.../export?format=csv` which fails URL parsing.
+    if (docsBaseUrl) {
+      const csvUrl = `${docsBaseUrl}/${formId}/export?format=csv`;
+      const csvResponse = await fetchWithTimeout(csvUrl);
+      if (csvResponse.ok) {
+        const csvText = await csvResponse.text();
+        return { rows: parseCsvText(csvText), sheetName: candidates[0] || "Sheet1" };
+      }
+
+      const body = await csvResponse.text().catch(() => "");
+      lastError = new Error(`Google CSV export error: ${csvResponse.status} ${csvResponse.statusText} (body: ${body.slice(0, 500)})`);
+    } else {
+      // Keep lastError from the Sheets API attempt; CSV fallback is impossible.
+      if (!lastError) {
+        lastError = new Error("Google docs export base URL is not configured (GOOGLE_DOCS_EXPORT_BASE_URL / GOOGLE_DOCS_BASE_URL)");
+      }
     }
   } catch (error) {
     lastError = error;
+    if (isQuotaExhaustedError(error)) {
+      setGoogleSheetsQuotaCooldown(300);
+    }
   }
+
+
+  if (!lastError && lastServiceAccountError) lastError = lastServiceAccountError;
 
   if (lastError instanceof Error) {
     throw lastError;
@@ -169,9 +323,51 @@ function normalizeStatus(status?: string): "Open" | "In Progress" | "Closed" {
   return "Open";
 }
 
-function parseDate(dateStr?: string): string {
+export function parseDate(dateStr?: string): string {
   if (!dateStr) return new Date().toISOString();
-  const d = new Date(dateStr);
+
+  const value = dateStr.trim();
+  if (!value) return new Date().toISOString();
+
+  const spreadsheetSerial = Number(value);
+  if (Number.isFinite(spreadsheetSerial) && spreadsheetSerial > 0) {
+    const excelEpochOffset = 25569;
+    const millisecondsPerDay = 86400000;
+    return new Date((spreadsheetSerial - excelEpochOffset) * millisecondsPerDay).toISOString();
+  }
+
+  const dayFirstMatch = value.match(
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i,
+  );
+
+  if (dayFirstMatch) {
+    const [, firstRaw, secondRaw, yearRaw, hourRaw, minuteRaw, secondPartRaw, meridiemRaw] = dayFirstMatch;
+    const first = Number(firstRaw);
+    const second = Number(secondRaw);
+    const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
+    const isDayFirst =
+      process.env.GOOGLE_SHEETS_DATE_ORDER?.toLowerCase() === "mdy" ? false : first > 12 || process.env.GOOGLE_SHEETS_DATE_ORDER?.toLowerCase() === "dmy" || second <= 12;
+    const day = isDayFirst ? first : second;
+    const month = isDayFirst ? second : first;
+
+    let hour = hourRaw ? Number(hourRaw) : 0;
+    const minute = minuteRaw ? Number(minuteRaw) : 0;
+    const secondPart = secondPartRaw ? Number(secondPartRaw) : 0;
+    const meridiem = meridiemRaw?.toUpperCase();
+    if (meridiem === "PM" && hour < 12) hour += 12;
+    if (meridiem === "AM" && hour === 12) hour = 0;
+
+    const parsed = new Date(Date.UTC(year, month - 1, day, hour, minute, secondPart));
+    if (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    ) {
+      return parsed.toISOString();
+    }
+  }
+
+  const d = new Date(value);
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
@@ -221,29 +417,52 @@ export function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
   db.prepare("DELETE FROM reports WHERE source = ?").run([REPORT_SOURCE_GOOGLE_SHEETS]);
 
   for (const report of reports) {
-    db.prepare(`INSERT INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run([
-        report.id,
-        report.date,
-        report.location,
-        report.reporter,
-        report.description,
-        report.severity,
-        report.status,
-        report.category,
-        report.type,
-        report.slaHours,
-        report.dueAt,
-        0,
-        report.anonymous ? 1 : 0,
-        report.department,
-        report.shift,
-        report.complianceRequired ? 1 : 0,
-        report.photoUrl,
-        REPORT_SOURCE_GOOGLE_SHEETS,
-      ]);
+    // sqlite/better-sqlite3 (or similar) will throw if any bound value is `undefined`.
+    // Ensure every column value is always a concrete primitive.
+    const sanitized = {
+      id: String(report.id ?? ""),
+      date: String(report.date ?? ""),
+      location: String(report.location ?? ""),
+      reporter: String(report.reporter ?? ""),
+      description: String(report.description ?? ""),
+      severity: String(report.severity ?? ""),
+      status: String(report.status ?? ""),
+      category: String(report.category ?? ""),
+      type: String(report.type ?? ""),
+      slaHours: Number.isFinite(report.slaHours) ? report.slaHours : 168,
+      dueAt: String(report.dueAt ?? ""),
+      anonymous: Boolean(report.anonymous),
+      department: String(report.department ?? ""),
+      shift: String(report.shift ?? ""),
+      complianceRequired: Boolean(report.complianceRequired),
+      photoUrl: String(report.photoUrl ?? ""),
+    };
+
+    db.prepare(
+      `INSERT INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run([
+      sanitized.id,
+      sanitized.date,
+      sanitized.location,
+      sanitized.reporter,
+      sanitized.description,
+      sanitized.severity,
+      sanitized.status,
+      sanitized.category,
+      sanitized.type,
+      sanitized.slaHours,
+      sanitized.dueAt,
+      0,
+      sanitized.anonymous ? 1 : 0,
+      sanitized.department,
+      sanitized.shift,
+      sanitized.complianceRequired ? 1 : 0,
+      sanitized.photoUrl,
+      REPORT_SOURCE_GOOGLE_SHEETS,
+    ]);
   }
 }
+
 
 export function buildReportIdForImportedRecord(imported: {
   date: string;
@@ -392,6 +611,327 @@ export function buildReportRecordFromRow(
   };
 }
 
+export type GoogleSheetsSyncResult = {
+  imported: number;
+  rows: number;
+  sheetName: string;
+  startedAt: string;
+  finishedAt: string;
+};
+
+async function updateSyncState(update: {
+  status: "idle" | "running" | "failed";
+  startedAt?: string;
+  finishedAt?: string;
+  successAt?: string;
+  error?: string | null;
+  sheetName?: string | null;
+  rowCount?: number;
+  importedCount?: number;
+}) {
+  await pgPool.query(
+    `INSERT INTO google_sheets_sync_state (
+      id,
+      status,
+      last_started_at,
+      last_finished_at,
+      last_success_at,
+      last_error,
+      last_sheet_name,
+      last_row_count,
+      last_imported_count,
+      updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      status = EXCLUDED.status,
+      last_started_at = COALESCE(EXCLUDED.last_started_at, google_sheets_sync_state.last_started_at),
+      last_finished_at = COALESCE(EXCLUDED.last_finished_at, google_sheets_sync_state.last_finished_at),
+      last_success_at = COALESCE(EXCLUDED.last_success_at, google_sheets_sync_state.last_success_at),
+      last_error = EXCLUDED.last_error,
+      last_sheet_name = COALESCE(EXCLUDED.last_sheet_name, google_sheets_sync_state.last_sheet_name),
+      last_row_count = COALESCE(EXCLUDED.last_row_count, google_sheets_sync_state.last_row_count),
+      last_imported_count = COALESCE(EXCLUDED.last_imported_count, google_sheets_sync_state.last_imported_count),
+      updated_at = NOW()`,
+    [
+      SYNC_STATE_ID,
+      update.status,
+      update.startedAt ?? null,
+      update.finishedAt ?? null,
+      update.successAt ?? null,
+      update.error ?? null,
+      update.sheetName ?? null,
+      update.rowCount ?? null,
+      update.importedCount ?? null,
+    ],
+  );
+}
+
+async function replaceGoogleSheetReportsInPostgres(reports: Array<{
+  id: string;
+  date: string;
+  location: string;
+  reporter: string;
+  description: string;
+  severity: string;
+  status: string;
+  category: string;
+  type: string;
+  slaHours: number;
+  dueAt: string;
+  anonymous: boolean;
+  department: string;
+  shift: string;
+  complianceRequired: boolean;
+  photoUrl: string;
+}>) {
+  const client = await pgPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM reports WHERE source = $1", [REPORT_SOURCE_GOOGLE_SHEETS]);
+    for (const report of reports) {
+      await client.query(
+        `INSERT INTO reports (
+          id,
+          date,
+          location,
+          reporter,
+          description,
+          severity,
+          status,
+          category,
+          type,
+          sla_hours,
+          due_at,
+          is_near_miss,
+          anonymous,
+          department,
+          shift,
+          compliance_required,
+          photo_url,
+          source
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, FALSE, $12, $13, $14, $15, $16, $17
+        )`,
+        [
+          report.id,
+          report.date,
+          report.location,
+          report.reporter,
+          report.description,
+          report.severity,
+          report.status,
+          report.category,
+          report.type,
+          report.slaHours,
+          report.dueAt,
+          report.anonymous,
+          report.department,
+          report.shift,
+          report.complianceRequired,
+          report.photoUrl,
+          REPORT_SOURCE_GOOGLE_SHEETS,
+        ],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function runGoogleSheetsSync(options?: {
+  spreadsheetId?: string;
+  apiKey?: string;
+  sheetName?: string;
+  broadcast?: boolean;
+}): Promise<GoogleSheetsSyncResult> {
+  assertGoogleSheetsPostgresAvailable();
+  if (syncInFlight) return syncInFlight;
+
+  syncInFlight = (async () => {
+    const startedAt = new Date().toISOString();
+    const formId = options?.spreadsheetId || process.env.GOOGLE_FORM_ID;
+    const apiKey = options?.apiKey || process.env.GOOGLE_API_KEY;
+    const sheetName = options?.sheetName || process.env.GOOGLE_SHEET_NAME || "Unsafe Acts/ Conditions (Responses)";
+
+    if (!formId) throw new Error("Google Form ID not configured");
+    if (!apiKey) throw new Error("Google API key required");
+
+    await updateSyncState({ status: "running", startedAt, error: null });
+
+    try {
+      const fetched = await fetchGoogleSheetRows(formId, apiKey, sheetName);
+      const rows = fetched.rows;
+      if (rows.length < 2) {
+        const finishedAt = new Date().toISOString();
+        await replaceGoogleSheetReportsInPostgres([]);
+        await updateSyncState({
+          status: "idle",
+          finishedAt,
+          successAt: finishedAt,
+          sheetName: fetched.sheetName,
+          rowCount: rows.length,
+          importedCount: 0,
+          error: null,
+        });
+        return { imported: 0, rows: rows.length, sheetName: fetched.sheetName, startedAt, finishedAt };
+      }
+
+      const headers = rows[0];
+      const dataRows = rows.slice(1);
+      const defaults = getDefaults();
+      const reports = dataRows.map((row) => {
+        const imported = buildReportRecordFromRow(headers, row, defaults);
+        const id = buildReportIdForImportedRecord(imported);
+        return {
+          id,
+          date: imported.date,
+          location: imported.location,
+          reporter: imported.reporter,
+          description: imported.description,
+          severity: imported.severity,
+          status: imported.status,
+          category: imported.category,
+          type: imported.type,
+          slaHours: imported.slaHours,
+          dueAt: imported.dueAt,
+          anonymous: imported.anonymous,
+          department: imported.department,
+          shift: imported.shift,
+          complianceRequired: imported.complianceRequired,
+          photoUrl: imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80),
+        };
+      });
+
+      await replaceGoogleSheetReportsInPostgres(reports);
+      if (options?.broadcast !== false) {
+        for (const report of reports.slice(0, 50)) {
+          broadcastReport({
+            ...report,
+            source: REPORT_SOURCE_GOOGLE_SHEETS,
+            isNearMiss: false,
+            comments: [],
+          });
+        }
+      }
+
+      const finishedAt = new Date().toISOString();
+      await updateSyncState({
+        status: "idle",
+        finishedAt,
+        successAt: finishedAt,
+        sheetName: fetched.sheetName,
+        rowCount: rows.length,
+        importedCount: reports.length,
+        error: null,
+      });
+      return { imported: reports.length, rows: rows.length, sheetName: fetched.sheetName, startedAt, finishedAt };
+    } catch (error) {
+      const finishedAt = new Date().toISOString();
+      const classified = classifyGoogleFormsError(error);
+      await updateSyncState({
+        status: "failed",
+        finishedAt,
+        error: `${classified.message} ${classified.details}`.slice(0, 2000),
+      });
+      throw error;
+    }
+  })();
+
+  try {
+    return await syncInFlight;
+  } finally {
+    syncInFlight = null;
+  }
+}
+
+async function runGoogleSheetsSyncToSqlite(options: {
+  spreadsheetId: string;
+  apiKey: string;
+  sheetName?: string;
+}): Promise<GoogleSheetsSyncResult> {
+  const startedAt = new Date().toISOString();
+  const fetched = await fetchGoogleSheetRows(
+    options.spreadsheetId,
+    options.apiKey,
+    options.sheetName || process.env.GOOGLE_SHEET_NAME || "Unsafe Acts/ Conditions (Responses)",
+  );
+  const rows = fetched.rows;
+  const finishedAt = new Date().toISOString();
+
+  if (rows.length < 2) {
+    const db = await getDb();
+    replaceGoogleSheetReportsInSqlite(db, []);
+    await saveDb(db);
+    return { imported: 0, rows: rows.length, sheetName: fetched.sheetName, startedAt, finishedAt };
+  }
+
+  const headers = rows[0];
+  const defaults = getDefaults();
+  const reports = rows.slice(1).map((row) => {
+    const imported = buildReportRecordFromRow(headers, row, defaults);
+    const id = buildReportIdForImportedRecord(imported);
+    return {
+      id,
+      date: imported.date,
+      location: imported.location,
+      reporter: imported.reporter,
+      description: imported.description,
+      severity: imported.severity,
+      status: imported.status,
+      category: imported.category,
+      type: imported.type,
+      slaHours: imported.slaHours,
+      dueAt: imported.dueAt,
+      anonymous: imported.anonymous,
+      department: imported.department,
+      shift: imported.shift,
+      complianceRequired: imported.complianceRequired,
+      photoUrl: imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80),
+    };
+  });
+
+  const db = await getDb();
+  replaceGoogleSheetReportsInSqlite(db, reports);
+  await saveDb(db);
+  return { imported: reports.length, rows: rows.length, sheetName: fetched.sheetName, startedAt, finishedAt };
+}
+
+export function queueGoogleSheetsSync(options?: Parameters<typeof runGoogleSheetsSync>[0]) {
+  if (syncInFlight) return syncInFlight;
+  const task = runGoogleSheetsSync(options).catch((error) => {
+    logger.warn({ err: error as Error }, "Google Sheets background sync failed.");
+    throw error;
+  });
+  task.catch(() => undefined);
+  return task;
+}
+
+export function startGoogleSheetsScheduler(intervalMs = Number(process.env.GOOGLE_SHEETS_SYNC_INTERVAL_MS || DEFAULT_SYNC_INTERVAL_MS)) {
+  if (syncSchedulerStarted) return;
+  syncSchedulerStarted = true;
+
+  if (!postgresAvailableForGoogleSheets) {
+    logger.warn("Google Sheets scheduler not started; PostgreSQL is unavailable.");
+    return;
+  }
+
+  if (!process.env.GOOGLE_FORM_ID || !process.env.GOOGLE_API_KEY) {
+    logger.warn("Google Sheets scheduler not started; GOOGLE_FORM_ID or GOOGLE_API_KEY is missing.");
+    return;
+  }
+
+  setTimeout(() => queueGoogleSheetsSync({ broadcast: false }), 5000);
+  setInterval(() => queueGoogleSheetsSync({ broadcast: false }), Math.max(intervalMs, 60000));
+  logger.info({ intervalMs }, "Google Sheets scheduler started.");
+}
+
 export interface GoogleFormsErrorInfo {
   statusCode: number;
   message: string;
@@ -426,6 +966,16 @@ export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
     };
   }
 
+  // API key service blocked (Google Sheets API not enabled for the project/key)
+  if (/API_KEY_SERVICE_BLOCKED/i.test(message)) {
+    return {
+      statusCode: 403,
+      message: "Google Sheets API is blocked for this API key.",
+      details: stack ? `${message} (stack: ${stack.slice(0, 600)})` : message,
+      hint: "Go to Google Cloud Console, select project 271404086632, enable the Google Sheets API, and ensure your API key is allowed to access it.",
+    };
+  }
+
   // Permission denied (403 Forbidden)
   if (/403 Forbidden|permission denied|access denied/i.test(message)) {
     return {
@@ -433,6 +983,16 @@ export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
       message: "Permission denied accessing Google Sheet.",
       details: stack ? `${message} (stack: ${stack.slice(0, 600)})` : message,
       hint: "Make the spreadsheet shareable (anyone with link can view) and verify the API key has Sheets API enabled.",
+    };
+  }
+
+  // Quota exceeded / rate limit
+  if (/RESOURCE_EXHAUSTED|quota exceeded|rate limit|too many requests/i.test(message)) {
+    return {
+      statusCode: 429,
+      message: "Google API quota exceeded.",
+      details: stack ? `Quota limit reached: ${message.slice(0, 300)} (stack: ${stack.slice(0, 600)})` : `Quota limit reached: ${message.slice(0, 300)}`,
+      hint: "Wait a few minutes and retry, or increase your Google API quota in the Google Cloud Console.",
     };
   }
 
@@ -463,12 +1023,12 @@ router.post("/import", async (req: Request, res: Response) => {
 
     if (isFirebaseAvailable()) {
       const db = getFirebase()!;
-      for (const row of dataRows) {
-        const imported = buildReportRecordFromRow(headers, row, defaults);
-        const id = buildReportIdForImportedRecord(imported);
-        const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
+    for (const row of dataRows) {
+      const imported = buildReportRecordFromRow(headers, row, defaults);
+      const id = buildReportIdForImportedRecord(imported);
+      const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
 
-        await db.collection("reports").doc(id).set({
+        await db.collection("reports").doc(id).set(sanitizeForFirestore({
           id,
           source: REPORT_SOURCE_GOOGLE_SHEETS,
           date: imported.date,
@@ -488,7 +1048,7 @@ router.post("/import", async (req: Request, res: Response) => {
           complianceRequired: imported.complianceRequired ? 1 : 0,
           photoUrl,
           comments: [],
-        });
+        }));
       }
       return res.json({ imported: dataRows.length, skipped: 0, message: `Imported ${dataRows.length} reports` });
     }
@@ -552,23 +1112,74 @@ router.post("/import", async (req: Request, res: Response) => {
 });
 
 router.get("/status", async (_req: Request, res: Response) => {
-  const formId = process.env.GOOGLE_FORM_ID;
-  const hasCreds = Boolean(process.env.CLIENT_ID && process.env.CLIENT_SECRET);
-
-  if (isFirebaseAvailable()) {
-    const db = getFirebase()!;
-    const reportsSnap = await db.collection("reports").get();
-    const total = reportsSnap.size;
-    return res.json({ totalReports: total, configured: hasCreds, formId, hasCredentials: hasCreds });
+  if (!postgresAvailableForGoogleSheets) {
+    return res.status(503).json({
+      configured: Boolean(process.env.GOOGLE_FORM_ID && process.env.GOOGLE_API_KEY),
+      status: "degraded",
+      error: "PostgreSQL is unavailable; Google Sheets sync status requires the local database.",
+    });
   }
 
-  const db = await getDb();
-  const total = allRows(db, "SELECT COUNT(*) as count FROM reports WHERE source = ?", [REPORT_SOURCE_GOOGLE_SHEETS])[0]?.count || 0;
-  res.json({ totalReports: total, configured: hasCreds, formId, hasCredentials: hasCreds });
+  const formId = process.env.GOOGLE_FORM_ID;
+  const hasCredentials = Boolean(process.env.GOOGLE_API_KEY);
+  const [countResult, stateResult] = await Promise.all([
+    pgPool.query("SELECT COUNT(*)::int AS count FROM reports WHERE source = $1", [REPORT_SOURCE_GOOGLE_SHEETS]),
+    pgPool.query("SELECT * FROM google_sheets_sync_state WHERE id = $1", [SYNC_STATE_ID]),
+  ]);
+  const state = stateResult.rows[0] ?? {};
+  res.json({
+    totalReports: countResult.rows[0]?.count ?? 0,
+    configured: Boolean(formId && hasCredentials),
+    formId,
+    hasCredentials,
+    status: state.status ?? "idle",
+    lastStartedAt: state.last_started_at ?? null,
+    lastFinishedAt: state.last_finished_at ?? null,
+    lastSuccessAt: state.last_success_at ?? null,
+    lastError: state.last_error ?? null,
+    lastSheetName: state.last_sheet_name ?? null,
+    lastRowCount: state.last_row_count ?? 0,
+    lastImportedCount: state.last_imported_count ?? 0,
+  });
 });
 
 router.post("/fetch", async (req: Request, res: Response) => {
   const body = req.body ?? {};
+  const wait = Boolean((body as any).wait);
+
+  if (!postgresAvailableForGoogleSheets) {
+    if (wait) {
+      const formId = (body as any).spreadsheetId || process.env.GOOGLE_FORM_ID;
+      const apiKey = (body as any).apiKey || process.env.GOOGLE_API_KEY;
+      const sheetName = (body as any).sheetName || "Unsafe Acts/ Conditions (Responses)";
+      if (!formId) return res.status(400).json({ error: "Google Form ID not configured" });
+      if (!apiKey) return res.status(400).json({ error: "Google API key required" });
+
+      try {
+        const result = await runGoogleSheetsSyncToSqlite({ spreadsheetId: formId, apiKey, sheetName });
+        return res.json({
+          queued: false,
+          imported: result.imported,
+          rows: result.rows,
+          sheetName: result.sheetName,
+          storage: "sqlite",
+          message: `Google Sheets full sync complete. Imported ${result.imported} reports from ${result.rows} sheet rows.`,
+        });
+      } catch (error: unknown) {
+        const classified = classifyGoogleFormsError(error);
+        return res.status(classified.statusCode).json({
+          error: classified.message,
+          details: classified.details,
+        });
+      }
+    }
+
+    return res.status(503).json({
+      queued: false,
+      error: "PostgreSQL is unavailable; Google Sheets sync requires the local database.",
+    });
+  }
+
   const formId = (body as any).spreadsheetId || process.env.GOOGLE_FORM_ID;
   const apiKey = (body as any).apiKey || process.env.GOOGLE_API_KEY;
   const sheetName = (body as any).sheetName || "Unsafe Acts/ Conditions (Responses)";
@@ -576,146 +1187,30 @@ router.post("/fetch", async (req: Request, res: Response) => {
   if (!formId) return res.status(400).json({ error: "Google Form ID not configured" });
   if (!apiKey) return res.status(400).json({ error: "Google API key required" });
 
-  let rows: string[][] = [];
-
-  try {
-    const fetched = await fetchGoogleSheetRows(formId, apiKey, sheetName);
-    rows = fetched.rows;
-    if (rows.length < 2) return res.json({ imported: 0, responses: [], message: "No data found in Google Form responses" });
-
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
-    const defaults = getDefaults();
-
-    let importedCount = 0;
-    const dbForSqlite = isFirebaseAvailable() ? null : await getDb();
-    const newReports: Array<{
-      id: string;
-      date: string;
-      location: string;
-      reporter: string;
-      description: string;
-      severity: string;
-      status: string;
-      category: string;
-      type: string;
-      slaHours: number;
-      dueAt: string;
-      anonymous: boolean;
-      department: string;
-      shift: string;
-      complianceRequired: boolean;
-      photoUrl: string;
-    }> = [];
-
-    for (const row of dataRows) {
-      const imported = buildReportRecordFromRow(headers, row, defaults);
-      const id = buildReportIdForImportedRecord(imported);
-      const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
-      const newReport = {
-        id,
-        source: REPORT_SOURCE_GOOGLE_SHEETS,
-        date: imported.date,
-        location: imported.location,
-        reporter: imported.reporter,
-        description: imported.description,
-        severity: imported.severity,
-        status: imported.status,
-        category: imported.category,
-        type: imported.type,
-        slaHours: imported.slaHours,
-        dueAt: imported.dueAt,
-        isNearMiss: false,
-        anonymous: imported.anonymous ? 1 : 0,
-        department: imported.department,
-        shift: imported.shift,
-        complianceRequired: imported.complianceRequired ? 1 : 0,
-        photoUrl,
-        comments: [],
-      };
-
-      if (isFirebaseAvailable()) {
-        const db = getFirebase()!;
-        await db.collection("reports").doc(id).set(newReport);
-        broadcastReport(newReport as any);
-      } else if (dbForSqlite) {
-        newReports.push({
-          id,
-          date: imported.date,
-          location: imported.location,
-          reporter: imported.reporter,
-          description: imported.description,
-          severity: imported.severity,
-          status: imported.status,
-          category: imported.category,
-          type: imported.type,
-          slaHours: imported.slaHours,
-          dueAt: imported.dueAt,
-          anonymous: imported.anonymous,
-          department: imported.department,
-          shift: imported.shift,
-          complianceRequired: imported.complianceRequired,
-          photoUrl,
-        });
-        broadcastReport({
-          ...newReport,
-          anonymous: imported.anonymous,
-          complianceRequired: imported.complianceRequired,
-        } as any);
-      }
-      importedCount++;
+  if (wait) {
+    try {
+      const result = await runGoogleSheetsSync({ spreadsheetId: formId, apiKey, sheetName });
+      return res.json({
+        queued: false,
+        imported: result.imported,
+        rows: result.rows,
+        sheetName: result.sheetName,
+        message: `Google Sheets full sync complete. Imported ${result.imported} reports from ${result.rows} sheet rows.`,
+      });
+    } catch (error: unknown) {
+      const classified = classifyGoogleFormsError(error);
+      return res.status(classified.statusCode).json({
+        error: classified.message,
+        details: classified.details,
+      });
     }
-
-    if (dbForSqlite && newReports.length > 0) {
-      replaceGoogleSheetReportsInSqlite(dbForSqlite, newReports);
-    }
-
-    // Update sync timestamp
-    const maxTimestamp = dataRows.reduce((max, row) => {
-      const ts = row[0] || "";
-      return ts && (!max || ts > max) ? ts : max;
-    }, "");
-
-    if (isFirebaseAvailable()) {
-      const db = getFirebase()!;
-      await db.collection("syncMeta").doc("googleForms").set({ lastTimestamp: maxTimestamp, lastSync: new Date().toISOString() });
-    } else if (maxTimestamp && dbForSqlite) {
-      dbForSqlite.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('google_forms_sync', ?)").run([JSON.stringify({ lastTimestamp: maxTimestamp, lastSync: new Date().toISOString() })]);
-      await saveDb(dbForSqlite);
-    }
-
-    const responses = dataRows.map((row) => {
-      const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { obj[h] = row[i] || ""; });
-      return obj;
-    });
-
-    return res.json({ imported: importedCount, responses, message: `Imported ${importedCount} new reports from Google Form ${formId}` });
-  } catch (error: unknown) {
-    const classified = classifyGoogleFormsError(error);
-    console.error("Google Forms fetch error:", {
-      classified,
-      formId,
-      sheetName,
-      apiBaseUrl: getGoogleSheetsBaseUrl(),
-      docsBaseUrl: getGoogleDocsBaseUrl(),
-      // Avoid leaking secrets
-      hasApiKey: Boolean(apiKey),
-    });
-
-    res.status(classified.statusCode).json({
-      error: classified.message,
-      details: classified.details,
-      hint: classified.hint,
-      meta: {
-        formId,
-        sheetName,
-        apiBaseUrl: getGoogleSheetsBaseUrl(),
-        docsBaseUrl: getGoogleDocsBaseUrl(),
-        hasApiKey: Boolean(apiKey),
-      },
-    });
   }
+
+  queueGoogleSheetsSync({ spreadsheetId: formId, apiKey, sheetName });
+  res.status(202).json({
+    queued: true,
+    message: "Google Sheets sync queued. Dashboard will continue using local database data.",
+  });
 });
 
 

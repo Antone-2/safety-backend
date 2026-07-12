@@ -1,0 +1,82 @@
+import { z } from "zod";
+
+export const HeightWorkStatusSchema = z.enum(["Planned", "Permit Issued", "In Progress", "Completed", "Cancelled"]);
+export type HeightWorkStatus = z.infer<typeof HeightWorkStatusSchema>;
+
+export interface HeightWork {
+  id: string;
+  permitNo?: string;
+  location: string;
+  building: string;
+  floor?: string;
+  taskDescription: string;
+  height: number;
+  fallProtection?: string;
+  rescuePlan?: string;
+  harnessInspectionDate?: string;
+  anchorPointInspected: boolean;
+  workersCount: number;
+  workers?: string;
+  supervisor: string;
+  startDate: string;
+  endDate: string;
+  status: HeightWorkStatus;
+  incidentReport?: string;
+  photos?: string[];
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CreateHeightWorkSchema = z.object({
+  location: z.string().min(1).max(200),
+  building: z.string().min(1).max(100),
+  floor: z.string().max(50).optional(),
+  taskDescription: z.string().min(1).max(2000),
+  height: z.number().min(0),
+  fallProtection: z.string().max(2000).optional(),
+  rescuePlan: z.string().max(2000).optional(),
+  harnessInspectionDate: z.string().optional(),
+  anchorPointInspected: z.boolean().default(false),
+  workersCount: z.number().min(1).default(1),
+  workers: z.string().max(1000).optional(),
+  supervisor: z.string().min(1).max(200),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  status: HeightWorkStatusSchema.default("Planned"),
+  incidentReport: z.string().max(2000).optional(),
+  photos: z.array(z.string()).optional().default([]),
+  notes: z.string().max(2000).optional(),
+  createdBy: z.string().min(1).max(200),
+});
+export type CreateHeightWorkInput = z.infer<typeof CreateHeightWorkSchema>;
+
+export const UpdateHeightWorkSchema = z.object({
+  location: z.string().min(1).max(200).optional(),
+  building: z.string().min(1).max(100).optional(),
+  floor: z.string().max(50).optional().nullable(),
+  taskDescription: z.string().min(1).max(2000).optional(),
+  height: z.number().min(0).optional(),
+  fallProtection: z.string().max(2000).optional().nullable(),
+  rescuePlan: z.string().max(2000).optional().nullable(),
+  harnessInspectionDate: z.string().optional().nullable(),
+  anchorPointInspected: z.boolean().optional(),
+  workersCount: z.number().min(1).optional(),
+  workers: z.string().max(1000).optional().nullable(),
+  supervisor: z.string().min(1).max(200).optional(),
+  startDate: z.string().min(1).optional(),
+  endDate: z.string().min(1).optional(),
+  status: HeightWorkStatusSchema.optional(),
+  incidentReport: z.string().max(2000).optional().nullable(),
+  photos: z.array(z.string()).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type UpdateHeightWorkInput = z.infer<typeof UpdateHeightWorkSchema>;
+
+export interface HeightWorkStats {
+  total: number;
+  inProgress: number;
+  completed: number;
+  planned: number;
+}

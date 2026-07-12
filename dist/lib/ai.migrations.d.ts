@@ -1,0 +1,9 @@
+export declare const aiPredictionsTable = "\nCREATE TABLE IF NOT EXISTS ai_predictions (\n  id TEXT PRIMARY KEY,\n  feature TEXT NOT NULL,\n  input_hash TEXT NOT NULL,\n  output_json TEXT NOT NULL,\n  model_version TEXT NOT NULL DEFAULT 'v1.0.0',\n  confidence REAL NOT NULL DEFAULT 0,\n  user_id TEXT,\n  created_at TEXT NOT NULL DEFAULT datetime('now')\n)";
+export declare const aiDocumentsTable = "\nCREATE TABLE IF NOT EXISTS ai_documents (\n  id TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  content TEXT NOT NULL,\n  embedding TEXT,\n  category TEXT NOT NULL,\n  source TEXT NOT NULL,\n  created_at TEXT NOT NULL DEFAULT datetime('now'),\n  updated_at TEXT NOT NULL DEFAULT datetime('now')\n)";
+export declare const aiKnowledgeBaseTable = "\nCREATE TABLE IF NOT EXISTS ai_knowledge_base (\n  id TEXT PRIMARY KEY,\n  chunk_text TEXT NOT NULL,\n  embedding TEXT,\n  source_document_id TEXT,\n  section TEXT,\n  created_at TEXT NOT NULL DEFAULT datetime('now')\n)";
+export declare const aiFeedbackTable = "\nCREATE TABLE IF NOT EXISTS ai_feedback (\n  id TEXT PRIMARY KEY,\n  feature TEXT NOT NULL,\n  prediction_id TEXT,\n  user_id TEXT NOT NULL,\n  rating INTEGER NOT NULL,\n  feedback_text TEXT,\n  created_at TEXT NOT NULL DEFAULT datetime('now')\n)";
+export declare const aiIndexes = "\nCREATE INDEX IF NOT EXISTS idx_ai_predictions_feature ON ai_predictions(feature);\nCREATE INDEX IF NOT EXISTS idx_ai_predictions_created_at ON ai_predictions(created_at);\nCREATE INDEX IF NOT EXISTS idx_ai_documents_category ON ai_documents(category);\nCREATE INDEX IF NOT EXISTS idx_ai_feedback_feature ON ai_feedback(feature);\nCREATE INDEX IF NOT EXISTS idx_ai_knowledge_base_source ON ai_knowledge_base(source_document_id);\n";
+export declare const aiMigrations: {
+    name: string;
+    sql: string;
+}[];

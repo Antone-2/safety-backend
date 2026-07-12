@@ -22,3 +22,4 @@ test("listNotifications returns persisted notifications and marks them read", as
   assert.ok(updated, "expected notification to remain present after updating");
   assert.equal(updated?.read, true);
 });
+

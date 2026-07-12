@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
+import { isFirebaseAvailable, getFirebase, sanitizeForFirestore } from "../lib/firebase.js";
 import { getDb, saveDb } from "../lib/database.js";
 import { v4 as uuidv4 } from "uuid";
 import { sendTestEmail } from "../lib/email.js";
@@ -49,7 +49,7 @@ router.put("/", async (req: Request, res: Response) => {
   const members = Array.isArray(req.body) ? req.body : [];
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;
-    await db.collection("settings").doc(KEY).set({ members });
+    await db.collection("settings").doc(KEY).set(sanitizeForFirestore({ members }));
     return res.json({ members });
   }
 
@@ -61,8 +61,8 @@ router.put("/", async (req: Request, res: Response) => {
 
 router.post("/test", async (req: Request, res: Response) => {
   const payload = Array.isArray(req.body) ? req.body : [];
-  const subject = (req.query.subject as string) || "SHE Committee Test Notification";
-  const message = (req.query.message as string) || "This is a test notification for the SHE committee.";
+  const subject = (String(String(req.query.subject)) as string) || "SHE Committee Test Notification";
+  const message = (String(String(req.query.message)) as string) || "This is a test notification for the SHE committee.";
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -89,3 +89,4 @@ router.post("/test", async (req: Request, res: Response) => {
 });
 
 export default router;
+

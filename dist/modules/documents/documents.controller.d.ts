@@ -1,0 +1,20 @@
+import { type Response } from "express";
+import { DocumentsService } from "./documents.service.js";
+import { type AuthRequest } from "../../shared/middleware/auth.middleware.js";
+export declare function createDocumentsController(service: DocumentsService): {
+    getAll(req: AuthRequest, res: Response): Promise<void>;
+    getById(req: AuthRequest, res: Response): Promise<void>;
+    create(req: AuthRequest, res: Response): Promise<void>;
+    update(req: AuthRequest, res: Response): Promise<void>;
+    delete(req: AuthRequest, res: Response): Promise<void>;
+    getVersions(req: AuthRequest, res: Response): Promise<void>;
+    createVersion(req: AuthRequest, res: Response): Promise<void>;
+    submitForReview(req: AuthRequest, res: Response): Promise<void>;
+    approve(req: AuthRequest, res: Response): Promise<void>;
+    markObsolete(req: AuthRequest, res: Response): Promise<void>;
+    acknowledge(req: AuthRequest, res: Response): Promise<void>;
+    getAcknowledgements(req: AuthRequest, res: Response): Promise<void>;
+    createAccessLink(req: AuthRequest, res: Response): Promise<void>;
+    getStats(req: AuthRequest, res: Response): Promise<void>;
+};
+export declare function createDocumentsRouter(): import("express-serve-static-core").Router;

@@ -1,6 +1,11 @@
 import { Database as SqlJsDatabase } from "sql.js";
-type SqlBindParams = (string | number | Uint8Array | null)[] | Record<string, string | number | Uint8Array | null> | null;
 declare function getDb(): Promise<SqlJsDatabase>;
 declare function saveDb(db: SqlJsDatabase): Promise<void>;
-export declare function allRows(db: SqlJsDatabase, sql: string, params?: SqlBindParams): any[];
+export declare function allRows(db: SqlJsDatabase, sql: string, params?: any[]): any[];
+/**
+ * Synchronous accessor for callers that expect an already-resolved database
+ * (e.g. repositories that call `getDb().prepare(...)` synchronously).
+ * On first call it blocks until the cached promise resolves.
+ */
+export declare function getDbSync(): SqlJsDatabase;
 export { getDb, saveDb };

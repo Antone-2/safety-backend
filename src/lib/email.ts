@@ -6,11 +6,11 @@ export const TestEmailSchema = z.object({
   subject: z
     .string()
     .min(1)
-    .default("Crown Paints HSE email notification test"),
+    .default("Crown Paints EHS email notification test"),
   message: z
     .string()
     .min(1)
-    .default("This is a test email from the Crown Paints HSE system."),
+    .default("This is a test email from the Crown Paints EHS system."),
 });
 
 export type TestEmailInput = z.infer<typeof TestEmailSchema>;
@@ -24,6 +24,39 @@ export const ReminderSchema = z.object({
 });
 
 export type ReminderInput = z.infer<typeof ReminderSchema>;
+
+export async function sendOtpEmail(input: { to: string; code: string; expiresMinutes: number }) {
+  const subject = "Your Crown EHS login code";
+  const message = [
+    `Your one-time login code is ${input.code}.`,
+    `This code expires in ${input.expiresMinutes} minutes.`,
+    "If you did not request this code, contact your EHS administrator immediately.",
+  ].join("\n\n");
+
+  if (!hasSmtpConfig()) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "local-test",
+      message: "SMTP is not configured. OTP generated locally only.",
+    };
+  }
+
+  await createTransporter().sendMail({
+    from: process.env.SMTP_FROM,
+    to: input.to,
+    subject,
+    text: message,
+    html: `<p>${message.replace(/\n/g, "<br />")}</p>`,
+  });
+
+  return {
+    ok: true,
+    delivered: true,
+    mode: "smtp",
+    message: `OTP sent to ${input.to}.`,
+  };
+}
 
 function hasSmtpConfig() {
   return Boolean(
@@ -54,22 +87,6 @@ function createTransporter() {
   });
 }
 
-async function sendMailWithRetry(options: nodemailer.SendMailOptions, attempts = 3, delayMs = 500) {
-  if (!hasSmtpConfig()) throw new Error("SMTP not configured");
-  let lastError: unknown = null;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const transporter = createTransporter();
-      const res = await transporter.sendMail(options);
-      return res;
-    } catch (err) {
-      lastError = err;
-      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs * Math.pow(2, i)));
-    }
-  }
-  throw lastError;
-}
-
 async function sendSms(to: string, body: string): Promise<boolean> {
   if (!hasTwilioConfig()) return false;
   try {
@@ -85,6 +102,24 @@ async function sendSms(to: string, body: string): Promise<boolean> {
     console.error("SMS send failed:", e);
     return false;
   }
+}
+
+export async function sendSmsNotification(
+  report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+  },
+  phone: string,
+): Promise<boolean> {
+  if (!hasTwilioConfig() || !phone) return false;
+  const body = `Crown Paints EHS: Report ${report.id} (${report.severity}) was assigned to you. Location: ${report.location}. Please review and follow up.`;
+  return sendSms(phone, body);
 }
 
 export async function sendTestEmail(input: TestEmailInput) {
@@ -132,7 +167,7 @@ export async function sendCapaReminder(input: ReminderInput) {
 
   if (hasSmtpConfig()) {
     try {
-      await sendMailWithRetry({
+      await createTransporter().sendMail({
         from: process.env.SMTP_FROM,
         to: input.to,
         subject,
@@ -169,7 +204,7 @@ export function buildIncidentNotification(report: {
 }, recipient: string) {
   const subject = `${report.severity} incident alert: ${report.id}`;
   const message = [
-    `A ${report.severity.toLowerCase()} incident was reported in the HSE system.`,
+    `A ${report.severity.toLowerCase()} incident was reported in the EHS system.`,
     `Report ID: ${report.id}`,
     `Date: ${report.date}`,
     `Location: ${report.location}`,
@@ -206,6 +241,144 @@ export function buildAssignmentNotification(report: {
   return { recipient: assignee, subject, message };
 }
 
+export type AssignmentRecipientRole = "assigner" | "primary" | "secondary";
+
+export interface AssignmentRecipient {
+  email: string;
+  name?: string;
+  role: AssignmentRecipientRole;
+}
+
+export interface AssignmentDeliveryResult {
+  recipient: string;
+  role: AssignmentRecipientRole;
+  subject: string;
+  message: string;
+  delivered: boolean;
+  mode: "smtp" | "internal" | "failed";
+  error?: string;
+}
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function reportAssignmentUrl(reportId: string) {
+  const frontendUrl = process.env.FRONTEND_URL?.split(",")[0]?.trim();
+  if (!frontendUrl) return "";
+  return new URL(`/report/${encodeURIComponent(reportId)}`, frontendUrl).toString();
+}
+
+export function buildReportAssignmentNotification(
+  report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+  },
+  recipient: AssignmentRecipient,
+  assignedBy?: string,
+  primaryRecipient?: string,
+) {
+  const assignee = primaryRecipient || "the primary assignee";
+  const assigner = assignedBy || "the EHS system";
+  const reportUrl = reportAssignmentUrl(report.id);
+  const subject =
+    recipient.role === "assigner"
+      ? `Assignment confirmation: ${report.id}`
+      : recipient.role === "primary"
+        ? `Report assigned to you: ${report.id}`
+        : `You were copied on report assignment: ${report.id}`;
+  const opening =
+    recipient.role === "assigner"
+      ? `You assigned report ${report.id} to ${assignee}.`
+      : recipient.role === "primary"
+        ? `${assigner} assigned report ${report.id} to you.`
+        : `${assigner} copied you on report ${report.id}, assigned to ${assignee}.`;
+  const action =
+    recipient.role === "primary"
+      ? "Please review the report and complete the required follow-up actions."
+      : "Please review the report for visibility and support the follow-up where required.";
+  const message = [
+    opening,
+    `Severity: ${report.severity}`,
+    `Location: ${report.location}`,
+    `Reporter: ${report.reporter}`,
+    `Category: ${report.category}`,
+    `Type: ${report.type}`,
+    `Date: ${report.date}`,
+    `Description: ${report.description}`,
+    reportUrl ? `Open report: ${reportUrl}` : "",
+    action,
+  ].filter(Boolean).join("\n\n");
+
+  return { recipient: recipient.email, role: recipient.role, subject, message };
+}
+
+export async function sendReportAssignmentNotifications(
+  report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+  },
+  recipients: AssignmentRecipient[],
+  assignedBy?: string,
+  primaryRecipient?: string,
+): Promise<AssignmentDeliveryResult[]> {
+  const uniqueRecipients = new Map<string, AssignmentRecipient>();
+  for (const recipient of recipients) {
+    const email = recipient.email.trim().toLowerCase();
+    if (!isEmail(email) || uniqueRecipients.has(email)) continue;
+    uniqueRecipients.set(email, { ...recipient, email });
+  }
+
+  const transporter = hasSmtpConfig() ? createTransporter() : null;
+  const results: AssignmentDeliveryResult[] = [];
+
+  for (const recipient of uniqueRecipients.values()) {
+    const notification = buildReportAssignmentNotification(report, recipient, assignedBy, primaryRecipient);
+
+    if (!transporter) {
+      results.push({
+        ...notification,
+        delivered: false,
+        mode: "internal",
+        message: `${notification.message}\n\nSMTP is not configured. Notification recorded locally only.`,
+      });
+      continue;
+    }
+
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to: notification.recipient,
+        subject: notification.subject,
+        text: notification.message,
+        html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
+      });
+      results.push({ ...notification, delivered: true, mode: "smtp" });
+    } catch (error) {
+      results.push({
+        ...notification,
+        delivered: false,
+        mode: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function sendAssignmentNotification(report: {
   id: string;
   severity: string;
@@ -219,7 +392,7 @@ export async function sendAssignmentNotification(report: {
   const notification = buildAssignmentNotification(report, assignee);
   const recipient = notification.recipient.includes("@")
     ? notification.recipient
-    : process.env.DEFAULT_NOTIFICATION_EMAIL || process.env.SMTP_FROM || "safety@crownpaints.co.ke";
+    : process.env.DEFAULT_NOTIFICATION_EMAIL || process.env.SMTP_FROM || "";
 
   if (!hasSmtpConfig() || !notification.recipient.includes("@")) {
     return {
@@ -269,22 +442,13 @@ export async function sendIncidentNotification(report: {
     };
   }
 
-  try {
-    await sendMailWithRetry({
-      from: process.env.SMTP_FROM,
-      to: notification.recipient,
-      subject: notification.subject,
-      text: notification.message,
-      html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
-    });
-  } catch (err) {
-    return {
-      ok: true,
-      delivered: false,
-      mode: "local-test",
-      message: `Notification queued locally for ${notification.recipient}.`,
-    };
-  }
+  await createTransporter().sendMail({
+    from: process.env.SMTP_FROM,
+    to: notification.recipient,
+    subject: notification.subject,
+    text: notification.message,
+    html: `<p>${notification.message.replace(/\n/g, "<br />")}</p>`,
+  });
 
   return {
     ok: true,

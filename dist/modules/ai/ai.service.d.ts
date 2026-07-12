@@ -1,0 +1,42 @@
+import { AiRepository } from "./ai.repository.js";
+import type { AiQueryInput } from "./ai.types.js";
+type Json = Record<string, unknown>;
+type AiActor = {
+    id?: string;
+    email?: string;
+    role?: string;
+    name?: string;
+};
+export declare class AiService {
+    private llm;
+    private rag;
+    private repository;
+    private reports;
+    private model;
+    private generate;
+    private savePredictionBestEffort;
+    private savePromptAuditBestEffort;
+    query(data: AiQueryInput, user?: AiActor): Promise<Json>;
+    investigationAssistant(data: any, userId?: string): Promise<Json>;
+    rootCauseAnalysis(data: any, userId?: string): Promise<Json>;
+    hazardDetection(data: any, userId?: string): Promise<Json>;
+    riskPrediction(data: any, userId?: string): Promise<Json>;
+    chatbot(data: any, userId?: string): Promise<Json>;
+    complianceAssistant(data: any, userId?: string): Promise<Json>;
+    trainingRecommendation(data: any, userId?: string): Promise<Json>;
+    permitValidation(data: any, userId?: string): Promise<Json>;
+    inspectionAssistant(data: any, userId?: string): Promise<Json>;
+    safetyObservationAnalysis(data: any, userId?: string): Promise<Json>;
+    environmentalMonitoring(data: any, userId?: string): Promise<Json>;
+    predictiveAnalytics(data: any, userId?: string): Promise<Json>;
+    dashboardInsights(data: any, userId?: string): Promise<Json>;
+    documentSearch(data: any, userId?: string): Promise<Json>;
+    toolboxTalkGenerator(data: any, userId?: string): Promise<Json>;
+    safetyAlertGenerator(data: any, userId?: string): Promise<Json>;
+    trendAnalysis(data: any, userId?: string): Promise<Json>;
+    correctiveActionRecommendation(data: any, userId?: string): Promise<Json>;
+    kpiForecasting(data: any, userId?: string): Promise<Json>;
+    executiveReports(data: any, userId?: string): Promise<Json>;
+    getRepository(): AiRepository;
+}
+export {};

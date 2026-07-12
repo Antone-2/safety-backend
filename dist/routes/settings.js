@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
+import { isFirebaseAvailable, getFirebase, sanitizeForFirestore } from "../lib/firebase.js";
 import { getDb, saveDb } from "../lib/database.js";
 import { sendTestEmail, TestEmailSchema } from "../lib/email.js";
+import { authenticateUser, requirePermission } from "../shared/middleware/auth.middleware.js";
 const router = Router();
 const KEY = "app_settings";
 const defaultSchema = z.object({
@@ -32,10 +33,10 @@ function getDefaults() {
             { name: "High", slaHours: 48, color: "#f97316" },
             { name: "Critical", slaHours: 24, color: "#ef4444" },
         ],
-        schedule: { enabled: true, freq: "weekly", email: process.env.DEFAULT_NOTIFICATION_EMAIL || "safety@crownpaints.co.ke" },
+        schedule: { enabled: true, freq: "weekly", email: process.env.DEFAULT_NOTIFICATION_EMAIL || "" },
     };
 }
-router.get("/", async (_req, res) => {
+router.get("/", authenticateUser, requirePermission("settings:read"), async (_req, res) => {
     if (isFirebaseAvailable()) {
         const db = getFirebase();
         const doc = await db.collection("settings").doc(KEY).get();
@@ -59,13 +60,13 @@ router.get("/", async (_req, res) => {
         return res.json(getDefaults());
     }
 });
-router.put("/", async (req, res) => {
+router.put("/", authenticateUser, requirePermission("settings:update"), async (req, res) => {
     const parsed = defaultSchema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: parsed.error.errors });
     if (isFirebaseAvailable()) {
         const db = getFirebase();
-        await db.collection("settings").doc(KEY).set(parsed.data);
+        await db.collection("settings").doc(KEY).set(sanitizeForFirestore(parsed.data));
         return res.json(parsed.data);
     }
     const db = await getDb();
@@ -73,7 +74,7 @@ router.put("/", async (req, res) => {
     await saveDb(db);
     res.json(parsed.data);
 });
-router.post("/test-email", async (req, res) => {
+router.post("/test-email", authenticateUser, requirePermission("settings:update"), async (req, res) => {
     const parsed = TestEmailSchema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: parsed.error.errors });

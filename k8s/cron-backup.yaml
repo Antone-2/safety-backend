@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: safety-backup
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: ghcr.io/OWNER/safety-backend:latest
+              command: ["node", "dist/scripts/backup.js"]
+              envFrom:
+                - configMapRef:
+                    name: safety-backend-config
+                - secretRef:
+                    name: safety-secrets

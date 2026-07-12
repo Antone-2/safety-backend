@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { allRows, getDb, saveDb } from "../lib/database.js";
+import { authenticateUser, } from "../shared/middleware/auth.middleware.js";
+import { requireRole } from "../middleware/auth.js";
+import { notificationCenterService } from "../services/notification-center.service.js";
 const router = Router();
 export async function listNotifications() {
     const db = await getDb();
@@ -24,13 +27,74 @@ export async function markNotificationsRead(ids) {
     db.prepare(`UPDATE notifications SET read = 1 WHERE id IN (${placeholders})`).run(ids);
     await saveDb(db);
 }
-router.get("/", async (_req, res) => {
+router.get("/", authenticateUser, async (req, res) => {
     const notifications = await listNotifications();
-    res.json(notifications);
+    const privileged = req.user?.role === "super-admin" || req.user?.role === "EHS-manager";
+    res.json(privileged
+        ? notifications
+        : notifications.filter((item) => [req.user?.email, req.user?.name].includes(item.recipient)));
 });
-router.post("/read", async (req, res) => {
+router.post("/read", authenticateUser, async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
-    await markNotificationsRead(ids.filter((item) => typeof item === "string"));
+    const allowed = (await listNotifications())
+        .filter((item) => req.user?.role === "super-admin" ||
+        req.user?.role === "EHS-manager" ||
+        [req.user?.email, req.user?.name].includes(item.recipient))
+        .map((item) => item.id);
+    await markNotificationsRead(ids.filter((item) => typeof item === "string" && allowed.includes(item)));
     res.json({ ok: true });
+});
+router.get("/templates", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
+    const templates = await notificationCenterService.listTemplates();
+    res.json(templates);
+});
+router.post("/templates", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    const template = await notificationCenterService.upsertTemplate(req.body, req.user);
+    res.status(201).json(template);
+});
+router.post("/enqueue", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+    const job = await notificationCenterService.enqueue({
+        eventKey: String(req.body.eventKey),
+        workflow: req.body.workflow,
+        resourceType: req.body.resourceType,
+        resourceId: req.body.resourceId,
+        payload: req.body.payload || {},
+        recipients: Array.isArray(req.body.recipients) ? req.body.recipients : [],
+        createdBy: req.user?.email || req.user?.name || "System",
+        maxAttempts: Number(req.body.maxAttempts || 3),
+    });
+    res.status(201).json(job);
+});
+router.post("/process-due", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    const result = await notificationCenterService.processDue(Number(req.body.limit || 25));
+    res.json({ processed: result });
+});
+router.get("/jobs", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    const jobs = await notificationCenterService.listJobs({
+        status: typeof req.query.status === "string" ? req.query.status : undefined,
+        limit: typeof req.query.limit === "string" ? Number(req.query.limit) : 100,
+    });
+    res.json(jobs);
+});
+router.get("/jobs/:id/recipients", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    const recipients = await notificationCenterService.listRecipients(String(req.params.id));
+    res.json(recipients);
+});
+router.get("/delivery-status", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
+    const recipients = await notificationCenterService.listRecipients();
+    res.json(recipients);
+});
+router.get("/dashboard", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
+    const dashboard = await notificationCenterService.dashboard();
+    res.json(dashboard);
+});
+router.post("/digests", authenticateUser, async (req, res) => {
+    const digest = await notificationCenterService.createDigest({
+        recipient: String(req.body.recipient || req.user?.email || ""),
+        userId: req.user?.id,
+        cadence: req.body.cadence,
+        channels: req.body.channels,
+    });
+    res.status(201).json(digest);
 });
 export default router;

@@ -1,0 +1,78 @@
+import { BaseService } from "./base.service.js";
+import { z } from "zod";
+export declare const HazardCategorySchema: z.ZodEnum<["Slip/Trip", "Chemical Spill", "PPE Violation", "Electrical", "Falling Object", "Vehicle/Forklift", "Inhalation/Fumes", "Fire/Ignition", "Manual Handling", "Noise Exposure", "Confined Space", "Fall from Height", "Other"]>;
+export type HazardCategory = z.infer<typeof HazardCategorySchema>;
+export declare const HazardReportSchema: z.ZodObject<{
+    id: z.ZodOptional<z.ZodString>;
+    reportNo: z.ZodOptional<z.ZodString>;
+    category: z.ZodEnum<["Slip/Trip", "Chemical Spill", "PPE Violation", "Electrical", "Falling Object", "Vehicle/Forklift", "Inhalation/Fumes", "Fire/Ignition", "Manual Handling", "Noise Exposure", "Confined Space", "Fall from Height", "Other"]>;
+    location: z.ZodString;
+    department: z.ZodString;
+    description: z.ZodString;
+    severity: z.ZodEnum<["Low", "Medium", "High", "Critical"]>;
+    riskLevel: z.ZodOptional<z.ZodString>;
+    existingControls: z.ZodOptional<z.ZodString>;
+    recommendedActions: z.ZodOptional<z.ZodString>;
+    immediateActionTaken: z.ZodOptional<z.ZodString>;
+    reportedBy: z.ZodString;
+    reportedAt: z.ZodOptional<z.ZodString>;
+    status: z.ZodDefault<z.ZodString>;
+    assignedTo: z.ZodOptional<z.ZodString>;
+    resolvedAt: z.ZodOptional<z.ZodString>;
+    resolution: z.ZodOptional<z.ZodString>;
+    photoUrl: z.ZodOptional<z.ZodString>;
+    createdBy: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    status: string;
+    severity: "Low" | "Medium" | "High" | "Critical";
+    location: string;
+    department: string;
+    description: string;
+    createdBy: string;
+    category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
+    reportedBy: string;
+    id?: string | undefined;
+    photoUrl?: string | undefined;
+    assignedTo?: string | undefined;
+    riskLevel?: string | undefined;
+    reportNo?: string | undefined;
+    existingControls?: string | undefined;
+    recommendedActions?: string | undefined;
+    immediateActionTaken?: string | undefined;
+    reportedAt?: string | undefined;
+    resolvedAt?: string | undefined;
+    resolution?: string | undefined;
+}, {
+    severity: "Low" | "Medium" | "High" | "Critical";
+    location: string;
+    department: string;
+    description: string;
+    createdBy: string;
+    category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
+    reportedBy: string;
+    status?: string | undefined;
+    id?: string | undefined;
+    photoUrl?: string | undefined;
+    assignedTo?: string | undefined;
+    riskLevel?: string | undefined;
+    reportNo?: string | undefined;
+    existingControls?: string | undefined;
+    recommendedActions?: string | undefined;
+    immediateActionTaken?: string | undefined;
+    reportedAt?: string | undefined;
+    resolvedAt?: string | undefined;
+    resolution?: string | undefined;
+}>;
+export type HazardReportInput = z.infer<typeof HazardReportSchema>;
+export declare class HazardService extends BaseService {
+    constructor();
+    createReport(data: HazardReportInput): Promise<any>;
+    getReports(filters?: Record<string, any>): Promise<any[]>;
+    getReportById(id: string): Promise<any>;
+    getStats(): Promise<{
+        total: any;
+        open: any;
+        critical: any;
+        high: any;
+    }>;
+}

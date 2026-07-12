@@ -1,8 +1,10 @@
 declare const router: import("express-serve-static-core").Router;
+export declare function setGoogleSheetsPostgresAvailability(available: boolean): void;
 export declare function fetchGoogleSheetRows(formId: string, apiKey: string, requestedSheetName?: string): Promise<{
     rows: string[][];
     sheetName: string;
 }>;
+export declare function parseDate(dateStr?: string): string;
 export declare function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
     id: string;
     date: string;
@@ -51,6 +53,21 @@ export declare function buildReportRecordFromRow(headers: string[], row: string[
     dueAt: string;
     complianceRequired: boolean;
 };
+export type GoogleSheetsSyncResult = {
+    imported: number;
+    rows: number;
+    sheetName: string;
+    startedAt: string;
+    finishedAt: string;
+};
+export declare function runGoogleSheetsSync(options?: {
+    spreadsheetId?: string;
+    apiKey?: string;
+    sheetName?: string;
+    broadcast?: boolean;
+}): Promise<GoogleSheetsSyncResult>;
+export declare function queueGoogleSheetsSync(options?: Parameters<typeof runGoogleSheetsSync>[0]): Promise<GoogleSheetsSyncResult>;
+export declare function startGoogleSheetsScheduler(intervalMs?: number): void;
 export interface GoogleFormsErrorInfo {
     statusCode: number;
     message: string;

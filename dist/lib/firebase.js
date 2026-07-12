@@ -1,9 +1,8 @@
 import { initializeApp, cert } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { existsSync } from "fs";
 import { readFileSync } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 let firebaseApp = null;
 let firestoreDb = null;
 function buildServiceAccountFromEnv() {
@@ -24,23 +23,22 @@ function buildServiceAccountFromEnv() {
     return null;
 }
 export function initFirebase() {
-    const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const serviceAccountPath = path.join(__dirname, "..", "..", "firebase-service-account.json");
     try {
         const serviceAccount = buildServiceAccountFromEnv();
+        const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
         if (serviceAccount) {
             firebaseApp = initializeApp({
                 credential: cert(serviceAccount),
             });
         }
-        else if (existsSync(serviceAccountPath)) {
+        else if (serviceAccountPath && existsSync(serviceAccountPath)) {
             const raw = readFileSync(serviceAccountPath, "utf-8");
             firebaseApp = initializeApp({
                 credential: cert(JSON.parse(raw)),
             });
         }
         else {
-            console.warn("Firebase not configured - using SQLite fallback");
+            console.warn("Firebase not configured - set FIREBASE_SERVICE_ACCOUNT, FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY/FIREBASE_PROJECT_ID, or GOOGLE_APPLICATION_CREDENTIALS");
             return false;
         }
         firestoreDb = getFirestore(firebaseApp);
@@ -62,5 +60,21 @@ export function getFirebase() {
 }
 export function isFirebaseAvailable() {
     return firestoreDb !== null;
+}
+export function sanitizeForFirestore(value) {
+    if (Array.isArray(value)) {
+        const cleaned = value.map((item) => sanitizeForFirestore(item)).filter((item) => item !== undefined);
+        return cleaned;
+    }
+    if (value !== null && typeof value === "object") {
+        const result = {};
+        for (const [key, val] of Object.entries(value)) {
+            if (val !== undefined) {
+                result[key] = sanitizeForFirestore(val);
+            }
+        }
+        return result;
+    }
+    return value;
 }
 export { FieldValue, Timestamp };

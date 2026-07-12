@@ -1,243 +1,95 @@
 import { Router } from "express";
-import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
-import { allRows, getDb, saveDb } from "../lib/database.js";
-import { CreateCapaSchema, CapaStatusSchema } from "../lib/types.js";
+import { authenticateUser, requireRole } from "../middleware/auth.js";
+import { CapaService } from "../services/capa.service.js";
 const router = Router();
-const mapDoc = (data) => ({
-    id: data.id,
-    incidentId: data.incidentId,
-    rootCause: data.rootCause,
-    action: data.action,
-    owner: data.owner,
-    dueDate: data.dueDate,
-    status: data.status,
-    priority: data.priority || "Medium",
+const capaService = new CapaService();
+router.get("/", authenticateUser, async (_req, res) => {
+    try {
+        const records = await capaService.getAll();
+        res.json(records);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to fetch CAPA records" });
+    }
 });
-const routeParam = (req, name) => {
-    const value = req.params[name];
-    return Array.isArray(value) ? value[0] : (value ?? "");
-};
-router.get("/", async (req, res) => {
-    const incidentId = req.query.incidentId;
-    const owner = req.query.owner;
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        let query = db.collection("capa");
-        if (incidentId)
-            query = query.where("incidentId", "==", incidentId);
-        if (owner)
-            query = query.where("owner", "==", owner);
-        const snap = await query.orderBy("dueDate", "asc").get();
-        return res.json(snap.docs.map((doc) => mapDoc(doc.data())));
+router.get("/dashboard", authenticateUser, async (_req, res) => {
+    try {
+        const dashboard = await capaService.getCapaDashboard();
+        res.json(dashboard);
     }
-    const db = await getDb();
-    let sql = "SELECT * FROM capa WHERE 1=1";
-    const params = [];
-    if (incidentId) {
-        sql += " AND incidentId = ?";
-        params.push(incidentId);
+    catch (error) {
+        res.status(500).json({ error: "Failed to fetch CAPA dashboard" });
     }
-    if (owner) {
-        sql += " AND owner = ?";
-        params.push(owner);
-    }
-    sql += " ORDER BY dueDate ASC";
-    const rows = allRows(db, sql, params);
-    res.json(rows.map(mapDoc));
 });
-router.post("/", async (req, res) => {
-    const parsed = CreateCapaSchema.safeParse(req.body);
-    if (!parsed.success)
-        return res.status(400).json({ error: parsed.error.errors });
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("capa").get();
-        const count = snap.size;
-        const id = `CAPA-${String(400 + count).padStart(3, "0")}`;
-        const capa = {
-            id,
-            incidentId: parsed.data.incidentId,
-            rootCause: parsed.data.rootCause,
-            action: parsed.data.action,
-            owner: parsed.data.owner,
-            dueDate: parsed.data.dueDate,
-            priority: parsed.data.priority,
-            status: "Planned",
-        };
-        await db.collection("capa").doc(id).set(capa);
-        return res.status(201).json(mapDoc(capa));
+router.get("/stats", authenticateUser, async (_req, res) => {
+    try {
+        const stats = await capaService.getStats();
+        res.json(stats);
     }
-    const db = await getDb();
-    const countRow = db.prepare("SELECT COUNT(*) as c FROM capa").getAsObject();
-    const count = Number(countRow.c ?? 0);
-    const id = `CAPA-${String(400 + count).padStart(3, "0")}`;
-    db.prepare("INSERT INTO capa (id, incidentId, rootCause, action, owner, dueDate, priority) VALUES (?, ?, ?, ?, ?, ?, ?)").run([id, parsed.data.incidentId, parsed.data.rootCause, parsed.data.action, parsed.data.owner, parsed.data.dueDate, parsed.data.priority]);
-    const row = db.prepare("SELECT * FROM capa WHERE id = ?").getAsObject([id]);
-    await saveDb(db);
-    res.status(201).json(mapDoc(row));
+    catch (error) {
+        res.status(500).json({ error: "Failed to fetch CAPA stats" });
+    }
 });
-router.patch("/:id/status", async (req, res) => {
-    const { status } = req.body;
-    const parsed = CapaStatusSchema.safeParse(status);
-    if (!parsed.success)
-        return res.status(400).json({ error: "Invalid status" });
-    const id = routeParam(req, "id");
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const doc = await db.collection("capa").doc(id).get();
-        if (!doc.exists)
-            return res.status(404).json({ error: "Not found" });
-        const capa = doc.data();
-        if (parsed.data === "Verified") {
-            const incident = await db.collection("reports").doc(capa.incidentId).get();
-            if (incident.exists) {
-                await incident.ref.update({ status: "Closed" });
-            }
-        }
-        await doc.ref.update({ status: parsed.data });
-        const updated = mapDoc((await doc.ref.get()).data());
-        return res.json(updated);
+router.get("/overdue", authenticateUser, async (_req, res) => {
+    try {
+        const records = await capaService.getOverdue();
+        res.json(records);
     }
-    const db = await getDb();
-    const row = db.prepare("SELECT * FROM capa WHERE id = ?").getAsObject([id]);
-    if (!row)
-        return res.status(404).json({ error: "Not found" });
-    db.prepare("UPDATE capa SET status = ? WHERE id = ?").run([parsed.data, id]);
-    if (parsed.data === "Verified") {
-        const incident = db.prepare("SELECT id FROM reports WHERE id = ?").getAsObject([row.incidentId]);
-        if (incident) {
-            db.prepare("UPDATE reports SET status = 'Closed' WHERE id = ?").run([incident.id]);
-        }
+    catch (error) {
+        res.status(500).json({ error: "Failed to fetch overdue CAPA" });
     }
-    await saveDb(db);
-    res.json(mapDoc({ ...row, status: parsed.data }));
 });
-router.patch("/:id", async (req, res) => {
-    const id = routeParam(req, "id");
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const doc = await db.collection("capa").doc(id).get();
-        if (!doc.exists)
-            return res.status(404).json({ error: "Not found" });
-        const { rootCause, action, owner, dueDate, status, priority } = req.body;
-        const updates = {};
-        if (rootCause !== undefined)
-            updates.rootCause = rootCause;
-        if (action !== undefined)
-            updates.action = action;
-        if (owner !== undefined)
-            updates.owner = owner;
-        if (dueDate !== undefined)
-            updates.dueDate = dueDate;
-        if (status !== undefined)
-            updates.status = status;
-        if (priority !== undefined)
-            updates.priority = priority;
-        await doc.ref.update(updates);
-        const updated = mapDoc((await doc.ref.get()).data());
-        return res.json(updated);
+router.get("/:id", authenticateUser, async (req, res) => {
+    try {
+        const record = await capaService.getById(String(req.params.id));
+        if (!record)
+            return res.status(404).json({ error: "CAPA not found" });
+        res.json(record);
     }
-    const db = await getDb();
-    const row = db.prepare("SELECT * FROM capa WHERE id = ?").getAsObject([id]);
-    if (!row)
-        return res.status(404).json({ error: "Not found" });
-    const { rootCause, action, owner, dueDate, status, priority } = req.body;
-    if (rootCause !== undefined)
-        db.prepare("UPDATE capa SET rootCause = ? WHERE id = ?").run([rootCause, id]);
-    if (action !== undefined)
-        db.prepare("UPDATE capa SET action = ? WHERE id = ?").run([action, id]);
-    if (owner !== undefined)
-        db.prepare("UPDATE capa SET owner = ? WHERE id = ?").run([owner, id]);
-    if (dueDate !== undefined)
-        db.prepare("UPDATE capa SET dueDate = ? WHERE id = ?").run([dueDate, id]);
-    if (status !== undefined)
-        db.prepare("UPDATE capa SET status = ? WHERE id = ?").run([status, id]);
-    if (priority !== undefined)
-        db.prepare("UPDATE capa SET priority = ? WHERE id = ?").run([priority, id]);
-    await saveDb(db);
-    const updated = db.prepare("SELECT * FROM capa WHERE id = ?").getAsObject([id]);
-    res.json(mapDoc(updated));
+    catch (error) {
+        res.status(500).json({ error: "Failed to fetch CAPA" });
+    }
 });
-router.delete("/:id", async (req, res) => {
-    const id = routeParam(req, "id");
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const doc = await db.collection("capa").doc(id).get();
-        if (!doc.exists)
-            return res.status(404).json({ error: "Not found" });
-        await doc.ref.delete();
-        return res.json({ ok: true, deleted: id });
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+    try {
+        const record = await capaService.createCapa({ ...req.body, createdBy: req.user?.name || "System" });
+        res.status(201).json(record);
     }
-    const db = await getDb();
-    const row = db.prepare("SELECT * FROM capa WHERE id = ?").getAsObject([id]);
-    if (!row)
-        return res.status(404).json({ error: "Not found" });
-    db.prepare("DELETE FROM capa WHERE id = ?").run([id]);
-    await saveDb(db);
-    res.json({ ok: true, deleted: id });
+    catch (error) {
+        res.status(500).json({ error: "Failed to create CAPA" });
+    }
 });
-router.get("/overdue", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("capa")
-            .where("status", "!=", "Verified")
-            .where("dueDate", "<", new Date().toISOString())
-            .get();
-        return res.json(snap.docs.map((doc) => mapDoc(doc.data())));
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+    try {
+        const record = await capaService.update(String(req.params.id), req.body);
+        res.json(record);
     }
-    const db = await getDb();
-    const rows = allRows(db, "SELECT * FROM capa WHERE status != 'Verified' AND dueDate < ? ORDER BY dueDate ASC", [new Date().toISOString()]);
-    res.json(rows.map(mapDoc));
+    catch (error) {
+        res.status(500).json({ error: "Failed to update CAPA" });
+    }
 });
-router.post("/reminders", async (req, res) => {
-    const { daysBefore } = req.body;
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() + (daysBefore || 3));
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("capa")
-            .where("status", "!=", "Verified")
-            .where("dueDate", "==", targetDate.toISOString().split("T")[0])
-            .get();
-        const rows = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        for (const capa of rows) {
-            const capaData = capa;
-            const incident = await db.collection("reports").doc(capaData.incidentId).get();
-            if (incident.exists && incident.data()?.reporterEmail) {
-                try {
-                    const { sendCapaReminder } = await import("../lib/email");
-                    await sendCapaReminder({
-                        to: incident.data().reporterEmail,
-                        phone: incident.data().reporterPhone,
-                        capaId: capaData.id,
-                        action: capaData.action,
-                        dueDate: capaData.dueDate,
-                    });
-                }
-                catch (e) {
-                    console.error("Failed to send reminder:", e);
-                }
-            }
-        }
-        return res.json({ sent: rows.length, message: `Reminders sent for ${rows.length} CAPA(s)` });
+router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const result = await capaService.delete(String(req.params.id));
+        res.json({ success: result });
     }
-    const db = await getDb();
-    const rows = allRows(db, "SELECT * FROM capa WHERE status != 'Verified' AND date(dueDate) = date(?)", [targetDate.toISOString().split("T")[0]]);
-    for (const capa of rows) {
-        const reporterRow = allRows(db, "SELECT reporter, reporterEmail, reporterPhone FROM reports WHERE id = ?", [capa.incidentId])[0];
-        if (reporterRow?.reporterEmail) {
-            try {
-                const { sendCapaReminder } = await import("../lib/email");
-                await sendCapaReminder({
-                    to: reporterRow.reporterEmail, phone: reporterRow.reporterPhone,
-                    capaId: capa.id, action: capa.action, dueDate: capa.dueDate,
-                });
-            }
-            catch (e) {
-                console.error("Failed to send reminder:", e);
-            }
-        }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete CAPA" });
     }
-    res.json({ sent: rows.length, message: `Reminders sent for ${rows.length} CAPA(s)` });
+});
+router.post("/:id/verify", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+    try {
+        const { verificationNote, verifiedBy } = req.body;
+        const record = await capaService.update(String(req.params.id), {
+            status: "Completed",
+            completedDate: new Date().toISOString(),
+            verificationNote,
+            verifiedBy,
+        });
+        res.json(record);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to verify CAPA" });
+    }
 });
 export default router;

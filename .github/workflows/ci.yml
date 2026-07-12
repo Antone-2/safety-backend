@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: safety-backend/package-lock.json
+      - name: Install dependencies
+        working-directory: safety-backend
+        run: npm ci
+      - name: Run tests
+        working-directory: safety-backend
+        run: npm test
+      - name: Build backend
+        working-directory: safety-backend
+        run: npm run build
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: safety_backend
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: safety-backend
+        run: npm ci
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            sleep 1
+          done
+      - name: Run migration dry-run
+        working-directory: safety-backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/safety_backend
+        run: npm run db:migrate:dry
+      - name: Run backup (smoke)
+        working-directory: safety-backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/safety_backend
+        run: npm run db:backup
+      - name: Run prune (smoke)
+        working-directory: safety-backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/safety_backend
+        run: npm run db:prune

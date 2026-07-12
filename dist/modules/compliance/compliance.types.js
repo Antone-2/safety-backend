@@ -1,0 +1,92 @@
+import { z } from "zod";
+export const ComplianceStatusSchema = z.enum(["Compliant", "Non-Compliant", "Pending"]);
+export const AuditTypeSchema = z.enum(["Internal", "External", "Regulatory", "Management Review"]);
+export const AuditStatusSchema = z.enum(["Planned", "In Progress", "Completed", "Closed"]);
+export const LegalUpdateStatusSchema = z.enum(["New", "Under Review", "Action Required", "Implemented", "Closed"]);
+export const CreateComplianceObligationSchema = z.object({
+    title: z.string().min(1).max(200),
+    legislation: z.string().min(1).max(200),
+    requirement: z.string().min(1).max(2000),
+    frequency: z.string().min(1).max(100),
+    responsibility: z.string().min(1).max(200),
+    site: z.string().min(1).max(200),
+    department: z.string().min(1).max(100),
+    dueDate: z.string().optional(),
+    status: ComplianceStatusSchema.default("Pending"),
+    lastComplianceDate: z.string().optional(),
+    evidence: z.string().optional(),
+    notes: z.string().max(1000).optional(),
+    createdBy: z.string().min(1).max(200),
+});
+export const UpdateComplianceObligationSchema = z.object({
+    title: z.string().min(1).max(200).optional(),
+    legislation: z.string().min(1).max(200).optional(),
+    requirement: z.string().min(1).max(2000).optional(),
+    frequency: z.string().min(1).max(100).optional(),
+    responsibility: z.string().min(1).max(200).optional(),
+    site: z.string().min(1).max(200).optional(),
+    department: z.string().min(1).max(100).optional(),
+    dueDate: z.string().optional().nullable(),
+    status: ComplianceStatusSchema.optional(),
+    lastComplianceDate: z.string().optional().nullable(),
+    evidence: z.string().optional().nullable(),
+    notes: z.string().max(1000).optional().nullable(),
+});
+export const CreateComplianceAuditSchema = z.object({
+    title: z.string().min(1).max(200),
+    type: AuditTypeSchema,
+    status: AuditStatusSchema.default("Planned"),
+    site: z.string().min(1).max(200),
+    department: z.string().min(1).max(100),
+    leadAuditor: z.string().min(1).max(200),
+    teamMembers: z.array(z.string().max(200)).optional().default([]),
+    startDate: z.string().min(1),
+    endDate: z.string().min(1),
+    scope: z.string().max(2000).optional(),
+    criteria: z.string().max(2000).optional(),
+    findings: z.array(z.unknown()).optional().default([]),
+    reportUrl: z.string().optional(),
+    createdBy: z.string().min(1).max(200),
+});
+export const UpdateComplianceAuditSchema = z.object({
+    title: z.string().min(1).max(200).optional(),
+    type: AuditTypeSchema.optional(),
+    status: AuditStatusSchema.optional(),
+    site: z.string().min(1).max(200).optional(),
+    department: z.string().min(1).max(100).optional(),
+    leadAuditor: z.string().min(1).max(200).optional(),
+    teamMembers: z.array(z.string().max(200)).optional().nullable(),
+    startDate: z.string().min(1).optional(),
+    endDate: z.string().min(1).optional(),
+    scope: z.string().max(2000).optional().nullable(),
+    criteria: z.string().max(2000).optional().nullable(),
+    findings: z.array(z.unknown()).optional().nullable(),
+    reportUrl: z.string().optional().nullable(),
+});
+export const CreateLegalUpdateSchema = z.object({
+    title: z.string().min(1).max(200),
+    legislation: z.string().min(1).max(200),
+    jurisdiction: z.string().min(1).max(100),
+    effectiveDate: z.string().min(1),
+    summary: z.string().min(1).max(2000),
+    impactAssessment: z.string().max(2000).optional(),
+    actionRequired: z.string().max(2000).optional(),
+    assignedTo: z.string().max(200).optional(),
+    dueDate: z.string().optional(),
+    status: LegalUpdateStatusSchema.default("New"),
+    source: z.string().max(500).optional(),
+    createdBy: z.string().min(1).max(200),
+});
+export const UpdateLegalUpdateSchema = z.object({
+    title: z.string().min(1).max(200).optional(),
+    legislation: z.string().min(1).max(200).optional(),
+    jurisdiction: z.string().min(1).max(100).optional(),
+    effectiveDate: z.string().min(1).optional(),
+    summary: z.string().min(1).max(2000).optional(),
+    impactAssessment: z.string().max(2000).optional().nullable(),
+    actionRequired: z.string().max(2000).optional().nullable(),
+    assignedTo: z.string().max(200).optional().nullable(),
+    dueDate: z.string().optional().nullable(),
+    status: LegalUpdateStatusSchema.optional(),
+    source: z.string().max(500).optional().nullable(),
+});

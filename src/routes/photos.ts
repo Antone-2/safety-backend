@@ -1,12 +1,16 @@
 import { Router, type Request, type Response } from "express";
+import { getGoogleDriveDownloadBaseUrl } from "../lib/config.js";
 
 const router = Router();
 
 router.get("/drive/:id", async (req: Request, res: Response) => {
-  const id = String(req.params.id ?? "").trim();
+  const id = String(String(String(req.params.id)) ?? "").trim();
   if (!id) return res.status(400).json({ error: "missing file id" });
 
-  const driveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
+  const driveBaseUrl = getGoogleDriveDownloadBaseUrl();
+  if (!driveBaseUrl) return res.status(500).json({ error: "Google Drive download base URL is not configured" });
+
+  const driveUrl = `${driveBaseUrl.replace(/\/$/, "")}?export=download&id=${encodeURIComponent(id)}`;
   try {
     const upstream = await fetch(driveUrl, { redirect: "follow" });
 
@@ -42,3 +46,4 @@ router.get("/drive/:id", async (req: Request, res: Response) => {
 });
 
 export default router;
+

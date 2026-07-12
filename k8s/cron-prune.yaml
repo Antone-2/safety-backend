@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: safety-prune-backups
+spec:
+  schedule: "0 3 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: prune
+              image: ghcr.io/OWNER/safety-backend:latest
+              command: ["node", "dist/scripts/prune-backups.js"]
+              envFrom:
+                - configMapRef:
+                    name: safety-backend-config
+                - secretRef:
+                    name: safety-secrets
+              env:
+                - name: RETENTION_DAYS
+                  value: "30"

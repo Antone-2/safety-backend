@@ -20,19 +20,39 @@ export declare const ReminderSchema: z.ZodObject<{
     action: z.ZodString;
     dueDate: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    action: string;
-    dueDate: string;
     to: string;
     capaId: string;
+    action: string;
+    dueDate: string;
     phone?: string | undefined;
 }, {
-    action: string;
-    dueDate: string;
     to: string;
     capaId: string;
+    action: string;
+    dueDate: string;
     phone?: string | undefined;
 }>;
 export type ReminderInput = z.infer<typeof ReminderSchema>;
+export declare function sendOtpEmail(input: {
+    to: string;
+    code: string;
+    expiresMinutes: number;
+}): Promise<{
+    ok: boolean;
+    delivered: boolean;
+    mode: string;
+    message: string;
+}>;
+export declare function sendSmsNotification(report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+}, phone: string): Promise<boolean>;
 export declare function sendTestEmail(input: TestEmailInput): Promise<{
     ok: boolean;
     delivered: boolean;
@@ -73,6 +93,46 @@ export declare function buildAssignmentNotification(report: {
     subject: string;
     message: string;
 };
+export type AssignmentRecipientRole = "assigner" | "primary" | "secondary";
+export interface AssignmentRecipient {
+    email: string;
+    name?: string;
+    role: AssignmentRecipientRole;
+}
+export interface AssignmentDeliveryResult {
+    recipient: string;
+    role: AssignmentRecipientRole;
+    subject: string;
+    message: string;
+    delivered: boolean;
+    mode: "smtp" | "internal" | "failed";
+    error?: string;
+}
+export declare function buildReportAssignmentNotification(report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+}, recipient: AssignmentRecipient, assignedBy?: string, primaryRecipient?: string): {
+    recipient: string;
+    role: AssignmentRecipientRole;
+    subject: string;
+    message: string;
+};
+export declare function sendReportAssignmentNotifications(report: {
+    id: string;
+    severity: string;
+    location: string;
+    reporter: string;
+    description: string;
+    category: string;
+    type: string;
+    date: string;
+}, recipients: AssignmentRecipient[], assignedBy?: string, primaryRecipient?: string): Promise<AssignmentDeliveryResult[]>;
 export declare function sendAssignmentNotification(report: {
     id: string;
     severity: string;

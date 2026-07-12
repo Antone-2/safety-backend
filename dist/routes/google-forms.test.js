@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildReportRecordFromRow, buildReportIdForImportedRecord, classifyGoogleFormsError, fetchGoogleSheetRows } from "./google-forms.js";
+import { buildReportRecordFromRow, buildReportIdForImportedRecord, classifyGoogleFormsError, fetchGoogleSheetRows, parseDate } from "./google-forms.js";
 test("classifies DNS lookup failures as connectivity issues", () => {
     const error = new TypeError("fetch failed");
     error.cause = { code: "ENOTFOUND", hostname: "sheets.googleapis.com" };
@@ -32,6 +32,28 @@ test("maps alternate Google Form headers into report fields", () => {
     assert.equal(report.type, "Unsafe Condition");
     assert.equal(report.severity, "High");
     assert.equal(report.description, "Chemical spill");
+});
+test("parses ambiguous Google Sheets dates as day first by default", () => {
+    assert.equal(parseDate("8/7/2026"), "2026-07-08T00:00:00.000Z");
+    assert.equal(parseDate("08/07/2026 14:30:15"), "2026-07-08T14:30:15.000Z");
+});
+test("allows Google Sheets dates to be parsed as month first when configured", () => {
+    const originalOrder = process.env.GOOGLE_SHEETS_DATE_ORDER;
+    process.env.GOOGLE_SHEETS_DATE_ORDER = "mdy";
+    try {
+        assert.equal(parseDate("8/7/2026"), "2026-08-07T00:00:00.000Z");
+    }
+    finally {
+        if (originalOrder === undefined) {
+            delete process.env.GOOGLE_SHEETS_DATE_ORDER;
+        }
+        else {
+            process.env.GOOGLE_SHEETS_DATE_ORDER = originalOrder;
+        }
+    }
+});
+test("parses Google Sheets numeric date serials", () => {
+    assert.equal(parseDate("46211"), "2026-07-08T00:00:00.000Z");
 });
 test("maps employee name headers into reporter field", () => {
     const headers = ["Timestamp", "Location", "Employee Name", "Incident Summary", "Hazard Category", "Type", "Risk Level"];
@@ -71,7 +93,9 @@ test("creates a deterministic report ID for repeated imports of the same content
 });
 test("falls back to the published CSV endpoint when the Sheets API returns 403", async () => {
     const originalFetch = global.fetch;
+    const originalDocsBaseUrl = process.env.GOOGLE_DOCS_EXPORT_BASE_URL;
     const requestUrls = [];
+    process.env.GOOGLE_DOCS_EXPORT_BASE_URL = "https://docs.google.com/spreadsheets/d";
     global.fetch = (async (input, init) => {
         const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         requestUrls.push(requestUrl);
@@ -90,5 +114,11 @@ test("falls back to the published CSV endpoint when the Sheets API returns 403",
     }
     finally {
         global.fetch = originalFetch;
+        if (originalDocsBaseUrl === undefined) {
+            delete process.env.GOOGLE_DOCS_EXPORT_BASE_URL;
+        }
+        else {
+            process.env.GOOGLE_DOCS_EXPORT_BASE_URL = originalDocsBaseUrl;
+        }
     }
 });

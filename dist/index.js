@@ -1,88 +1,65 @@
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
+import { loadEnv } from "./config/index.js";
 import { initFirebase } from "./lib/firebase.js";
-import { z } from "zod";
-const EnvSchema = z.object({
-    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-    PORT: z.coerce.number().default(4000),
-    FRONTEND_URL: z.string().optional(),
-    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters").optional(),
-    DATABASE_PATH: z.string().optional(),
-});
-const validatedEnv = (() => {
-    try {
-        return EnvSchema.parse(process.env);
+import { connectRedis } from "./shared/infrastructure/redis/redis.client.js";
+import { runPostgresMigrations } from "./shared/infrastructure/database/migrations.js";
+import { correlationIdMiddleware } from "./shared/middleware/correlation-id.middleware.js";
+import { rateLimitMiddleware } from "./shared/middleware/rate-limit.middleware.js";
+import { csrfProtectionMiddleware } from "./shared/middleware/csrf.middleware.js";
+import { requestIdMiddleware } from "./shared/middleware/request-id.middleware.js";
+import { securityHeadersMiddleware } from "./shared/middleware/security.middleware.js";
+import { metricsMiddleware } from "./shared/middleware/metrics.middleware.js";
+import { errorHandler } from "./shared/middleware/error-handler.middleware.js";
+import { metricsService } from "./shared/metrics/metrics.service.js";
+import { logger } from "./shared/utils/logger.js";
+import * as Sentry from "@sentry/node";
+import { createAuthRouter } from "./modules/auth/auth.module.js";
+import { createUsersRouter } from "./modules/users/users.module.js";
+import { createIncidentsRouter } from "./modules/incidents/incidents.controller.js";
+import { createPermitsRouter } from "./modules/permits/permits.module.js";
+import { createCapaRouter } from "./modules/capa/capa.module.js";
+import { createFireRouter, createInvestigationsRouter, createTrainingRouter, createPpeRouter, createEquipmentRouter, createContractorsRouter, createComplianceRouter, createEnvironmentalRouter, createHealthRouter, createHeightWorkRouter, createGovernanceRouter, createAnalyticsRouter, createReportsRouter, createNotificationsRouter, createDocumentsRouter, createSettingsRouter, createAiRouter, } from "./modules/index.js";
+import googleFormsRouter, { setGoogleSheetsPostgresAvailability, startGoogleSheetsScheduler, } from "./routes/google-forms.js";
+import referenceRouter from "./routes/reference.js";
+import operationsRouter from "./routes/operations.js";
+import securityRouter from "./routes/security.js";
+// The frontend calls `/api/...` while the backend historically used `/api/v1/...`.
+// Mount every router under both prefixes so both clients keep working.
+const API_PREFIXES = ["/api", "/api/v1"];
+// Ensure frontend can still hit dashboard endpoints when Postgres is unreachable.
+// In degraded mode, legacy sqlite/sql.js /reports routes are the fallback.
+// (We mount legacy routes *before* Postgres-backed module routes.)
+function mountAll(prefixes, path, router) {
+    for (const prefix of prefixes) {
+        app.use(`${prefix}${path}`, router);
     }
-    catch (error) {
-        if (error instanceof z.ZodError) {
-            console.error("Invalid environment configuration:", error.errors);
-            process.exit(1);
-        }
-        throw error;
-    }
-})();
+}
+const env = loadEnv();
+if (env.SENTRY_DSN) {
+    Sentry.init({
+        dsn: env.SENTRY_DSN,
+        environment: env.NODE_ENV,
+        tracesSampleRate: env.NODE_ENV === "production" ? 0.1 : 1.0,
+    });
+}
 function isAllowedOrigin(origin) {
     if (!origin)
         return true;
-    const configuredOrigins = (validatedEnv.FRONTEND_URL || "")
+    const configuredOrigins = (env.FRONTEND_URL || "")
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean);
     if (configuredOrigins.includes(origin))
         return true;
-    // Allow localhost for development
-    if (/^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin))
-        return true;
-    // Allow Vercel preview/production URLs
-    if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin))
-        return true;
-    return false;
+    if (env.NODE_ENV === "production")
+        return false;
+    return /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin);
 }
-const rateLimitMap = new Map();
-function rateLimitMiddleware(req, res, next) {
-    const key = req.ip || "unknown";
-    const now = Date.now();
-    const windowMs = validatedEnv.NODE_ENV === "production" ? 15 * 60 * 1000 : 5 * 60 * 1000;
-    const maxRequests = validatedEnv.NODE_ENV === "production" ? 100 : 1000;
-    const record = rateLimitMap.get(key);
-    if (!record || now >= record.resetAt) {
-        rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
-        return next();
-    }
-    record.count += 1;
-    if (record.count > maxRequests) {
-        return res.status(429).json({ error: "Too many requests. Please try again later." });
-    }
-    next();
-}
-function requestTimeoutMiddleware(req, res, next) {
-    req.setTimeout(30000);
-    res.setTimeout(30000);
-    next();
-}
-import reportsRouter from "./routes/reports.js";
-import capaRouter from "./routes/capa.js";
-import settingsRouter from "./routes/settings.js";
-import referenceRouter from "./routes/reference.js";
-import googleFormsRouter from "./routes/google-forms.js";
-import authRouter from "./routes/auth.js";
-import notificationsRouter from "./routes/notifications.js";
-import { maybeRunMonthlyLeaderboardJob } from "./lib/leaderboard.js";
-initFirebase();
 const app = express();
+app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use((_req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    if (validatedEnv.NODE_ENV === "production") {
-        res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-    }
-    next();
-});
 app.use(cors({
     origin: (origin, callback) => {
         if (isAllowedOrigin(origin)) {
@@ -93,35 +70,145 @@ app.use(cors({
     },
     credentials: true,
 }));
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(correlationIdMiddleware);
+app.use(requestIdMiddleware);
+app.use(securityHeadersMiddleware);
+app.use(metricsMiddleware);
 app.use(rateLimitMiddleware);
-app.use(requestTimeoutMiddleware);
-app.use("/api/reports", reportsRouter);
-app.use("/api/capa", capaRouter);
-app.use("/api/settings", settingsRouter);
-app.use("/api/reference", referenceRouter);
-app.use("/api/google-forms", googleFormsRouter);
-app.use("/api/auth", authRouter);
-app.use("/api/notifications", notificationsRouter);
-app.get("/health", (_req, res) => res.json({ ok: true, env: validatedEnv.NODE_ENV }));
-app.use((err, _req, res, _next) => {
-    console.error("Unhandled error:", err);
-    res.status(500).json({ error: "Internal server error" });
+app.use(csrfProtectionMiddleware);
+app.get("/health", async (_req, res) => {
+    try {
+        const { checkDatabase } = await import("./shared/infrastructure/database/postgres.client.js");
+        const { checkRedis } = await import("./shared/infrastructure/redis/redis.client.js");
+        const [dbCheck, redisCheck] = await Promise.all([
+            checkDatabase(),
+            checkRedis(),
+        ]);
+        const healthy = dbCheck.ok && redisCheck.ok;
+        res.status(healthy ? 200 : 503).json({
+            status: healthy ? "ok" : "degraded",
+            checks: { database: dbCheck, redis: redisCheck },
+            metrics: metricsService.getSnapshot(),
+        });
+    }
+    catch (error) {
+        res.status(503).json({
+            status: "degraded",
+            error: "Health check failed",
+            metrics: metricsService.getSnapshot(),
+        });
+    }
 });
-const db = await import("./lib/database.js").then((m) => m.getDb());
-await maybeRunMonthlyLeaderboardJob(db);
-const PORT = validatedEnv.PORT;
-const server = app.listen(PORT, () => console.log(`HSE Backend running on http://localhost:${PORT}`));
-function gracefulShutdown(signal) {
-    console.log(`Received ${signal}. Shutting down gracefully...`);
-    server.close(() => {
-        console.log("HTTP server closed.");
-        process.exit(0);
-    });
-    setTimeout(() => {
-        console.error("Forced shutdown due to timeout.");
-        process.exit(1);
-    }, 10000);
+app.get("/metrics", (_req, res) => {
+    res.json(metricsService.getSnapshot());
+});
+app.get("/ready", async (_req, res) => {
+    try {
+        const { checkDatabase } = await import("./shared/infrastructure/database/postgres.client.js");
+        const dbCheck = env.DATABASE_URL ? await checkDatabase() : { ok: true };
+        res.status(dbCheck.ok ? 200 : 503).json({
+            status: dbCheck.ok ? "ready" : "not-ready",
+            databaseRequired: Boolean(env.DATABASE_URL),
+        });
+    }
+    catch (error) {
+        res.status(503).json({ status: "not-ready" });
+    }
+});
+mountAll(API_PREFIXES, "/auth", createAuthRouter());
+mountAll(API_PREFIXES, "/users", createUsersRouter());
+// Prefer Postgres-backed module routes when available.
+import reportsLegacyRouter from "./routes/reports.js";
+mountAll(API_PREFIXES, "/reports", createReportsRouter());
+// Keep the legacy sqlite/sql.js router available for any unmatched /reports requests
+// in environments where the Postgres-backed routes are not reachable.
+mountAll(API_PREFIXES, "/reports", reportsLegacyRouter);
+mountAll(API_PREFIXES, "/google-forms", googleFormsRouter);
+mountAll(API_PREFIXES, "/reference", referenceRouter);
+mountAll(API_PREFIXES, "/incidents", createIncidentsRouter());
+mountAll(API_PREFIXES, "/permits", createPermitsRouter());
+mountAll(API_PREFIXES, "/capa", createCapaRouter());
+mountAll(API_PREFIXES, "/investigations", createInvestigationsRouter());
+mountAll(API_PREFIXES, "/training", createTrainingRouter());
+mountAll(API_PREFIXES, "/ppe", createPpeRouter());
+mountAll(API_PREFIXES, "/equipment", createEquipmentRouter());
+mountAll(API_PREFIXES, "/contractors", createContractorsRouter());
+mountAll(API_PREFIXES, "/compliance", createComplianceRouter());
+mountAll(API_PREFIXES, "/environmental", createEnvironmentalRouter());
+mountAll(API_PREFIXES, "/health", createHealthRouter());
+mountAll(API_PREFIXES, "/fire", createFireRouter());
+mountAll(API_PREFIXES, "/fire", createFireRouter());
+mountAll(API_PREFIXES, "/heightwork", createHeightWorkRouter());
+mountAll(API_PREFIXES, "/governance", createGovernanceRouter());
+mountAll(API_PREFIXES, "/analytics", createAnalyticsRouter());
+mountAll(API_PREFIXES, "/operations", operationsRouter);
+mountAll(API_PREFIXES, "/security", securityRouter);
+mountAll(API_PREFIXES, "/notifications", createNotificationsRouter());
+mountAll(API_PREFIXES, "/documents", createDocumentsRouter());
+mountAll(API_PREFIXES, "/settings", createSettingsRouter());
+mountAll(API_PREFIXES, "/ai", createAiRouter());
+if (env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
 }
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+app.use(errorHandler);
+function startServer() {
+    const PORT = env.PORT;
+    const server = app.listen(PORT, () => {
+        logger.info(`EHS Backend running on http://localhost:${PORT}`);
+        console.log(`EHS Backend running on http://localhost:${PORT}`);
+    });
+    function gracefulShutdown(signal) {
+        logger.info(`Received ${signal}. Shutting down gracefully...`);
+        console.log(`Received ${signal}. Shutting down gracefully...`);
+        server.close(() => {
+            logger.info("HTTP server closed.");
+            console.log("HTTP server closed.");
+            process.exit(0);
+        });
+        setTimeout(() => {
+            logger.error("Forced shutdown due to timeout.");
+            console.error("Forced shutdown due to timeout.");
+            process.exit(1);
+        }, 10000);
+    }
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+}
+async function bootstrap() {
+    // Allow the backend to start even if Redis is unavailable.
+    // Redis is used for background/queue features; the API can run in degraded mode.
+    try {
+        let postgresAvailable = true;
+        try {
+            await connectRedis();
+        }
+        catch (redisError) {
+            logger.warn({ err: redisError }, "Redis unavailable; starting server in degraded mode.");
+        }
+        if (!env.DATABASE_URL) {
+            postgresAvailable = false;
+            logger.warn("PostgreSQL not configured; set DATABASE_URL to enable database-backed features.");
+        }
+        else {
+            try {
+                await runPostgresMigrations();
+            }
+            catch (pgError) {
+                postgresAvailable = false;
+                logger.warn({ err: pgError }, "PostgreSQL unavailable; starting server in degraded mode.");
+            }
+        }
+        setGoogleSheetsPostgresAvailability(postgresAvailable);
+        initFirebase();
+        startServer();
+        startGoogleSheetsScheduler();
+    }
+    catch (error) {
+        logger.error({ err: error }, "Bootstrap failed:");
+        console.error("Bootstrap failed:", error);
+        process.exit(1);
+    }
+}
+bootstrap();
