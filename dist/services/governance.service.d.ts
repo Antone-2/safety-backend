@@ -20,9 +20,9 @@ export declare const UserSchema: z.ZodObject<{
     name: string;
     email: string;
     id?: string | undefined;
-    createdAt?: string | undefined;
     phone?: string | undefined;
     passwordHash?: string | undefined;
+    createdAt?: string | undefined;
     department?: string | undefined;
     site?: string | undefined;
     avatarUrl?: string | undefined;
@@ -33,9 +33,9 @@ export declare const UserSchema: z.ZodObject<{
     email: string;
     status?: "Active" | "Inactive" | "Locked" | undefined;
     id?: string | undefined;
-    createdAt?: string | undefined;
     phone?: string | undefined;
     passwordHash?: string | undefined;
+    createdAt?: string | undefined;
     department?: string | undefined;
     site?: string | undefined;
     avatarUrl?: string | undefined;

@@ -1,20 +1,6 @@
-import { v4 as uuidv4 } from "uuid";
-import { allRows, getDb, saveDb } from "../lib/database.js";
+import { randomUUID } from "node:crypto";
 import { sendTestEmail } from "../lib/email.js";
-const now = () => new Date().toISOString();
-function parseJson(value, fallback) {
-    if (value === undefined || value === null || value === "")
-        return fallback;
-    try {
-        return JSON.parse(String(value));
-    }
-    catch {
-        return fallback;
-    }
-}
-function stringify(value, fallback) {
-    return JSON.stringify(value ?? fallback);
-}
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 function renderTemplate(template, payload) {
     return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
         const value = key.split(".").reduce((current, part) => {
@@ -22,227 +8,205 @@ function renderTemplate(template, payload) {
                 return undefined;
             return current[part];
         }, payload);
-        return value === undefined || value === null ? "" : String(value);
+        return value == null ? "" : String(value);
     });
 }
-function normalizeTemplate(row) {
-    return row
-        ? {
-            ...row,
-            active: Boolean(row.active),
-        }
-        : row;
+function templateRow(row) {
+    return row && {
+        id: row.id,
+        eventKey: row.event_key,
+        channel: row.channel,
+        subjectTemplate: row.subject_template,
+        bodyTemplate: row.body_template,
+        active: row.active,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
 }
-function normalizeJob(row) {
-    return row
-        ? {
-            ...row,
-            payload: parseJson(row.payload, {}),
-        }
-        : row;
+function jobRow(row) {
+    return row && {
+        id: row.id,
+        eventKey: row.event_key,
+        workflow: row.workflow,
+        resourceType: row.resource_type,
+        resourceId: row.resource_id,
+        payload: row.payload ?? {},
+        status: row.status,
+        attempts: Number(row.attempts ?? 0),
+        maxAttempts: Number(row.max_attempts ?? 3),
+        nextAttemptAt: row.next_attempt_at,
+        lastError: row.last_error,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
 }
-function normalizeRecipient(row) {
-    return row
-        ? {
-            ...row,
-            attempts: Number(row.attempts || 0),
-        }
-        : row;
+function recipientRow(row) {
+    return row && {
+        id: row.id,
+        jobId: row.job_id,
+        channel: row.channel,
+        recipient: row.recipient,
+        recipientName: row.recipient_name,
+        status: row.status,
+        attempts: Number(row.attempts ?? 0),
+        deliveredAt: row.delivered_at,
+        failedAt: row.failed_at,
+        lastError: row.last_error,
+        providerMessageId: row.provider_message_id,
+        readAt: row.read_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
 }
 export class NotificationCenterService {
     async listTemplates() {
-        const db = await getDb();
-        return allRows(db, "SELECT * FROM notification_templates ORDER BY eventKey ASC, channel ASC").map(normalizeTemplate);
+        const result = await pgPool.query("SELECT * FROM notification_templates ORDER BY event_key, channel");
+        return result.rows.map(templateRow);
     }
     async upsertTemplate(data, actor) {
-        const db = await getDb();
-        const createdAt = now();
-        const template = {
-            id: data.id || uuidv4(),
-            eventKey: data.eventKey,
-            channel: data.channel || "email",
-            subjectTemplate: data.subjectTemplate || "{{eventKey}}",
-            bodyTemplate: data.bodyTemplate || "{{message}}",
-            active: data.active === false ? 0 : 1,
-            createdBy: actor?.name || actor?.email || "System",
-            createdAt,
-            updatedAt: createdAt,
-        };
-        db.prepare(`INSERT OR REPLACE INTO notification_templates
-       (id, eventKey, channel, subjectTemplate, bodyTemplate, active, createdBy, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(Object.values(template));
-        await saveDb(db);
-        return normalizeTemplate(template);
+        const result = await pgPool.query(`INSERT INTO notification_templates
+       (id, event_key, channel, subject_template, body_template, active, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (event_key) DO UPDATE SET
+         channel = EXCLUDED.channel,
+         subject_template = EXCLUDED.subject_template,
+         body_template = EXCLUDED.body_template,
+         active = EXCLUDED.active,
+         updated_at = NOW()
+       RETURNING *`, [
+            data.id || randomUUID(),
+            data.eventKey,
+            data.channel || "email",
+            data.subjectTemplate || "{{eventKey}}",
+            data.bodyTemplate || "{{message}}",
+            data.active !== false,
+            actor?.name || actor?.email || "System",
+        ]);
+        return templateRow(result.rows[0]);
     }
     async enqueue(input) {
-        const db = await getDb();
-        const createdAt = now();
-        const job = {
-            id: uuidv4(),
-            eventKey: input.eventKey,
-            workflow: input.workflow || null,
-            resourceType: input.resourceType || null,
-            resourceId: input.resourceId || null,
-            payload: stringify(input.payload, {}),
-            status: "queued",
-            attempts: 0,
-            maxAttempts: input.maxAttempts ?? 3,
-            nextAttemptAt: createdAt,
-            lastError: null,
-            createdBy: input.createdBy || "System",
-            createdAt,
-            updatedAt: createdAt,
-        };
-        db.prepare(`INSERT INTO notification_jobs
-       (id, eventKey, workflow, resourceType, resourceId, payload, status, attempts, maxAttempts, nextAttemptAt, lastError, createdBy, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(Object.values(job));
-        const insertRecipient = db.prepare(`INSERT INTO notification_recipients
-       (id, jobId, channel, recipient, recipientName, status, attempts, deliveredAt, failedAt, lastError, providerMessageId, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-        for (const recipient of input.recipients) {
-            insertRecipient.run([
-                uuidv4(),
-                job.id,
-                recipient.channel,
-                recipient.recipient,
-                recipient.name || null,
-                "queued",
-                0,
-                null,
-                null,
-                null,
-                null,
-                createdAt,
-                createdAt,
+        const client = await pgPool.connect();
+        try {
+            await client.query("BEGIN");
+            const result = await client.query(`INSERT INTO notification_jobs
+         (id,event_key,workflow,resource_type,resource_id,payload,status,max_attempts,next_attempt_at,created_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'queued',$7,NOW(),$8)
+         RETURNING *`, [
+                randomUUID(), input.eventKey, input.workflow || null,
+                input.resourceType || null, input.resourceId || null,
+                JSON.stringify(input.payload || {}), input.maxAttempts ?? 3,
+                input.createdBy || "System",
             ]);
+            for (const recipient of input.recipients) {
+                await client.query(`INSERT INTO notification_recipients
+           (id,job_id,channel,recipient,recipient_name,status)
+           VALUES ($1,$2,$3,$4,$5,'queued')`, [randomUUID(), result.rows[0].id, recipient.channel, recipient.recipient, recipient.name || null]);
+            }
+            await client.query("COMMIT");
+            return jobRow(result.rows[0]);
         }
-        await saveDb(db);
-        return normalizeJob(job);
+        catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        }
+        finally {
+            client.release();
+        }
     }
     async processDue(limit = 25) {
-        const db = await getDb();
-        const jobs = allRows(db, `SELECT * FROM notification_jobs
-       WHERE status IN ('queued','retrying') AND (nextAttemptAt IS NULL OR nextAttemptAt <= ?)
-       ORDER BY createdAt ASC LIMIT ?`, [now(), limit]).map(normalizeJob);
-        const results = [];
-        for (const job of jobs) {
-            results.push(await this.processJob(job.id));
-        }
-        return results;
+        const result = await pgPool.query(`SELECT id FROM notification_jobs
+       WHERE status IN ('queued','retrying')
+         AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+       ORDER BY created_at LIMIT $1`, [Math.min(Math.max(limit, 1), 100)]);
+        return Promise.all(result.rows.map((row) => this.processJob(row.id)));
     }
     async processJob(jobId) {
-        const db = await getDb();
-        const job = normalizeJob(allRows(db, "SELECT * FROM notification_jobs WHERE id = ?", [jobId])[0]);
+        const jobResult = await pgPool.query("SELECT * FROM notification_jobs WHERE id = $1", [jobId]);
+        const job = jobRow(jobResult.rows[0]);
         if (!job)
             throw new Error("Notification job not found");
-        const recipients = allRows(db, "SELECT * FROM notification_recipients WHERE jobId = ? AND status IN ('queued','retrying','failed')", [jobId]).map(normalizeRecipient);
-        const templates = allRows(db, "SELECT * FROM notification_templates WHERE eventKey = ? AND active = 1", [job.eventKey]).map(normalizeTemplate);
+        const [recipientResult, templateResult] = await Promise.all([
+            pgPool.query("SELECT * FROM notification_recipients WHERE job_id = $1 AND status IN ('queued','retrying','failed')", [jobId]),
+            pgPool.query("SELECT * FROM notification_templates WHERE event_key = $1 AND active = TRUE", [job.eventKey]),
+        ]);
+        const templates = templateResult.rows.map(templateRow);
         let failed = 0;
         let delivered = 0;
-        for (const recipient of recipients) {
-            const template = templates.find((item) => item.channel === recipient.channel) ||
-                templates.find((item) => item.channel === "email");
+        for (const rawRecipient of recipientResult.rows) {
+            const recipient = recipientRow(rawRecipient);
+            const template = templates.find((item) => item.channel === recipient.channel) || templates[0];
             const subject = renderTemplate(template?.subjectTemplate || job.eventKey, job.payload);
-            const body = renderTemplate(template?.bodyTemplate ||
-                String(job.payload.message || ""), job.payload);
-            const result = await this.deliver(recipient.channel, recipient.recipient, subject, body);
-            const updatedAt = now();
-            db.prepare(`UPDATE notification_recipients
-         SET status = ?, attempts = attempts + 1, deliveredAt = ?, failedAt = ?, lastError = ?, providerMessageId = ?, updatedAt = ?
-         WHERE id = ?`).run([
-                result.delivered ? "delivered" : "failed",
-                result.delivered ? updatedAt : null,
-                result.delivered ? null : updatedAt,
-                result.error || null,
-                result.providerMessageId || null,
-                updatedAt,
+            const body = renderTemplate(template?.bodyTemplate || String(job.payload.message || ""), job.payload);
+            const delivery = await this.deliver(recipient.channel, recipient.recipient, subject, body);
+            await pgPool.query(`UPDATE notification_recipients SET
+           status=$1, attempts=attempts+1, delivered_at=$2, failed_at=$3,
+           last_error=$4, provider_message_id=$5, updated_at=NOW()
+         WHERE id=$6`, [
+                delivery.delivered ? "delivered" : "failed",
+                delivery.delivered ? new Date() : null,
+                delivery.delivered ? null : new Date(),
+                delivery.error || null,
+                delivery.providerMessageId || null,
                 recipient.id,
             ]);
-            if (result.delivered)
+            if (delivery.delivered)
                 delivered += 1;
             else
                 failed += 1;
         }
-        const attempts = Number(job.attempts || 0) + 1;
-        const nextAttemptAt = failed > 0 && attempts < Number(job.maxAttempts || 3)
-            ? new Date(Date.now() + Math.min(60, 2 ** attempts) * 60000).toISOString()
+        const attempts = job.attempts + 1;
+        const nextAttemptAt = failed > 0 && attempts < job.maxAttempts
+            ? new Date(Date.now() + Math.min(60, 2 ** attempts) * 60_000)
             : null;
         const status = failed === 0 ? "delivered" : nextAttemptAt ? "retrying" : "failed";
-        db.prepare(`UPDATE notification_jobs
-       SET status = ?, attempts = ?, nextAttemptAt = ?, lastError = ?, updatedAt = ?
-       WHERE id = ?`).run([
-            status,
-            attempts,
-            nextAttemptAt,
-            failed ? `${failed} recipient delivery failure(s)` : null,
-            now(),
-            jobId,
-        ]);
-        await saveDb(db);
+        await pgPool.query(`UPDATE notification_jobs SET status=$1, attempts=$2, next_attempt_at=$3,
+       last_error=$4, updated_at=NOW() WHERE id=$5`, [status, attempts, nextAttemptAt, failed ? `${failed} recipient delivery failure(s)` : null, jobId]);
         return { jobId, status, delivered, failed, attempts, nextAttemptAt };
     }
     async listJobs(filters) {
-        const db = await getDb();
-        let sql = "SELECT * FROM notification_jobs WHERE 1=1";
-        const params = [];
+        const values = [];
+        let where = "";
         if (filters?.status) {
-            sql += " AND status = ?";
-            params.push(filters.status);
+            values.push(filters.status);
+            where = `WHERE status = $${values.length}`;
         }
-        sql += " ORDER BY createdAt DESC LIMIT ?";
-        params.push(filters?.limit ?? 100);
-        return allRows(db, sql, params).map(normalizeJob);
+        values.push(Math.min(Math.max(filters?.limit ?? 100, 1), 250));
+        const result = await pgPool.query(`SELECT * FROM notification_jobs ${where} ORDER BY created_at DESC LIMIT $${values.length}`, values);
+        return result.rows.map(jobRow);
     }
     async listRecipients(jobId) {
-        const db = await getDb();
-        if (jobId) {
-            return allRows(db, "SELECT * FROM notification_recipients WHERE jobId = ? ORDER BY createdAt DESC", [jobId]).map(normalizeRecipient);
-        }
-        return allRows(db, "SELECT * FROM notification_recipients ORDER BY createdAt DESC LIMIT 250").map(normalizeRecipient);
+        const result = jobId
+            ? await pgPool.query("SELECT * FROM notification_recipients WHERE job_id=$1 ORDER BY created_at DESC", [jobId])
+            : await pgPool.query("SELECT * FROM notification_recipients ORDER BY created_at DESC LIMIT 250");
+        return result.rows.map(recipientRow);
     }
     async dashboard() {
-        const db = await getDb();
-        const jobs = allRows(db, "SELECT status, COUNT(*) AS count FROM notification_jobs GROUP BY status");
-        const recipients = allRows(db, "SELECT status, channel, COUNT(*) AS count FROM notification_recipients GROUP BY status, channel");
-        const failures = allRows(db, "SELECT * FROM notification_recipients WHERE status = 'failed' ORDER BY updatedAt DESC LIMIT 25").map(normalizeRecipient);
-        return { jobs, recipients, failures };
+        const [jobs, recipients, failures] = await Promise.all([
+            pgPool.query("SELECT status, COUNT(*)::int AS count FROM notification_jobs GROUP BY status"),
+            pgPool.query("SELECT status, channel, COUNT(*)::int AS count FROM notification_recipients GROUP BY status, channel"),
+            pgPool.query("SELECT * FROM notification_recipients WHERE status='failed' ORDER BY updated_at DESC LIMIT 25"),
+        ]);
+        return { jobs: jobs.rows, recipients: recipients.rows, failures: failures.rows.map(recipientRow) };
     }
     async createDigest(input) {
-        const db = await getDb();
-        const createdAt = now();
-        const digest = {
-            id: uuidv4(),
-            userId: input.userId || null,
-            recipient: input.recipient,
-            cadence: input.cadence || "daily",
-            channels: stringify(input.channels, ["email", "in-app"]),
-            active: 1,
-            nextRunAt: null,
-            createdAt,
-            updatedAt: createdAt,
+        const result = await pgPool.query(`INSERT INTO notification_digest_subscriptions
+       (id,user_id,recipient,cadence,channels,active)
+       VALUES ($1,$2,$3,$4,$5::jsonb,TRUE) RETURNING *`, [randomUUID(), input.userId || null, input.recipient, input.cadence || "daily", JSON.stringify(input.channels || ["email", "in-app"])]);
+        const row = result.rows[0];
+        return {
+            id: row.id, userId: row.user_id, recipient: row.recipient,
+            cadence: row.cadence, channels: row.channels, active: row.active,
+            nextRunAt: row.next_run_at, createdAt: row.created_at, updatedAt: row.updated_at,
         };
-        db.prepare(`INSERT INTO notification_digest_subscriptions
-       (id, userId, recipient, cadence, channels, active, nextRunAt, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(Object.values(digest));
-        await saveDb(db);
-        return { ...digest, channels: parseJson(digest.channels, []) };
     }
     async deliver(channel, recipient, subject, body) {
-        if (channel === "in-app") {
-            const db = await getDb();
-            db.prepare(`INSERT INTO notifications
-         (id, reportId, channel, recipient, subject, message, delivered, createdAt, read)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run([uuidv4(), "", "in-app", recipient, subject, body, 1, now(), 0]);
-            await saveDb(db);
+        if (channel === "in-app")
             return { delivered: true, providerMessageId: "in-app" };
-        }
         if (channel === "email") {
             try {
-                const result = await sendTestEmail({
-                    to: recipient,
-                    subject,
-                    message: body,
-                });
+                const result = await sendTestEmail({ to: recipient, subject, message: body });
                 return {
                     delivered: Boolean(result.delivered),
                     providerMessageId: result.mode,
@@ -250,16 +214,10 @@ export class NotificationCenterService {
                 };
             }
             catch (error) {
-                return {
-                    delivered: false,
-                    error: error instanceof Error ? error.message : String(error),
-                };
+                return { delivered: false, error: error instanceof Error ? error.message : String(error) };
             }
         }
-        return {
-            delivered: false,
-            error: `${channel} provider is not configured in this deployment.`,
-        };
+        return { delivered: false, error: `${channel} provider is not configured in this deployment.` };
     }
 }
 export const notificationCenterService = new NotificationCenterService();

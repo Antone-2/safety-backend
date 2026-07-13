@@ -1,11 +1,11 @@
 import { Router, type Request, type Response } from "express";
-import { allRows, getDb, saveDb } from "../lib/database.js";
 import {
   authenticateUser,
   type AuthRequest,
 } from "../shared/middleware/auth.middleware.js";
 import { requireRole } from "../middleware/auth.js";
 import { notificationCenterService } from "../services/notification-center.service.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
 const router = Router();
 
@@ -22,33 +22,36 @@ export interface NotificationSummary {
 }
 
 export async function listNotifications(): Promise<NotificationSummary[]> {
-  const db = await getDb();
-  const rows = allRows(
-    db,
-    "SELECT id, reportId, channel, recipient, subject, message, delivered, createdAt, COALESCE(read, 0) as read FROM notifications ORDER BY createdAt DESC",
-  ) as Array<Record<string, unknown>>;
-
-  return rows.map((row) => ({
+  const result = await pgPool.query(
+    `SELECT nr.id, nj.resource_id AS report_id, nr.channel, nr.recipient,
+            COALESCE(nj.payload->>'subject', nj.event_key) AS subject,
+            COALESCE(nj.payload->>'message', '') AS message,
+            (nr.status = 'delivered') AS delivered,
+            (nr.read_at IS NOT NULL) AS read,
+            nr.created_at
+     FROM notification_recipients nr
+     JOIN notification_jobs nj ON nj.id = nr.job_id
+     ORDER BY nr.created_at DESC`,
+  );
+  return result.rows.map((row) => ({
     id: String(row.id ?? ""),
-    reportId: String(row.reportId ?? ""),
+    reportId: String(row.report_id ?? ""),
     channel: String(row.channel ?? ""),
     recipient: String(row.recipient ?? ""),
     subject: String(row.subject ?? ""),
     message: String(row.message ?? ""),
     delivered: Boolean(row.delivered),
     read: Boolean(row.read),
-    createdAt: String(row.createdAt ?? ""),
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ""),
   }));
 }
 
 export async function markNotificationsRead(ids: string[]) {
   if (!ids.length) return;
-  const db = await getDb();
-  const placeholders = ids.map(() => "?").join(",");
-  db.prepare(
-    `UPDATE notifications SET read = 1 WHERE id IN (${placeholders})`,
-  ).run(ids);
-  await saveDb(db);
+  await pgPool.query(
+    "UPDATE notification_recipients SET read_at = NOW(), updated_at = NOW() WHERE id = ANY($1::uuid[])",
+    [ids],
+  );
 }
 
 router.get("/", authenticateUser, async (req: AuthRequest, res: Response) => {

@@ -1,5 +1,18 @@
 import { isFirebaseAvailable, getFirebase } from "./firebase.js";
 import { allRows, getDb } from "./database.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+function isPgConfigured() {
+    return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
+}
+function mapPgUser(row) {
+    return {
+        id: String(row.id),
+        name: row.name,
+        email: row.email,
+        phone: row.phone || undefined,
+        role: row.role,
+    };
+}
 // Roles eligible to appear in the "assign supervisor" (To) dropdown.
 export const SUPERVISOR_ROLES = [
     "super-admin",
@@ -39,6 +52,24 @@ export async function listUsers(roleFilter) {
         return snap.docs
             .map(mapFirestoreUser)
             .filter((u) => Boolean(u.email));
+    }
+    if (isPgConfigured()) {
+        try {
+            if (roleFilter && roleFilter.length) {
+                const result = await pgPool.query(`SELECT id::text, name, email, phone, role
+           FROM users
+           WHERE role = ANY($1::text[])
+           ORDER BY name`, [roleFilter]);
+                return result.rows.map(mapPgUser);
+            }
+            const result = await pgPool.query(`SELECT id::text, name, email, phone, role
+         FROM users
+         ORDER BY name`);
+            return result.rows.map(mapPgUser);
+        }
+        catch {
+            // Fall through to the SQLite fallback if Postgres is unreachable.
+        }
     }
     const db = await getDb();
     if (roleFilter && roleFilter.length) {

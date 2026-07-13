@@ -5,6 +5,10 @@ import {
   leaderboardMonth,
   reporterPointsForSeverity,
 } from "../../src/services/leaderboard.service.js";
+import {
+  getDb,
+  PostgresOnlyDatabaseError,
+} from "../../src/lib/database.js";
 
 describe("production readiness", () => {
   it("uses unique PostgreSQL migration identifiers", () => {
@@ -16,6 +20,18 @@ describe("production readiness", () => {
     expect(
       POSTGRES_MIGRATIONS.some((migration) =>
         migration.sql.includes("CREATE TABLE IF NOT EXISTS reporter_points"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails closed instead of opening the legacy SQLite runtime database", async () => {
+    await expect(getDb()).rejects.toBeInstanceOf(PostgresOnlyDatabaseError);
+  });
+
+  it("stores application settings in PostgreSQL", () => {
+    expect(
+      POSTGRES_MIGRATIONS.some((migration) =>
+        migration.sql.includes("CREATE TABLE IF NOT EXISTS app_settings"),
       ),
     ).toBe(true);
   });

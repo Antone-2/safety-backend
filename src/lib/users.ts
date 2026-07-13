@@ -84,7 +84,7 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
       );
       return result.rows.map(mapPgUser);
     } catch {
-      // Fall through to the SQLite fallback if Postgres is unreachable.
+      // The retired compatibility path below fails closed; it cannot open SQLite.
     }
   }
 

@@ -1,83 +1,30 @@
 import { Router } from "express";
-import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
-import { allRows, getDb } from "../lib/database.js";
-import { listUsers } from "../lib/users.js";
+import { listUsers, SUPERVISOR_ROLES } from "../lib/users.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 import { authenticateUser } from "../shared/middleware/auth.middleware.js";
 const router = Router();
 router.use(authenticateUser);
-// All users with their registered contact details. Used by the assignment
-// flow to populate the supervisor (To) and additional recipient (Cc) dropdowns.
 router.get("/users", async (_req, res) => {
-    const users = await listUsers();
-    res.json(users);
+    res.json(await listUsers());
 });
 router.get("/supervisors", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("users").get();
-        const names = snap.docs
-            .map((doc) => doc.data().name)
-            .filter((name) => Boolean(name));
-        return res.json(names.sort());
-    }
-    const db = await getDb();
-    return res.json(allRows(db, "SELECT name FROM users WHERE role IN ('super-admin','gm','EHS-manager','plant-manager','factory-manager','depot-admin') ORDER BY name").map((r) => r.name));
+    const result = await pgPool.query(`SELECT name FROM users
+     WHERE active = TRUE AND role = ANY($1::text[])
+     ORDER BY name`, [SUPERVISOR_ROLES]);
+    res.json(result.rows.map((row) => row.name));
 });
+async function distinctReportValues(column) {
+    const result = await pgPool.query(`SELECT DISTINCT ${column} FROM reports
+     WHERE ${column} IS NOT NULL AND ${column} <> '' ORDER BY ${column}`);
+    return result.rows.map((row) => row[column]);
+}
 router.get("/locations", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("reports").get();
-        return res.json([...new Set(snap.docs.map((doc) => doc.data().location))].sort());
-    }
-    const db = await getDb();
-    return res.json(allRows(db, "SELECT DISTINCT location FROM reports ORDER BY location").map((r) => r.location));
+    res.json(await distinctReportValues("location"));
 });
 router.get("/hazard-categories", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("reports").get();
-        return res.json([...new Set(snap.docs.map((doc) => doc.data().category))].sort());
-    }
-    const db = await getDb();
-    return res.json(allRows(db, "SELECT DISTINCT category FROM reports ORDER BY category").map((r) => r.category));
+    res.json(await distinctReportValues("category"));
 });
 router.get("/departments", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("reports").get();
-        return res.json([...new Set(snap.docs.map((doc) => doc.data().department))].sort());
-    }
-    const db = await getDb();
-    return res.json(allRows(db, "SELECT DISTINCT department FROM reports ORDER BY department").map((r) => r.department));
-});
-router.get("/supervisors", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("users").get();
-        const names = snap.docs
-            .map((doc) => doc.data().name)
-            .filter((name) => Boolean(name));
-        return res.json(names.sort());
-    }
-    const db = await getDb();
-    return res.json(allRows(db, "SELECT name FROM users WHERE role IN ('super-admin','gm','EHS-manager','plant-manager','factory-manager','depot-admin') ORDER BY name").map((r) => r.name));
-});
-router.get("/employees", async (_req, res) => {
-    if (isFirebaseAvailable()) {
-        const db = getFirebase();
-        const snap = await db.collection("reports").get();
-        const names = new Set();
-        snap.forEach((doc) => {
-            const d = doc.data();
-            if (d.assignedTo)
-                names.add(d.assignedTo);
-            if (d.reporter && d.reporter !== "Anonymous")
-                names.add(d.reporter);
-        });
-        return res.json([...names].sort());
-    }
-    const db = await getDb();
-    const rows = allRows(db, "SELECT DISTINCT assignedTo as name FROM reports WHERE assignedTo IS NOT NULL UNION SELECT DISTINCT reporter as name FROM reports WHERE reporter IS NOT NULL ORDER BY name");
-    return res.json(rows.map((r) => r.name).filter(Boolean));
+    res.json(await distinctReportValues("department"));
 });
 export default router;

@@ -212,7 +212,7 @@ function otpEmailHtml(code, expiresMinutes) {
                   <tr>
                     <td valign="top" style="padding:16px 0 16px 16px;color:#b66a00;font-size:18px;">&#9888;</td>
                     <td style="padding:15px 18px 15px 10px;color:#6c531d;font-size:13px;line-height:1.65;">
-                      <strong style="color:#4d390e;">Anti-phishing warning.</strong> Crown Paints staff will <u>never</u> ask for this code by phone, email, or chat &mdash; not even to &ldquo;verify your account.&rdquo; Always confirm this message was sent from <strong style="color:#4d390e;">safety@crownpaints.co.ke</strong>. Never forward this code.
+                      <strong style="color:#4d390e;">Anti-phishing warning.</strong> EHS staff will <u>never</u> ask for this code by phone, email, or chat &mdash; not even to &ldquo;verify your account.&rdquo; Always confirm this message was sent from <strong style="color:#4d390e;">safety@crownpaints.co.ke</strong>. Never forward this code.
                     </td>
                   </tr>
                 </table>

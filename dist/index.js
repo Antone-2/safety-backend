@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { loadEnv } from "./config/index.js";
-import { initFirebase } from "./lib/firebase.js";
 import { connectRedis } from "./shared/infrastructure/redis/redis.client.js";
 import { runPostgresMigrations } from "./shared/infrastructure/database/migrations.js";
 import { pgPool } from "./shared/infrastructure/database/postgres.client.js";
@@ -32,9 +31,6 @@ import storageRouter from "./routes/storage.js";
 // The frontend calls `/api/...` while the backend historically used `/api/v1/...`.
 // Mount every router under both prefixes so both clients keep working.
 const API_PREFIXES = ["/api", "/api/v1"];
-// Ensure frontend can still hit dashboard endpoints when Postgres is unreachable.
-// In degraded mode, legacy sqlite/sql.js /reports routes are the fallback.
-// (We mount legacy routes *before* Postgres-backed module routes.)
 function mountAll(prefixes, path, router) {
     for (const prefix of prefixes) {
         app.use(`${prefix}${path}`, router);
@@ -136,12 +132,7 @@ app.get("/ready", async (_req, res) => {
 });
 mountAll(API_PREFIXES, "/auth", createAuthRouter());
 mountAll(API_PREFIXES, "/users", createUsersRouter());
-// Prefer Postgres-backed module routes when available.
-import reportsLegacyRouter from "./routes/reports.js";
 mountAll(API_PREFIXES, "/reports", createReportsRouter());
-// Keep the legacy sqlite/sql.js router available for any unmatched /reports requests
-// in environments where the Postgres-backed routes are not reachable.
-mountAll(API_PREFIXES, "/reports", reportsLegacyRouter);
 mountAll(API_PREFIXES, "/google-forms", googleFormsRouter);
 mountAll(API_PREFIXES, "/reference", referenceRouter);
 mountAll(API_PREFIXES, "/incidents", createIncidentsRouter());
@@ -196,10 +187,7 @@ function startServer() {
     process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 async function bootstrap() {
-    // Allow the backend to start even if Redis is unavailable.
-    // Redis is used for background/queue features; the API can run in degraded mode.
     try {
-        let postgresAvailable = true;
         try {
             await connectRedis();
         }
@@ -209,26 +197,11 @@ async function bootstrap() {
             logger.warn({ err: redisError }, "Redis unavailable; starting server in degraded mode.");
         }
         if (!env.DATABASE_URL) {
-            if (env.REQUIRE_POSTGRES === "true") {
-                throw new Error("DATABASE_URL is required when REQUIRE_POSTGRES=true");
-            }
-            postgresAvailable = false;
-            logger.warn("PostgreSQL not configured; set DATABASE_URL to enable database-backed features.");
+            throw new Error("DATABASE_URL is required; PostgreSQL is the only application database");
         }
-        else {
-            try {
-                await runPostgresMigrations();
-                await ensureConfiguredDemoAdmin();
-            }
-            catch (pgError) {
-                if (env.REQUIRE_POSTGRES === "true")
-                    throw pgError;
-                postgresAvailable = false;
-                logger.warn({ err: pgError }, "PostgreSQL unavailable; starting server in degraded mode.");
-            }
-        }
-        setGoogleSheetsPostgresAvailability(postgresAvailable);
-        initFirebase();
+        await runPostgresMigrations();
+        await ensureConfiguredDemoAdmin();
+        setGoogleSheetsPostgresAvailability(true);
         startServer();
         startGoogleSheetsScheduler();
         startMonthlyLeaderboardScheduler();

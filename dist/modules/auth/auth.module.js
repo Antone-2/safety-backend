@@ -949,16 +949,21 @@ export function createAuthRouter() {
         await enforceSessionLimit(user.id);
         await audit(req, "login", email, true, user.id);
         const csrfToken = randomBytes(24).toString("base64url");
+        // The frontend and backend are served from different origins (e.g. Vercel
+        // + Render), so the refresh cookie must be allowed on cross-site requests.
+        // `sameSite: "none"` is required for that and implies `secure` in browsers,
+        // so only use it in production where HTTPS is guaranteed.
+        const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
         res.cookie("ehs_csrf", csrfToken, {
             httpOnly: false,
-            sameSite: "strict",
+            sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
             maxAge: 7 * 86400000,
             path: "/",
         });
         res.cookie("ehs_refresh", refreshToken, {
             httpOnly: true,
-            sameSite: "strict",
+            sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
             maxAge: 7 * 86400000,
             path: "/api/auth",

@@ -1351,6 +1351,21 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ON leaderboard_awards(month, rank);
     `,
   },
+  {
+    id: "032_postgres_only_runtime",
+    description: "Add PostgreSQL settings and notification read state",
+    sql: `
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE notification_recipients
+        ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_notification_recipients_read
+        ON notification_recipients(recipient, read_at, created_at DESC);
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {

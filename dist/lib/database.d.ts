@@ -1,11 +1,14 @@
-import { Database as SqlJsDatabase } from "sql.js";
-declare function getDb(): Promise<SqlJsDatabase>;
-declare function saveDb(db: SqlJsDatabase): Promise<void>;
-export declare function allRows(db: SqlJsDatabase, sql: string, params?: any[]): any[];
+import type { Database as SqlJsDatabase } from "sql.js";
 /**
- * Synchronous accessor for callers that expect an already-resolved database
- * (e.g. repositories that call `getDb().prepare(...)` synchronously).
- * On first call it blocks until the cached promise resolves.
+ * Runtime SQLite access has been retired. The type-compatible exports remain
+ * temporarily so legacy modules fail closed instead of silently opening
+ * `data.db`. The only supported SQLite access is the explicit
+ * `db:import-sqlite` migration script, which opens its source file directly.
  */
+export declare class PostgresOnlyDatabaseError extends Error {
+    constructor();
+}
+export declare function getDb(): Promise<SqlJsDatabase>;
 export declare function getDbSync(): SqlJsDatabase;
-export { getDb, saveDb };
+export declare function saveDb(_db: SqlJsDatabase): Promise<void>;
+export declare function allRows(_db: SqlJsDatabase, _sql: string, _params?: unknown[]): any[];

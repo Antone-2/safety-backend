@@ -174,7 +174,7 @@ router.get("/", authMiddleware, requireRole("super-admin", "EHS-manager"), async
   if (isFirebaseAvailable()) {
     const db = getFirebase()!;
     const usersSnap = await db.collection("users").orderBy("createdAt", "desc").get();
-    return res.json(usersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    return res.json(usersSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })));
   }
   const db = await getDb();
   const users = allRows(db, "SELECT id, email, name, role, createdAt FROM users ORDER BY createdAt DESC") as any[];

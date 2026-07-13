@@ -5,15 +5,7 @@ export declare class OperationalMonitoringService {
         status: string;
         message: string;
         metadata?: Record<string, unknown>;
-    }): Promise<{
-        metadata: Record<string, unknown>;
-        id: string;
-        type: string;
-        source: string;
-        status: string;
-        message: string;
-        createdAt: string;
-    }>;
+    }): Promise<any>;
     recordSchedulerRun(input: {
         jobName: string;
         status: string;
@@ -22,29 +14,13 @@ export declare class OperationalMonitoringService {
         durationMs?: number;
         error?: string;
         metadata?: Record<string, unknown>;
-    }): Promise<{
-        metadata: Record<string, unknown>;
-        id: string;
-        jobName: string;
-        status: string;
-        startedAt: string;
-        finishedAt: string | null;
-        durationMs: number | null;
-        error: string | null;
-    }>;
+    }): Promise<any>;
     recordSlowQuery(input: {
         operation: string;
         durationMs: number;
         thresholdMs: number;
         metadata?: Record<string, unknown>;
-    }): Promise<{
-        metadata: Record<string, unknown>;
-        id: string;
-        operation: string;
-        durationMs: number;
-        thresholdMs: number;
-        createdAt: string;
-    }>;
+    }): Promise<any>;
     dashboard(): Promise<{
         events: any[];
         scheduler: any[];

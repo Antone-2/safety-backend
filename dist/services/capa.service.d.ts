@@ -41,12 +41,12 @@ export declare const CapaSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "Corrective" | "Preventive" | "Improvement";
     status: "Completed" | "Open" | "In Progress" | "Overdue" | "Cancelled";
-    source: string;
     dueDate: string;
     attachments: string;
     priority: "Critical" | "Low" | "Medium" | "High";
     department: string;
     description: string;
+    source: string;
     createdBy: string;
     title: string;
     actionPlan: string;
@@ -71,10 +71,10 @@ export declare const CapaSchema: z.ZodObject<{
     capaNo?: string | undefined;
     updatedAt?: string | undefined;
 }, {
-    source: string;
     dueDate: string;
     department: string;
     description: string;
+    source: string;
     createdBy: string;
     title: string;
     actionPlan: string;
@@ -83,9 +83,9 @@ export declare const CapaSchema: z.ZodObject<{
     type?: "Corrective" | "Preventive" | "Improvement" | undefined;
     status?: "Completed" | "Open" | "In Progress" | "Overdue" | "Cancelled" | undefined;
     id?: string | undefined;
-    createdAt?: string | undefined;
     attachments?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
+    createdAt?: string | undefined;
     rootCause?: string | undefined;
     startDate?: string | undefined;
     linkedIncidentId?: string | undefined;

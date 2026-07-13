@@ -258,9 +258,9 @@ export declare const CreateLegalUpdateSchema: z.ZodObject<{
     jurisdiction: string;
     effectiveDate: string;
     summary: string;
-    source?: string | undefined;
     dueDate?: string | undefined;
     assignedTo?: string | undefined;
+    source?: string | undefined;
     impactAssessment?: string | undefined;
     actionRequired?: string | undefined;
 }, {
@@ -271,9 +271,9 @@ export declare const CreateLegalUpdateSchema: z.ZodObject<{
     effectiveDate: string;
     summary: string;
     status?: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented" | undefined;
-    source?: string | undefined;
     dueDate?: string | undefined;
     assignedTo?: string | undefined;
+    source?: string | undefined;
     impactAssessment?: string | undefined;
     actionRequired?: string | undefined;
 }>;
@@ -292,9 +292,9 @@ export declare const UpdateLegalUpdateSchema: z.ZodObject<{
     source: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     status?: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented" | undefined;
-    source?: string | null | undefined;
     dueDate?: string | null | undefined;
     assignedTo?: string | null | undefined;
+    source?: string | null | undefined;
     title?: string | undefined;
     legislation?: string | undefined;
     jurisdiction?: string | undefined;
@@ -304,9 +304,9 @@ export declare const UpdateLegalUpdateSchema: z.ZodObject<{
     actionRequired?: string | null | undefined;
 }, {
     status?: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented" | undefined;
-    source?: string | null | undefined;
     dueDate?: string | null | undefined;
     assignedTo?: string | null | undefined;
+    source?: string | null | undefined;
     title?: string | undefined;
     legislation?: string | undefined;
     jurisdiction?: string | undefined;

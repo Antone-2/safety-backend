@@ -1,16 +1,6 @@
-import { v4 as uuidv4 } from "uuid";
-import { allRows, getDb, saveDb } from "../lib/database.js";
+import { randomUUID } from "node:crypto";
 
-const now = () => new Date().toISOString();
-
-function parseJson(value: unknown, fallback: unknown) {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(String(value));
-  } catch {
-    return fallback;
-  }
-}
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
 export class OperationalMonitoringService {
   async recordEvent(input: {
@@ -20,23 +10,12 @@ export class OperationalMonitoringService {
     message: string;
     metadata?: Record<string, unknown>;
   }) {
-    const db = await getDb();
-    const event = {
-      id: uuidv4(),
-      type: input.type,
-      source: input.source,
-      status: input.status,
-      message: input.message,
-      metadata: JSON.stringify(input.metadata || {}),
-      createdAt: now(),
-    };
-    db.prepare(
-      `INSERT INTO operational_events
-       (id, type, source, status, message, metadata, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(event));
-    await saveDb(db);
-    return { ...event, metadata: input.metadata || {} };
+    const result = await pgPool.query(
+      `INSERT INTO operational_events (id,type,source,status,message,metadata)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *`,
+      [randomUUID(), input.type, input.source, input.status, input.message, JSON.stringify(input.metadata || {})],
+    );
+    return result.rows[0];
   }
 
   async recordSchedulerRun(input: {
@@ -48,24 +27,14 @@ export class OperationalMonitoringService {
     error?: string;
     metadata?: Record<string, unknown>;
   }) {
-    const db = await getDb();
-    const run = {
-      id: uuidv4(),
-      jobName: input.jobName,
-      status: input.status,
-      startedAt: input.startedAt,
-      finishedAt: input.finishedAt || null,
-      durationMs: input.durationMs || null,
-      error: input.error || null,
-      metadata: JSON.stringify(input.metadata || {}),
-    };
-    db.prepare(
+    const result = await pgPool.query(
       `INSERT INTO scheduler_runs
-       (id, jobName, status, startedAt, finishedAt, durationMs, error, metadata)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(run));
-    await saveDb(db);
-    return { ...run, metadata: input.metadata || {} };
+       (id,job_name,status,started_at,finished_at,duration_ms,error,metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) RETURNING *`,
+      [randomUUID(), input.jobName, input.status, input.startedAt, input.finishedAt || null,
+        input.durationMs ?? null, input.error || null, JSON.stringify(input.metadata || {})],
+    );
+    return result.rows[0];
   }
 
   async recordSlowQuery(input: {
@@ -74,43 +43,28 @@ export class OperationalMonitoringService {
     thresholdMs: number;
     metadata?: Record<string, unknown>;
   }) {
-    const db = await getDb();
-    const row = {
-      id: uuidv4(),
-      operation: input.operation,
-      durationMs: input.durationMs,
-      thresholdMs: input.thresholdMs,
-      metadata: JSON.stringify(input.metadata || {}),
-      createdAt: now(),
-    };
-    db.prepare(
-      `INSERT INTO slow_query_logs
-       (id, operation, durationMs, thresholdMs, metadata, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(row));
-    await saveDb(db);
-    return { ...row, metadata: input.metadata || {} };
+    const result = await pgPool.query(
+      `INSERT INTO slow_query_logs (id,operation,duration_ms,threshold_ms,metadata)
+       VALUES ($1,$2,$3,$4,$5::jsonb) RETURNING *`,
+      [randomUUID(), input.operation, input.durationMs, input.thresholdMs, JSON.stringify(input.metadata || {})],
+    );
+    return result.rows[0];
   }
 
   async dashboard() {
-    const db = await getDb();
-    const events = allRows(
-      db,
-      "SELECT type, status, COUNT(*) AS count FROM operational_events GROUP BY type, status",
-    );
-    const scheduler = allRows(
-      db,
-      "SELECT jobName, status, COUNT(*) AS count, MAX(startedAt) AS lastStartedAt FROM scheduler_runs GROUP BY jobName, status",
-    );
-    const slowRequests = allRows(
-      db,
-      "SELECT * FROM slow_query_logs ORDER BY createdAt DESC LIMIT 50",
-    ).map((row) => ({ ...row, metadata: parseJson(row.metadata, {}) }));
-    const recentEvents = allRows(
-      db,
-      "SELECT * FROM operational_events ORDER BY createdAt DESC LIMIT 50",
-    ).map((row) => ({ ...row, metadata: parseJson(row.metadata, {}) }));
-    return { events, scheduler, slowRequests, recentEvents };
+    const [events, scheduler, slowRequests, recentEvents] = await Promise.all([
+      pgPool.query("SELECT type,status,COUNT(*)::int AS count FROM operational_events GROUP BY type,status"),
+      pgPool.query(`SELECT job_name AS "jobName",status,COUNT(*)::int AS count,
+                    MAX(started_at) AS "lastStartedAt" FROM scheduler_runs GROUP BY job_name,status`),
+      pgPool.query("SELECT * FROM slow_query_logs ORDER BY created_at DESC LIMIT 50"),
+      pgPool.query("SELECT * FROM operational_events ORDER BY created_at DESC LIMIT 50"),
+    ]);
+    return {
+      events: events.rows,
+      scheduler: scheduler.rows,
+      slowRequests: slowRequests.rows,
+      recentEvents: recentEvents.rows,
+    };
   }
 }
 

@@ -25,16 +25,16 @@ export declare class NotificationCenterService {
         status: string;
         delivered: number;
         failed: number;
-        attempts: number;
-        nextAttemptAt: string | null;
+        attempts: any;
+        nextAttemptAt: Date | null;
     }[]>;
     processJob(jobId: string): Promise<{
         jobId: string;
         status: string;
         delivered: number;
         failed: number;
-        attempts: number;
-        nextAttemptAt: string | null;
+        attempts: any;
+        nextAttemptAt: Date | null;
     }>;
     listJobs(filters?: {
         status?: string;
@@ -52,15 +52,15 @@ export declare class NotificationCenterService {
         cadence?: string;
         channels?: NotificationChannel[];
     }): Promise<{
+        id: any;
+        userId: any;
+        recipient: any;
+        cadence: any;
         channels: any;
-        id: string;
-        userId: string | null;
-        recipient: string;
-        cadence: string;
-        active: number;
-        nextRunAt: null;
-        createdAt: string;
-        updatedAt: string;
+        active: any;
+        nextRunAt: any;
+        createdAt: any;
+        updatedAt: any;
     }>;
     private deliver;
 }

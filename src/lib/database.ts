@@ -29,6 +29,6 @@ export function allRows(
   _db: SqlJsDatabase,
   _sql: string,
   _params?: unknown[],
-): Record<string, unknown>[] {
+): any[] {
   throw new PostgresOnlyDatabaseError();
 }
