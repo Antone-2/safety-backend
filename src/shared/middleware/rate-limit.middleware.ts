@@ -8,6 +8,9 @@ let rateLimitRedisUnavailableLogged = false;
 
 const env = getEnv();
 
+let consecutiveRedisFailures = 0;
+const REDIS_FAILURE_THRESHOLD = 3;
+
 function isLocalhost(ip: string | undefined): boolean {
   if (!ip) return false;
   return (
@@ -69,12 +72,15 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
   }
 
   try {
-    // Fixed window: increment the counter, set the expiry only on first hit so
-    // the window actually resets instead of sliding forward on every request.
+    if (consecutiveRedisFailures >= REDIS_FAILURE_THRESHOLD) {
+      return next();
+    }
+
     const count = await redisClient.incr(key);
     if (count === 1) {
       await redisClient.expire(key, ttlSeconds);
     }
+    consecutiveRedisFailures = 0;
 
     const remaining = Math.max(0, maxRequests - count);
     res.setHeader("X-RateLimit-Limit", String(maxRequests));
@@ -87,7 +93,13 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 
     next();
   } catch {
-    logger.warn("Rate limit check failed, allowing request");
+    consecutiveRedisFailures++;
+    if (consecutiveRedisFailures === 1 || consecutiveRedisFailures === REDIS_FAILURE_THRESHOLD) {
+      logger.warn(
+        { consecutiveRedisFailures, err: undefined },
+        "Rate limit check failed, allowing request"
+      );
+    }
     next();
   }
 }
