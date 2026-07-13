@@ -36,6 +36,22 @@ function getSenderEmail() {
   );
 }
 
+function getCrownLogoUrl() {
+  if (process.env.CROWN_LOGO_URL) return process.env.CROWN_LOGO_URL;
+  if (process.env.EMAIL_LOGO_URL) return process.env.EMAIL_LOGO_URL;
+
+  // Inline Crown Paints mark (white crown + red gem on transparent ground)
+  // so the email is branded even without a hosted logo. SVG data URIs render
+  // in most modern clients; Outlook shows the alt text as a graceful fallback.
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">' +
+    '<path d="M8 30 L13 15 L22 24 L31 15 L36 30 Z" fill="#ffffff"/>' +
+    '<rect x="8" y="30" width="28" height="3" rx="1.5" fill="#ffffff"/>' +
+    '<circle cx="22" cy="11" r="2.6" fill="#e2231a"/>' +
+    "</svg>";
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -65,7 +81,11 @@ function htmlFromText(message: string, title = "Crown EHS notification") {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 16px 48px rgba(8,45,99,.14);">
           <tr><td style="padding:28px 34px;background:#082d63;background-image:linear-gradient(135deg,#082d63 0%,#0b4b91 100%);">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-              <td><div style="display:inline-block;padding:8px 12px;border:1px solid rgba(255,255,255,.28);border-radius:10px;color:#ffffff;font-size:13px;font-weight:800;letter-spacing:.08em;">CROWN PAINTS</div><div style="margin-top:13px;color:#d9eaff;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Environment, Health &amp; Safety</div></td>
+              <td>
+                <img src="${getCrownLogoUrl()}" width="44" height="44" alt="Crown Paints" style="display:block;border:0;outline:none;text-decoration:none;width:44px;height:44px;" />
+                <div style="margin-top:12px;color:#ffffff;font-size:15px;font-weight:800;letter-spacing:.1em;">CROWN PAINTS</div>
+                <div style="margin-top:12px;color:#d9eaff;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Environment, Health &amp; Safety</div>
+              </td>
               <td align="right" valign="top"><div style="display:inline-block;width:44px;height:44px;line-height:44px;text-align:center;border-radius:14px;background:rgba(255,255,255,.14);color:#ffffff;font-size:21px;">&#128276;</div></td>
             </tr></table>
           </td></tr>
@@ -76,6 +96,8 @@ function htmlFromText(message: string, title = "Crown EHS notification") {
           </td></tr>
           <tr><td style="padding:16px 34px 22px;">${content}</td></tr>
           <tr><td style="padding:18px 34px;border-top:1px solid #e8edf3;background:#fafbfd;color:#7a8494;font-size:12px;line-height:1.65;">
+            <div style="color:#172033;font-size:14px;font-weight:700;line-height:1.4;">Let&rsquo;s talk safety,</div>
+            <div style="margin-bottom:12px;color:#0b4b91;font-size:13px;font-weight:600;">The Crown Paints EHS Team</div>
             This is an automated operational notification. Please do not reply directly to this email.<br />
             <span style="color:#9aa3b1;">Crown Paints EHS &bull; Safer work through timely action</span>
           </td></tr>
@@ -146,12 +168,9 @@ function otpEmailHtml(code: string, expiresMinutes: number) {
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   <tr>
                     <td>
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-                        <td style="width:10px;height:10px;background:#e2231a;border-radius:3px;"></td>
-                        <td width="10"></td>
-                        <td><div style="color:#ffffff;font-size:15px;font-weight:800;letter-spacing:.1em;">CROWN PAINTS</div></td>
-                      </tr></table>
-                      <div style="margin-top:14px;color:#cfe2ff;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;">Environment, Health &amp; Safety</div>
+                      <img src="${getCrownLogoUrl()}" width="44" height="44" alt="Crown Paints" style="display:block;border:0;outline:none;text-decoration:none;width:44px;height:44px;" />
+                      <div style="margin-top:12px;color:#ffffff;font-size:15px;font-weight:800;letter-spacing:.1em;">CROWN PAINTS</div>
+                      <div style="margin-top:12px;color:#cfe2ff;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;">Environment, Health &amp; Safety</div>
                     </td>
                     <td align="right" valign="top">
                       <div style="display:inline-block;width:46px;height:46px;line-height:46px;text-align:center;border-radius:14px;background:rgba(255,255,255,.14);color:#ffffff;font-size:22px;">&#128274;</div>
@@ -213,7 +232,7 @@ function otpEmailHtml(code: string, expiresMinutes: number) {
                   <tr>
                     <td valign="top" style="padding:16px 0 16px 16px;color:#b66a00;font-size:18px;">&#9888;</td>
                     <td style="padding:15px 18px 15px 10px;color:#6c531d;font-size:13px;line-height:1.65;">
-                      <strong style="color:#4d390e;">Anti-phishing warning.</strong> Crown Paints staff will <u>never</u> ask for this code by phone, email, or chat &mdash; not even to &ldquo;verify your account.&rdquo; Always confirm this message was sent from <strong style="color:#4d390e;">safety@crownpaints.co.ke</strong>. Never forward this code.
+                      <strong style="color:#4d390e;">Anti-phishing warning.</strong> EHS staff will <u>never</u> ask for this code by phone, email, or chat &mdash; not even to &ldquo;verify your account.&rdquo; Always confirm this message was sent from <strong style="color:#4d390e;">safety@crownpaints.co.ke</strong>. Never forward this code.
                     </td>
                   </tr>
                 </table>
@@ -222,6 +241,8 @@ function otpEmailHtml(code: string, expiresMinutes: number) {
             <!-- Footer -->
             <tr>
               <td class="cp-pad" style="padding:20px 36px;border-top:1px solid #e8edf3;background:#fafbfd;color:#7a8494;font-size:12px;line-height:1.65;">
+                <div style="color:#172033;font-size:14px;font-weight:700;line-height:1.4;">Let&rsquo;s talk safety,</div>
+                <div style="margin-bottom:12px;color:#0b4b91;font-size:13px;font-weight:600;">The Crown Paints EHS Team</div>
                 If you did not request this code, you can safely ignore this email or contact your EHS administrator.<br />
                 <span style="color:#9aa3b1;">Automated security notification &bull; Crown Paints EHS &bull; Safer work through timely action</span>
               </td>

@@ -159,7 +159,7 @@ export declare const UpdatePermitSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["draft", "applicant", "supervisor", "ehs", "issuer", "approval", "active", "closed", "expired"]>>;
 }, "strip", z.ZodTypeAny, {
     type?: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General" | undefined;
-    status?: "supervisor" | "issuer" | "closed" | "draft" | "active" | "applicant" | "ehs" | "approval" | "expired" | undefined;
+    status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
     location?: string | undefined;
@@ -183,7 +183,7 @@ export declare const UpdatePermitSchema: z.ZodObject<{
     fireWatchAssigned?: string | null | undefined;
 }, {
     type?: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General" | undefined;
-    status?: "supervisor" | "issuer" | "closed" | "draft" | "active" | "applicant" | "ehs" | "approval" | "expired" | undefined;
+    status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
     location?: string | undefined;
@@ -210,9 +210,9 @@ export type UpdatePermitInput = z.infer<typeof UpdatePermitSchema>;
 export declare const AdvancePermitStatusSchema: z.ZodObject<{
     status: z.ZodEnum<["draft", "applicant", "supervisor", "ehs", "issuer", "approval", "active", "closed", "expired"]>;
 }, "strip", z.ZodTypeAny, {
-    status: "supervisor" | "issuer" | "closed" | "draft" | "active" | "applicant" | "ehs" | "approval" | "expired";
+    status: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired";
 }, {
-    status: "supervisor" | "issuer" | "closed" | "draft" | "active" | "applicant" | "ehs" | "approval" | "expired";
+    status: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired";
 }>;
 export type AdvancePermitStatusInput = z.infer<typeof AdvancePermitStatusSchema>;
 export declare const CreatePermitInputSchema: z.ZodObject<{
@@ -326,7 +326,7 @@ export declare const UpdatePermitInputSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["draft", "applicant", "supervisor", "ehs", "issuer", "approval", "active", "closed", "expired"]>>;
 }, "strip", z.ZodTypeAny, {
     type?: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General" | undefined;
-    status?: "supervisor" | "issuer" | "closed" | "draft" | "active" | "applicant" | "ehs" | "approval" | "expired" | undefined;
+    status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
     location?: string | undefined;
@@ -350,7 +350,7 @@ export declare const UpdatePermitInputSchema: z.ZodObject<{
     fireWatchAssigned?: string | null | undefined;
 }, {
     type?: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General" | undefined;
-    status?: "supervisor" | "issuer" | "closed" | "draft" | "active" | "applicant" | "ehs" | "approval" | "expired" | undefined;
+    status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
     location?: string | undefined;

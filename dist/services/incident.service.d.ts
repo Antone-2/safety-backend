@@ -43,12 +43,12 @@ export declare const IncidentSchema: z.ZodObject<{
     type: "Unsafe Act" | "Unsafe Condition" | "Near Miss" | "First Aid" | "Medical Treatment" | "Lost Time" | "Fatality" | "Property Damage" | "Environmental";
     status: "Closed" | "Open" | "Investigating" | "Root Cause Analysis" | "CAPA Open";
     source: string;
-    severity: "Low" | "Medium" | "High" | "Critical";
+    anonymous: boolean;
+    reporter: string;
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     department: string;
     description: string;
-    reporter: string;
-    anonymous: boolean;
     isNearMiss: boolean;
     slaHours: number;
     regulatoryNotificationRequired: boolean;
@@ -73,17 +73,17 @@ export declare const IncidentSchema: z.ZodObject<{
 }, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition" | "Near Miss" | "First Aid" | "Medical Treatment" | "Lost Time" | "Fatality" | "Property Damage" | "Environmental";
-    severity: "Low" | "Medium" | "High" | "Critical";
+    reporter: string;
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     department: string;
     description: string;
-    reporter: string;
     status?: "Closed" | "Open" | "Investigating" | "Root Cause Analysis" | "CAPA Open" | undefined;
     id?: string | undefined;
     source?: string | undefined;
+    anonymous?: boolean | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
-    anonymous?: boolean | undefined;
     isNearMiss?: boolean | undefined;
     photoUrl?: string | undefined;
     photos?: string[] | undefined;

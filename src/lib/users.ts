@@ -1,5 +1,10 @@
 import { isFirebaseAvailable, getFirebase } from "./firebase.js";
 import { allRows, getDb } from "./database.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+
+function isPgConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
+}
 
 export interface AppUser {
   id: string;
@@ -7,6 +12,16 @@ export interface AppUser {
   email: string;
   phone?: string;
   role: string;
+}
+
+function mapPgUser(row: any): AppUser {
+  return {
+    id: String(row.id),
+    name: row.name,
+    email: row.email,
+    phone: row.phone || undefined,
+    role: row.role,
+  };
 }
 
 // Roles eligible to appear in the "assign supervisor" (To) dropdown.
@@ -48,6 +63,29 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
     return snap.docs
       .map(mapFirestoreUser)
       .filter((u: AppUser) => Boolean(u.email));
+  }
+
+  if (isPgConfigured()) {
+    try {
+      if (roleFilter && roleFilter.length) {
+        const result = await pgPool.query(
+          `SELECT id::text, name, email, phone, role
+           FROM users
+           WHERE role = ANY($1::text[])
+           ORDER BY name`,
+          [roleFilter],
+        );
+        return result.rows.map(mapPgUser);
+      }
+      const result = await pgPool.query(
+        `SELECT id::text, name, email, phone, role
+         FROM users
+         ORDER BY name`,
+      );
+      return result.rows.map(mapPgUser);
+    } catch {
+      // Fall through to the SQLite fallback if Postgres is unreachable.
+    }
   }
 
   const db = await getDb();

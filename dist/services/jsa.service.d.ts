@@ -14,15 +14,15 @@ export declare const JsaStepSchema: z.ZodObject<{
     description: string;
     hazards: string[];
     controls: string[];
-    existingRisk: "Low" | "Medium" | "High" | "Critical";
-    residualRisk: "Low" | "Medium" | "High" | "Critical";
+    existingRisk: "Critical" | "Low" | "Medium" | "High";
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }, {
     id: string;
     description: string;
     hazards: string[];
     controls: string[];
-    existingRisk: "Low" | "Medium" | "High" | "Critical";
-    residualRisk: "Low" | "Medium" | "High" | "Critical";
+    existingRisk: "Critical" | "Low" | "Medium" | "High";
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }>;
 export declare const JsaSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
@@ -43,21 +43,21 @@ export declare const JsaSchema: z.ZodObject<{
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }, {
         id: string;
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }>, "many">>>;
     createdBy: z.ZodString;
     reviewedBy: z.ZodOptional<z.ZodString>;
     reviewedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "draft" | "active" | "completed" | "in-review" | "archived";
+    status: "active" | "draft" | "completed" | "in-review" | "archived";
     location: string;
     department: string;
     createdBy: string;
@@ -67,8 +67,8 @@ export declare const JsaSchema: z.ZodObject<{
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[];
     id?: string | undefined;
     description?: string | undefined;
@@ -79,7 +79,7 @@ export declare const JsaSchema: z.ZodObject<{
     department: string;
     createdBy: string;
     title: string;
-    status?: "draft" | "active" | "completed" | "in-review" | "archived" | undefined;
+    status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
     id?: string | undefined;
     description?: string | undefined;
     reviewedBy?: string | undefined;
@@ -89,8 +89,8 @@ export declare const JsaSchema: z.ZodObject<{
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[] | undefined;
 }>;
 export type JsaInput = z.infer<typeof JsaSchema>;

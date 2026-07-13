@@ -24,7 +24,7 @@ export declare const HazardReportSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: string;
-    severity: "Low" | "Medium" | "High" | "Critical";
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     department: string;
     description: string;
@@ -43,7 +43,7 @@ export declare const HazardReportSchema: z.ZodObject<{
     resolvedAt?: string | undefined;
     resolution?: string | undefined;
 }, {
-    severity: "Low" | "Medium" | "High" | "Critical";
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     department: string;
     description: string;

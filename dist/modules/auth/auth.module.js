@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomInt } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { LoginSchema, CreateUserSchema, OtpRequestSchema, OtpVerifySchema, } from "./auth.types.js";
 import { getEnv } from "../../config/index.js";
-import { ConflictError } from "../../shared/domain/errors/index.js";
+import { ConflictError, ExternalServiceError, } from "../../shared/domain/errors/index.js";
 import { isFirebaseAvailable, getFirebase, sanitizeForFirestore, } from "../../shared/integrations/firebase/firebase.client.js";
 import { authenticateUser, requireRole, } from "../../shared/middleware/auth.middleware.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
@@ -626,7 +626,8 @@ export function createAuthRouter() {
     }
     async function findUserByEmail(email) {
         const normalized = normalizeEmail(email);
-        if (env.ENABLE_DEMO_LOGIN === "true" &&
+        if (!isPgConfigured() &&
+            env.ENABLE_DEMO_LOGIN === "true" &&
             env.DEMO_EMAIL &&
             normalized === normalizeEmail(env.DEMO_EMAIL)) {
             return {
@@ -662,7 +663,7 @@ export function createAuthRouter() {
                     : null;
             }
             catch {
-                // Fall through to SQLite fallback.
+                throw new ExternalServiceError("PostgreSQL", "Account lookup is temporarily unavailable. Please try again.");
             }
         }
         try {
@@ -731,7 +732,7 @@ export function createAuthRouter() {
                     error.code === "23505") {
                     throw new ConflictError("Email already registered");
                 }
-                // Fall through to SQLite fallback when Postgres is configured but unavailable.
+                throw new ExternalServiceError("PostgreSQL", "The account could not be saved. Please try again.");
             }
         }
         const db = await getDb();
@@ -1070,7 +1071,7 @@ export function createAuthRouter() {
                 return res.json(result.rows);
             }
             catch {
-                // Fall through to SQLite fallback.
+                throw new ExternalServiceError("PostgreSQL", "User records are temporarily unavailable. Please try again.");
             }
         }
         const db = await getDb();
@@ -1319,6 +1320,45 @@ export function createAuthRouter() {
             return res
                 .status(403)
                 .json({ error: "Only a super-admin can perform email recovery" });
+        if (isPgConfigured()) {
+            const existing = await pgPool.query("SELECT id::text, role FROM users WHERE id = $1 LIMIT 1", [id]);
+            if (!existing.rows[0])
+                return res.status(404).json({ error: "User not found" });
+            const updates = [];
+            const values = [];
+            const addUpdate = (column, value) => {
+                values.push(value);
+                updates.push(`${column} = $${values.length}`);
+            };
+            if (name)
+                addUpdate("name", name);
+            if (role)
+                addUpdate("role", role);
+            if (active !== undefined)
+                addUpdate("active", active);
+            if (email)
+                addUpdate("email", email);
+            addUpdate("updated_at", new Date());
+            values.push(id);
+            try {
+                const result = await pgPool.query(`UPDATE users SET ${updates.join(", ")}
+             WHERE id = $${values.length}
+             RETURNING id::text, email, name, role, phone, active, created_at AS "createdAt"`, values);
+                if (role || email || active === false) {
+                    await pgPool.query("UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [id]);
+                }
+                return res.json(result.rows[0]);
+            }
+            catch (error) {
+                if (typeof error === "object" &&
+                    error &&
+                    "code" in error &&
+                    error.code === "23505") {
+                    return res.status(409).json({ error: "Email already registered" });
+                }
+                throw new ExternalServiceError("PostgreSQL", "The user account could not be updated. Please try again.");
+            }
+        }
         const db = await getDb();
         const existing = allRows(db, "SELECT id FROM users WHERE id = ?", [
             id,
@@ -1347,6 +1387,31 @@ export function createAuthRouter() {
             return res
                 .status(400)
                 .json({ error: "You cannot suspend your own account" });
+        if (isPgConfigured()) {
+            const target = await pgPool.query("SELECT role FROM users WHERE id = $1 LIMIT 1", [id]);
+            if (!target.rows[0])
+                return res.status(404).json({ error: "User not found" });
+            if (target.rows[0].role === "super-admin" &&
+                req.user.role !== "super-admin")
+                return res
+                    .status(403)
+                    .json({ error: "Only a super-admin can suspend a super-admin" });
+            const client = await pgPool.connect();
+            try {
+                await client.query("BEGIN");
+                await client.query("UPDATE users SET active = FALSE, updated_at = NOW() WHERE id = $1", [id]);
+                await client.query("UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [id]);
+                await client.query("COMMIT");
+                return res.json({ ok: true, suspended: id });
+            }
+            catch {
+                await client.query("ROLLBACK").catch(() => undefined);
+                throw new ExternalServiceError("PostgreSQL", "The user account could not be suspended. Please try again.");
+            }
+            finally {
+                client.release();
+            }
+        }
         const db = await getDb();
         const target = allRows(db, "SELECT role FROM users WHERE id = ?", [
             id,

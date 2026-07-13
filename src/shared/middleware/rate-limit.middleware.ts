@@ -4,6 +4,8 @@ import { RATE_LIMIT } from "../../config/constants.js";
 import { getEnv } from "../../config/index.js";
 import { logger } from "../utils/logger.js";
 
+let rateLimitRedisUnavailableLogged = false;
+
 const env = getEnv();
 
 function isLocalhost(ip: string | undefined): boolean {
@@ -54,6 +56,17 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
   const windowMs = RATE_LIMIT.WINDOW_MS;
   const maxRequests = RATE_LIMIT.MAX_REQUESTS;
   const ttlSeconds = Math.ceil(windowMs / 1000);
+
+  // Redis is required for the distributed counter. When it isn't connected
+  // (degraded mode), allow the request instead of failing open on every hit
+  // and spamming the logs.
+  if (!redisClient.isOpen) {
+    if (!rateLimitRedisUnavailableLogged) {
+      rateLimitRedisUnavailableLogged = true;
+      logger.warn("Redis unavailable; rate limiting disabled until Redis is reachable.");
+    }
+    return next();
+  }
 
   try {
     // Fixed window: increment the counter, set the expiry only on first hit so

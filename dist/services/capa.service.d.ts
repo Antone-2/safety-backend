@@ -44,7 +44,7 @@ export declare const CapaSchema: z.ZodObject<{
     source: string;
     dueDate: string;
     attachments: string;
-    priority: "Low" | "Medium" | "High" | "Critical";
+    priority: "Critical" | "Low" | "Medium" | "High";
     department: string;
     description: string;
     createdBy: string;
@@ -85,7 +85,7 @@ export declare const CapaSchema: z.ZodObject<{
     id?: string | undefined;
     createdAt?: string | undefined;
     attachments?: string | undefined;
-    priority?: "Low" | "Medium" | "High" | "Critical" | undefined;
+    priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
     rootCause?: string | undefined;
     startDate?: string | undefined;
     linkedIncidentId?: string | undefined;

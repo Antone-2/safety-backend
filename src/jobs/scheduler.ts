@@ -1,4 +1,4 @@
-import { emailQueue, smsQueue, slaQueue, reportQueue, createWorker } from "../shared/infrastructure/redis/queue.service.js";
+import { createWorker } from "../shared/infrastructure/redis/queue.service.js";
 import { connectRedis } from "../shared/infrastructure/redis/redis.client.js";
 import { logger } from "../shared/utils/logger.js";
 import { sendEmail } from "./workers/index.js";

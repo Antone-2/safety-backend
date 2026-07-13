@@ -70,7 +70,7 @@ describe("backend foundation contracts", () => {
 
   it("includes enterprise document-control storage", () => {
     const migration = POSTGRES_MIGRATIONS.find(
-      (item) => item.id === "013_enterprise_document_control",
+      (item) => item.id === "025_enterprise_document_control",
     );
     expect(migration?.sql).toContain("CREATE TABLE IF NOT EXISTS documents");
     expect(migration?.sql).toContain(

@@ -629,42 +629,45 @@ async function updateSyncState(update: {
   rowCount?: number;
   importedCount?: number;
 }) {
+  // Build the statement dynamically so we only touch the columns that were
+  // actually provided. Columns left out of the INSERT use their table DEFAULT
+  // (which satisfies the NOT NULL constraints on first insert), and on conflict
+  // they are preserved by referencing the existing row instead of EXCLUDED.
+  const columns: string[] = ["id", "status", "last_error"];
+  const values: unknown[] = [SYNC_STATE_ID, update.status, update.error ?? null];
+  const sets: string[] = [
+    "status = EXCLUDED.status",
+    "last_error = EXCLUDED.last_error",
+    "updated_at = NOW()",
+  ];
+
+  const optionalFields: Array<{ col: string; value: unknown }> = [
+    { col: "last_started_at", value: update.startedAt },
+    { col: "last_finished_at", value: update.finishedAt },
+    { col: "last_success_at", value: update.successAt },
+    { col: "last_sheet_name", value: update.sheetName },
+    { col: "last_row_count", value: update.rowCount },
+    { col: "last_imported_count", value: update.importedCount },
+  ];
+
+  for (const field of optionalFields) {
+    if (field.value !== undefined) {
+      values.push(field.value);
+      columns.push(field.col);
+      sets.push(`${field.col} = EXCLUDED.${field.col}`);
+    } else {
+      sets.push(`${field.col} = google_sheets_sync_state.${field.col}`);
+    }
+  }
+
+  const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
+
   await pgPool.query(
-    `INSERT INTO google_sheets_sync_state (
-      id,
-      status,
-      last_started_at,
-      last_finished_at,
-      last_success_at,
-      last_error,
-      last_sheet_name,
-      last_row_count,
-      last_imported_count,
-      updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      status = EXCLUDED.status,
-      last_started_at = COALESCE(EXCLUDED.last_started_at, google_sheets_sync_state.last_started_at),
-      last_finished_at = COALESCE(EXCLUDED.last_finished_at, google_sheets_sync_state.last_finished_at),
-      last_success_at = COALESCE(EXCLUDED.last_success_at, google_sheets_sync_state.last_success_at),
-      last_error = EXCLUDED.last_error,
-      last_sheet_name = COALESCE(EXCLUDED.last_sheet_name, google_sheets_sync_state.last_sheet_name),
-      last_row_count = COALESCE(EXCLUDED.last_row_count, google_sheets_sync_state.last_row_count),
-      last_imported_count = COALESCE(EXCLUDED.last_imported_count, google_sheets_sync_state.last_imported_count),
-      updated_at = NOW()`,
-    [
-      SYNC_STATE_ID,
-      update.status,
-      update.startedAt ?? null,
-      update.finishedAt ?? null,
-      update.successAt ?? null,
-      update.error ?? null,
-      update.sheetName ?? null,
-      update.rowCount ?? null,
-      update.importedCount ?? null,
-    ],
+    `INSERT INTO google_sheets_sync_state (${columns.join(", ")}, updated_at)
+     VALUES (${placeholders}, NOW())
+     ON CONFLICT (id) DO UPDATE SET
+       ${sets.join(", ")}`,
+    values,
   );
 }
 

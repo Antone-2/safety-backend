@@ -10,7 +10,7 @@ export function createAiRouter() {
             message: "AI Intelligence Engine",
             version: "1.1.0",
             features: [
-                { id: "ai-query", name: "AI SHEQ Data Intelligence Query", endpoint: "/api/ai/query" },
+                { id: "ai-query", name: "AI EHS Data Intelligence Query", endpoint: "/api/ai/query" },
                 { id: "investigation-assistant", name: "AI Incident Investigation Assistant", endpoint: "/api/ai/investigation-assistant" },
                 { id: "root-cause-analysis", name: "AI Root Cause Analysis", endpoint: "/api/ai/root-cause-analysis" },
                 { id: "hazard-detection", name: "AI Hazard Detection", endpoint: "/api/ai/hazard-detection" },

@@ -5,6 +5,7 @@ import { operationalMonitoringService } from "../services/operational-monitoring
 import { notificationCenterService } from "../services/notification-center.service.js";
 import { metricsService } from "../shared/metrics/metrics.service.js";
 import { getDb } from "../lib/database.js";
+import { runMonthlyLeaderboard } from "../services/leaderboard.service.js";
 const router = Router();
 router.get("/dashboard", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
     const [operations, notifications] = await Promise.all([
@@ -42,28 +43,31 @@ router.get("/health/dependencies", authenticateUser, requireRole(["super-admin",
             error: error instanceof Error ? error.message : String(error),
         };
     }
-    try {
-        const db = await getDb();
-        const result = db.exec("SELECT 1 as ok");
-        checks.localDatabase = {
-            name: "localDatabase",
-            ok: Boolean(result.values?.length),
-        };
-    }
-    catch (error) {
-        checks.localDatabase = {
-            name: "localDatabase",
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-        };
+    if (process.env.NODE_ENV !== "production") {
+        try {
+            const db = await getDb();
+            const result = db.exec("SELECT 1 as ok");
+            checks.localDatabase = {
+                name: "localDatabase",
+                ok: Boolean(result.values?.length),
+            };
+        }
+        catch (error) {
+            checks.localDatabase = {
+                name: "localDatabase",
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
     }
     checks.email = {
         name: "email",
-        ok: Boolean(process.env.SMTP_HOST &&
-            process.env.SMTP_USER &&
-            process.env.SMTP_PASS &&
-            process.env.SMTP_FROM),
-        configured: Boolean(process.env.SMTP_HOST),
+        ok: Boolean((process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL) ||
+            (process.env.SMTP_HOST &&
+                process.env.SMTP_USER &&
+                process.env.SMTP_PASS &&
+                process.env.SMTP_FROM)),
+        configured: Boolean(process.env.BREVO_API_KEY || process.env.SMTP_HOST),
     };
     checks.errorTracking = {
         name: "sentry",
@@ -86,5 +90,9 @@ router.post("/events", authenticateUser, requireRole(["super-admin", "EHS-manage
         metadata: req.body.metadata || {},
     });
     res.status(201).json(event);
+});
+router.post("/jobs/monthly-leaderboard", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
+    const result = await runMonthlyLeaderboard();
+    res.json({ ok: true, ...result });
 });
 export default router;

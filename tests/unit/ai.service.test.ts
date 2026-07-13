@@ -85,7 +85,7 @@ vi.mock("../../src/modules/ai/ai.repository.js", () => ({
 }));
 
 describe("AiService query", () => {
-  it("generates auditable backend SHEQ intelligence from reports", async () => {
+  it("generates auditable backend EHS intelligence from reports", async () => {
     const { AiService } = await import("../../src/modules/ai/ai.service.js");
     const service = new AiService();
 

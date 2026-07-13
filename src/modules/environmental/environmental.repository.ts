@@ -213,7 +213,7 @@ export class EnvironmentalRepository {
 
   async createEmission(data: CreateEmissionInput) {
     const result = await this.pool.query(
-      `INSERT INTO emissions (id, type, parameter, location, value, unit, limit, monitored_date, monitored_by, equipment, corrective_action, status, created_by, created_at, updated_at)
+      `INSERT INTO emissions (id, type, parameter, location, value, unit, "limit", monitored_date, monitored_by, equipment, corrective_action, status, created_by, created_at, updated_at)
        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
@@ -247,7 +247,7 @@ export class EnvironmentalRepository {
       location: "location",
       value: "value",
       unit: "unit",
-      limit: "limit",
+      limit: '"limit"',
       monitoredDate: "monitored_date",
       monitoredBy: "monitored_by",
       equipment: "equipment",

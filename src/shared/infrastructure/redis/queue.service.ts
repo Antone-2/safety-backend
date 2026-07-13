@@ -1,13 +1,33 @@
 import { Queue, Worker, type Job } from "bullmq";
-import { redisClient } from "./redis.client.js";
+import { getEnv } from "../../../config/index.js";
+
+const redisUrl = getEnv().REDIS_URL;
+const bullConnection = redisUrl ? redisConnectionOptions(redisUrl) : undefined;
+
+function redisConnectionOptions(value: string) {
+  const url = new URL(value);
+  const database = Number(url.pathname.replace("/", "") || 0);
+  return {
+    host: url.hostname,
+    port: Number(url.port || 6379),
+    username: url.username || undefined,
+    password: url.password ? decodeURIComponent(url.password) : undefined,
+    db: Number.isFinite(database) ? database : 0,
+    maxRetriesPerRequest: null,
+    ...(url.protocol === "rediss:" ? { tls: {} } : {}),
+  };
+}
 
 export interface JobData {
   [key: string]: unknown;
 }
 
 export function createQueue<T extends JobData = JobData>(name: string) {
+  if (!bullConnection) {
+    throw new Error(`REDIS_URL is required to create the ${name} queue`);
+  }
   return new Queue<T>(name, {
-    connection: redisClient as any,
+    connection: bullConnection,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
@@ -31,8 +51,11 @@ export function createWorker<T extends JobData = JobData>(
   processor: (job: Job<T>) => Promise<void>,
   concurrency = 1
 ) {
+  if (!bullConnection) {
+    throw new Error(`REDIS_URL is required to create the ${name} worker`);
+  }
   const worker = new Worker<T>(name, processor, {
-    connection: redisClient as any,
+    connection: bullConnection,
     concurrency,
   });
 

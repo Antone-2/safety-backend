@@ -439,7 +439,7 @@ export class AiService {
 
     if (total === 0) {
       const report = {
-        title: `AI SHEQ Data Intelligence Report - ${formatPeriod(governedInput.filters)}`,
+        title: `AI EHS Data Intelligence Report - ${formatPeriod(governedInput.filters)}`,
         query: governedInput.query,
         generatedAt: new Date().toISOString(),
         period: formatPeriod(governedInput.filters),
@@ -730,7 +730,7 @@ export class AiService {
         ? `Escalate ${overdue} overdue action${overdue === 1 ? "" : "s"} today, assign named owners, and require closure evidence.`
         : "Maintain closure discipline; no overdue actions were detected in the selected dataset.",
       open > 0
-        ? `Review ${open} open report${open === 1 ? "" : "s"} by severity and due date during the next SHEQ meeting.`
+        ? `Review ${open} open report${open === 1 ? "" : "s"} by severity and due date during the next EHS meeting.`
         : "Keep current closure controls in place; no open reports were detected.",
       recurring > 0
         ? `Launch a recurring-risk review for ${recurring} report${recurring === 1 ? "" : "s"} sharing repeated location/category patterns.`
@@ -878,7 +878,7 @@ export class AiService {
     const confidence = confidenceFromData(total, trends.length);
 
     const report = {
-      title: `AI SHEQ Data Intelligence Report - ${formatPeriod(governedInput.filters)}`,
+      title: `AI EHS Data Intelligence Report - ${formatPeriod(governedInput.filters)}`,
       query: governedInput.query,
       generatedAt: new Date().toISOString(),
       period: formatPeriod(governedInput.filters),

@@ -5,6 +5,7 @@ import { loadEnv } from "./config/index.js";
 import { initFirebase } from "./lib/firebase.js";
 import { connectRedis } from "./shared/infrastructure/redis/redis.client.js";
 import { runPostgresMigrations } from "./shared/infrastructure/database/migrations.js";
+import { pgPool } from "./shared/infrastructure/database/postgres.client.js";
 import { correlationIdMiddleware } from "./shared/middleware/correlation-id.middleware.js";
 import { rateLimitMiddleware } from "./shared/middleware/rate-limit.middleware.js";
 import { csrfProtectionMiddleware } from "./shared/middleware/csrf.middleware.js";
@@ -14,6 +15,8 @@ import { metricsMiddleware } from "./shared/middleware/metrics.middleware.js";
 import { errorHandler } from "./shared/middleware/error-handler.middleware.js";
 import { metricsService } from "./shared/metrics/metrics.service.js";
 import { logger } from "./shared/utils/logger.js";
+import { startMonthlyLeaderboardScheduler } from "./services/leaderboard.service.js";
+import { startDatabaseMaintenanceScheduler } from "./services/maintenance.service.js";
 import * as Sentry from "@sentry/node";
 import { createAuthRouter } from "./modules/auth/auth.module.js";
 import { createUsersRouter } from "./modules/users/users.module.js";
@@ -25,6 +28,7 @@ import googleFormsRouter, { setGoogleSheetsPostgresAvailability, startGoogleShee
 import referenceRouter from "./routes/reference.js";
 import operationsRouter from "./routes/operations.js";
 import securityRouter from "./routes/security.js";
+import storageRouter from "./routes/storage.js";
 // The frontend calls `/api/...` while the backend historically used `/api/v1/...`.
 // Mount every router under both prefixes so both clients keep working.
 const API_PREFIXES = ["/api", "/api/v1"];
@@ -37,6 +41,19 @@ function mountAll(prefixes, path, router) {
     }
 }
 const env = loadEnv();
+async function ensureConfiguredDemoAdmin() {
+    if (env.ENABLE_DEMO_LOGIN !== "true" || !env.DEMO_EMAIL || !env.DATABASE_URL)
+        return;
+    const role = env.DEMO_ROLE === "EHS-manager" ? "EHS-manager" : "super-admin";
+    await pgPool.query(`INSERT INTO users (email, password_hash, name, role, active)
+     VALUES (lower($1), $2, $3, $4, TRUE)
+     ON CONFLICT (email) DO UPDATE SET
+       name = EXCLUDED.name,
+       role = EXCLUDED.role,
+       active = TRUE,
+       updated_at = NOW()`, [env.DEMO_EMAIL, "!otp-only-account!", env.DEMO_NAME || "Demo Administrator", role]);
+    logger.info({ email: env.DEMO_EMAIL, role }, "Configured demo administrator is ready.");
+}
 if (env.SENTRY_DSN) {
     Sentry.init({
         dsn: env.SENTRY_DSN,
@@ -146,6 +163,7 @@ mountAll(API_PREFIXES, "/governance", createGovernanceRouter());
 mountAll(API_PREFIXES, "/analytics", createAnalyticsRouter());
 mountAll(API_PREFIXES, "/operations", operationsRouter);
 mountAll(API_PREFIXES, "/security", securityRouter);
+mountAll(API_PREFIXES, "/storage", storageRouter);
 mountAll(API_PREFIXES, "/notifications", createNotificationsRouter());
 mountAll(API_PREFIXES, "/documents", createDocumentsRouter());
 mountAll(API_PREFIXES, "/settings", createSettingsRouter());
@@ -186,17 +204,25 @@ async function bootstrap() {
             await connectRedis();
         }
         catch (redisError) {
+            if (env.REQUIRE_REDIS === "true")
+                throw redisError;
             logger.warn({ err: redisError }, "Redis unavailable; starting server in degraded mode.");
         }
         if (!env.DATABASE_URL) {
+            if (env.REQUIRE_POSTGRES === "true") {
+                throw new Error("DATABASE_URL is required when REQUIRE_POSTGRES=true");
+            }
             postgresAvailable = false;
             logger.warn("PostgreSQL not configured; set DATABASE_URL to enable database-backed features.");
         }
         else {
             try {
                 await runPostgresMigrations();
+                await ensureConfiguredDemoAdmin();
             }
             catch (pgError) {
+                if (env.REQUIRE_POSTGRES === "true")
+                    throw pgError;
                 postgresAvailable = false;
                 logger.warn({ err: pgError }, "PostgreSQL unavailable; starting server in degraded mode.");
             }
@@ -205,6 +231,11 @@ async function bootstrap() {
         initFirebase();
         startServer();
         startGoogleSheetsScheduler();
+        startMonthlyLeaderboardScheduler();
+        startDatabaseMaintenanceScheduler();
+        if (env.REDIS_URL) {
+            await import("./jobs/scheduler.js");
+        }
     }
     catch (error) {
         logger.error({ err: error }, "Bootstrap failed:");

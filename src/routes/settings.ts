@@ -1,10 +1,9 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
-import { isFirebaseAvailable, getFirebase, sanitizeForFirestore } from "../lib/firebase.js";
-import { allRows, getDb, saveDb } from "../lib/database.js";
 import { sendTestEmail, TestEmailSchema } from "../lib/email.js";
 import type { SettingsPayload } from "../lib/types.js";
 import { authenticateUser, requirePermission } from "../shared/middleware/auth.middleware.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
 const router = Router();
 const KEY = "app_settings";
@@ -44,32 +43,23 @@ function getDefaults(): SettingsPayload {
 }
 
 router.get("/", authenticateUser, requirePermission("settings:read"), async (_req: Request, res: Response) => {
-  if (isFirebaseAvailable()) {
-    const db = getFirebase()!;
-    const doc = await db.collection("settings").doc(KEY).get();
-    if (!doc.exists) return res.json(getDefaults());
-    try { return res.json(doc.data()); } catch { return res.json(getDefaults()); }
-  }
-
-  const db = await getDb();
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").getAsObject([KEY]) as { value: string } | undefined;
-  if (!row) return res.json(getDefaults());
-  try { return res.json(JSON.parse(row.value)); } catch { return res.json(getDefaults()); }
+  const result = await pgPool.query<{ value: SettingsPayload }>(
+    "SELECT value FROM app_settings WHERE key = $1",
+    [KEY],
+  );
+  return res.json(result.rows[0]?.value ?? getDefaults());
 });
 
 router.put("/", authenticateUser, requirePermission("settings:update"), async (req: Request, res: Response) => {
   const parsed = defaultSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.errors });
 
-  if (isFirebaseAvailable()) {
-    const db = getFirebase()!;
-    await db.collection("settings").doc(KEY).set(sanitizeForFirestore(parsed.data));
-    return res.json(parsed.data);
-  }
-
-  const db = await getDb();
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run([KEY, JSON.stringify(parsed.data)]);
-  await saveDb(db);
+  await pgPool.query(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [KEY, JSON.stringify(parsed.data)],
+  );
   res.json(parsed.data);
 });
 

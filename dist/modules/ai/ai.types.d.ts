@@ -711,13 +711,13 @@ export declare const RiskScoreOutputSchema: z.ZodObject<{
     explanation: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     riskScore: number;
-    riskLevel: "Low" | "Medium" | "High" | "Critical";
+    riskLevel: "Critical" | "Low" | "Medium" | "High";
     components?: Record<string, number> | undefined;
     trend?: "improving" | "stable" | "deteriorating" | undefined;
     explanation?: string[] | undefined;
 }, {
     riskScore: number;
-    riskLevel: "Low" | "Medium" | "High" | "Critical";
+    riskLevel: "Critical" | "Low" | "Medium" | "High";
     components?: Record<string, number> | undefined;
     trend?: "improving" | "stable" | "deteriorating" | undefined;
     explanation?: string[] | undefined;
@@ -763,7 +763,7 @@ export declare const ComplianceGapSchema: z.ZodObject<{
     status: "Compliant" | "Non-compliant" | "Partially Compliant";
     requirement: string;
     dueDate?: string | undefined;
-    severity?: "Low" | "Medium" | "High" | "Critical" | undefined;
+    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
     owner?: string | undefined;
     evidence?: string[] | undefined;
     obligationId?: string | undefined;
@@ -772,7 +772,7 @@ export declare const ComplianceGapSchema: z.ZodObject<{
     status: "Compliant" | "Non-compliant" | "Partially Compliant";
     requirement: string;
     dueDate?: string | undefined;
-    severity?: "Low" | "Medium" | "High" | "Critical" | undefined;
+    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
     owner?: string | undefined;
     evidence?: string[] | undefined;
     obligationId?: string | undefined;
@@ -787,7 +787,7 @@ export declare const TrainingRecommendationSchema: z.ZodObject<{
     estimatedDurationHours: z.ZodOptional<z.ZodNumber>;
     modality: z.ZodOptional<z.ZodEnum<["classroom", "e-learning", "vr", "on-the-job"]>>;
 }, "strip", z.ZodTypeAny, {
-    priority: "Low" | "Medium" | "High" | "Critical";
+    priority: "Critical" | "Low" | "Medium" | "High";
     title: string;
     reason: string;
     courseId?: string | undefined;
@@ -795,7 +795,7 @@ export declare const TrainingRecommendationSchema: z.ZodObject<{
     estimatedDurationHours?: number | undefined;
     modality?: "classroom" | "e-learning" | "vr" | "on-the-job" | undefined;
 }, {
-    priority: "Low" | "Medium" | "High" | "Critical";
+    priority: "Critical" | "Low" | "Medium" | "High";
     title: string;
     reason: string;
     courseId?: string | undefined;

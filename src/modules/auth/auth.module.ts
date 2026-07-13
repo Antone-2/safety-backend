@@ -1297,16 +1297,22 @@ export function createAuthRouter() {
     await enforceSessionLimit(user.id);
     await audit(req, "login", email, true, user.id);
     const csrfToken = randomBytes(24).toString("base64url");
+    // The frontend and backend are served from different origins (e.g. Vercel
+    // + Render), so the refresh cookie must be allowed on cross-site requests.
+    // `sameSite: "none"` is required for that and implies `secure` in browsers,
+    // so only use it in production where HTTPS is guaranteed.
+    const cookieSameSite: "none" | "lax" =
+      env.NODE_ENV === "production" ? "none" : "lax";
     res.cookie("ehs_csrf", csrfToken, {
       httpOnly: false,
-      sameSite: "strict",
+      sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
       maxAge: 7 * 86400000,
       path: "/",
     });
     res.cookie("ehs_refresh", refreshToken, {
       httpOnly: true,
-      sameSite: "strict",
+      sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
       maxAge: 7 * 86400000,
       path: "/api/auth",
@@ -1442,7 +1448,10 @@ export function createAuthRouter() {
           );
           return res.json(result.rows);
         } catch {
-          // Fall through to SQLite fallback.
+          throw new ExternalServiceError(
+            "PostgreSQL",
+            "User records are temporarily unavailable. Please try again.",
+          );
         }
       }
 
@@ -1821,6 +1830,58 @@ export function createAuthRouter() {
         return res
           .status(403)
           .json({ error: "Only a super-admin can perform email recovery" });
+
+      if (isPgConfigured()) {
+        const existing = await pgPool.query(
+          "SELECT id::text, role FROM users WHERE id = $1 LIMIT 1",
+          [id],
+        );
+        if (!existing.rows[0])
+          return res.status(404).json({ error: "User not found" });
+
+        const updates: string[] = [];
+        const values: unknown[] = [];
+        const addUpdate = (column: string, value: unknown) => {
+          values.push(value);
+          updates.push(`${column} = $${values.length}`);
+        };
+        if (name) addUpdate("name", name);
+        if (role) addUpdate("role", role);
+        if (active !== undefined) addUpdate("active", active);
+        if (email) addUpdate("email", email);
+        addUpdate("updated_at", new Date());
+        values.push(id);
+
+        try {
+          const result = await pgPool.query(
+            `UPDATE users SET ${updates.join(", ")}
+             WHERE id = $${values.length}
+             RETURNING id::text, email, name, role, phone, active, created_at AS "createdAt"`,
+            values,
+          );
+          if (role || email || active === false) {
+            await pgPool.query(
+              "UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+              [id],
+            );
+          }
+          return res.json(result.rows[0]);
+        } catch (error: unknown) {
+          if (
+            typeof error === "object" &&
+            error &&
+            "code" in error &&
+            error.code === "23505"
+          ) {
+            return res.status(409).json({ error: "Email already registered" });
+          }
+          throw new ExternalServiceError(
+            "PostgreSQL",
+            "The user account could not be updated. Please try again.",
+          );
+        }
+      }
+
       const db = await getDb();
       const existing = allRows(db, "SELECT id FROM users WHERE id = ?", [
         id,
@@ -1862,6 +1923,46 @@ export function createAuthRouter() {
         return res
           .status(400)
           .json({ error: "You cannot suspend your own account" });
+
+      if (isPgConfigured()) {
+        const target = await pgPool.query(
+          "SELECT role FROM users WHERE id = $1 LIMIT 1",
+          [id],
+        );
+        if (!target.rows[0])
+          return res.status(404).json({ error: "User not found" });
+        if (
+          target.rows[0].role === "super-admin" &&
+          req.user!.role !== "super-admin"
+        )
+          return res
+            .status(403)
+            .json({ error: "Only a super-admin can suspend a super-admin" });
+
+        const client = await pgPool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(
+            "UPDATE users SET active = FALSE, updated_at = NOW() WHERE id = $1",
+            [id],
+          );
+          await client.query(
+            "UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+            [id],
+          );
+          await client.query("COMMIT");
+          return res.json({ ok: true, suspended: id });
+        } catch {
+          await client.query("ROLLBACK").catch(() => undefined);
+          throw new ExternalServiceError(
+            "PostgreSQL",
+            "The user account could not be suspended. Please try again.",
+          );
+        } finally {
+          client.release();
+        }
+      }
+
       const db = await getDb();
       const target = allRows(db, "SELECT role FROM users WHERE id = ?", [
         id,

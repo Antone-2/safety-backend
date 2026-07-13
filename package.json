@@ -11,6 +11,7 @@
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:migrate:dry": "tsx src/scripts/migrate.ts -- --dry-run",
     "db:migrate:backup": "tsx src/scripts/migrate.ts -- --backup-before",
+    "db:import-sqlite": "tsx src/scripts/import-sqlite-to-postgres.ts",
     "db:backup": "tsx src/scripts/backup.ts",
     "db:restore": "tsx src/scripts/restore.ts",
     "db:restore:drill": "tsx src/scripts/backup-restore-drill.ts",

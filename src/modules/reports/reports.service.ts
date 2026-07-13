@@ -7,6 +7,7 @@ import {
   type AssignmentDeliveryResult,
   type AssignmentRecipient,
 } from "../../lib/email.js";
+import { awardReporterPoints } from "../../services/leaderboard.service.js";
 
 const PHOTO_COL = "photo_url";
 const DATE_COL = "date";
@@ -240,6 +241,7 @@ async function syncReportWorkflowState(input: {
         JSON.stringify(input.context ?? {}),
       ],
     );
+
   } catch (error) {
     console.warn(
       "Workflow state sync skipped:",
@@ -521,6 +523,13 @@ export class ReportsService {
         photoUrl,
       ],
     );
+
+    await awardReporterPoints({
+      date: now,
+      reporter: input.reporter,
+      severity: input.severity,
+      anonymous: input.anonymous,
+    });
 
     if (request) {
       await writeAuditLogBestEffort({

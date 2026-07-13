@@ -50,23 +50,23 @@ export declare const CreateReportSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition";
-    severity: "Low" | "Medium" | "High" | "Critical";
+    anonymous: boolean;
+    reporter: string;
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     department: string;
     description: string;
-    reporter: string;
-    anonymous: boolean;
     complianceRequired: boolean;
     category: string;
     photoUrl?: string | undefined;
 }, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition";
-    severity: "Low" | "Medium" | "High" | "Critical";
+    reporter: string;
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     department: string;
     description: string;
-    reporter: string;
     category: string;
     anonymous?: boolean | undefined;
     photoUrl?: string | undefined;
@@ -117,7 +117,7 @@ export declare const CreateCapaSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     action: string;
     dueDate: string;
-    priority: "Low" | "Medium" | "High" | "Critical";
+    priority: "Critical" | "Low" | "Medium" | "High";
     rootCause: string;
     title: string;
     owner: string;
@@ -133,7 +133,7 @@ export declare const CreateCapaSchema: z.ZodObject<{
     owner: string;
     incidentId: string;
     capaType: "Corrective" | "Preventive";
-    priority?: "Low" | "Medium" | "High" | "Critical" | undefined;
+    priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
     rootCauseMethod?: string | undefined;
     rootCauseConclusion?: string | undefined;
 }>;
@@ -235,7 +235,7 @@ export declare const CreateInvestigationSchema: z.ZodObject<{
     priority: z.ZodDefault<z.ZodOptional<z.ZodEnum<["Low", "Medium", "High", "Critical"]>>>;
     dueDate: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    priority: "Low" | "Medium" | "High" | "Critical";
+    priority: "Critical" | "Low" | "Medium" | "High";
     description: string;
     title: string;
     incidentId: string;
@@ -247,7 +247,7 @@ export declare const CreateInvestigationSchema: z.ZodObject<{
     incidentId: string;
     investigator: string;
     dueDate?: string | undefined;
-    priority?: "Low" | "Medium" | "High" | "Critical" | undefined;
+    priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
 }>;
 export type CreateInvestigationInput = z.infer<typeof CreateInvestigationSchema>;
 export interface AuthToken {
@@ -419,9 +419,9 @@ export type UpdatePermitInput = z.infer<typeof UpdatePermitSchema>;
 export declare const AdvancePermitStatusSchema: z.ZodObject<{
     status: z.ZodEnum<["applicant", "supervisor", "EHS", "issuer", "approval", "active", "closed"]>;
 }, "strip", z.ZodTypeAny, {
-    status: "supervisor" | "issuer" | "closed" | "active" | "applicant" | "approval" | "EHS";
+    status: "supervisor" | "issuer" | "active" | "closed" | "applicant" | "approval" | "EHS";
 }, {
-    status: "supervisor" | "issuer" | "closed" | "active" | "applicant" | "approval" | "EHS";
+    status: "supervisor" | "issuer" | "active" | "closed" | "applicant" | "approval" | "EHS";
 }>;
 export type AdvancePermitStatusInput = z.infer<typeof AdvancePermitStatusSchema>;
 export declare const JsaStatusSchema: z.ZodEnum<["draft", "in-review", "active", "completed", "archived"]>;
@@ -462,15 +462,15 @@ export declare const JsaStepSchema: z.ZodObject<{
     description: string;
     hazards: string[];
     controls: string[];
-    existingRisk: "Low" | "Medium" | "High" | "Critical";
-    residualRisk: "Low" | "Medium" | "High" | "Critical";
+    existingRisk: "Critical" | "Low" | "Medium" | "High";
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }, {
     id: string;
     description: string;
     hazards: string[];
     controls: string[];
-    existingRisk: "Low" | "Medium" | "High" | "Critical";
-    residualRisk: "Low" | "Medium" | "High" | "Critical";
+    existingRisk: "Critical" | "Low" | "Medium" | "High";
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }>;
 export type JsaStepInput = z.infer<typeof JsaStepSchema>;
 export declare const CreateJsaSchema: z.ZodObject<{
@@ -511,20 +511,20 @@ export declare const UpdateJsaSchema: z.ZodObject<{
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }, {
         id: string;
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }>, "many">>;
     reviewedBy: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     reviewedAt: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "draft" | "active" | "completed" | "in-review" | "archived" | undefined;
+    status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
     location?: string | undefined;
     department?: string | undefined;
     description?: string | null | undefined;
@@ -536,11 +536,11 @@ export declare const UpdateJsaSchema: z.ZodObject<{
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[] | undefined;
 }, {
-    status?: "draft" | "active" | "completed" | "in-review" | "archived" | undefined;
+    status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
     location?: string | undefined;
     department?: string | undefined;
     description?: string | null | undefined;
@@ -552,8 +552,8 @@ export declare const UpdateJsaSchema: z.ZodObject<{
         description: string;
         hazards: string[];
         controls: string[];
-        existingRisk: "Low" | "Medium" | "High" | "Critical";
-        residualRisk: "Low" | "Medium" | "High" | "Critical";
+        existingRisk: "Critical" | "Low" | "Medium" | "High";
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[] | undefined;
 }>;
 export type UpdateJsaInput = z.infer<typeof UpdateJsaSchema>;

@@ -163,7 +163,7 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     date: string;
-    severity: "Low" | "Medium" | "High" | "Critical";
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     description: string;
     createdBy: string;
@@ -173,7 +173,7 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
     actionTaken?: string | undefined;
 }, {
     date: string;
-    severity: "Low" | "Medium" | "High" | "Critical";
+    severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
     description: string;
     createdBy: string;

@@ -386,7 +386,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
-    id: "013_enterprise_document_control",
+    id: "025_enterprise_document_control",
     description:
       "Add enterprise document control versions, approvals, acknowledgements, and signed access links",
     sql: `
@@ -412,7 +412,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         effective_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         expiry_date TIMESTAMPTZ,
         site TEXT NOT NULL DEFAULT 'Corporate',
-        department TEXT NOT NULL DEFAULT 'SHEQ',
+        department TEXT NOT NULL DEFAULT 'EHS',
         tags JSONB NOT NULL DEFAULT '[]'::jsonb,
         parent_id TEXT,
         created_by TEXT NOT NULL DEFAULT 'System',
@@ -590,7 +590,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
-    id: "014_foundation_compliance",
+    id: "026_foundation_compliance",
     description:
       "Create compliance tables for obligations, audits, and legal updates",
     sql: `
@@ -658,7 +658,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
-    id: "015_foundation_equipment",
+    id: "027_foundation_equipment",
     description: "Create equipment and equipment inspections tables",
     sql: `
       CREATE TABLE IF NOT EXISTS equipment (
@@ -880,7 +880,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
-    id: "016_foundation_documents",
+    id: "028_foundation_documents",
     description:
       "Create documents, versions, approvals, acknowledgements, and access links",
     sql: `
@@ -976,7 +976,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
-    id: "017_foundation_ppe",
+    id: "029_foundation_ppe",
     description: "Create PPE equipment table",
     sql: `
       CREATE TABLE IF NOT EXISTS ppe_equipment (
@@ -1007,7 +1007,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
-    id: "018_foundation_contractors",
+    id: "030_foundation_contractors",
     description: "Create contractors and contractor incidents tables",
     sql: `
       CREATE TABLE IF NOT EXISTS contractors (
@@ -1082,7 +1082,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         location TEXT NOT NULL,
         value NUMERIC NOT NULL,
         unit TEXT NOT NULL,
-        limit NUMERIC,
+        "limit" NUMERIC,
         monitored_date TIMESTAMPTZ NOT NULL,
         monitored_by TEXT NOT NULL,
         equipment TEXT,
@@ -1323,6 +1323,34 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_scaffolding_next_inspection_date ON scaffolding(next_inspection_date);
     `,
   },
+  {
+    id: "031_monthly_reporter_leaderboard",
+    description: "Create monthly reporter points and award tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS reporter_points (
+        month TEXT NOT NULL,
+        reporter TEXT NOT NULL,
+        report_count INTEGER NOT NULL DEFAULT 0,
+        points INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (month, reporter)
+      );
+      CREATE TABLE IF NOT EXISTS leaderboard_awards (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        month TEXT NOT NULL,
+        reporter TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        report_count INTEGER NOT NULL,
+        points INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (month, reporter, rank)
+      );
+      CREATE INDEX IF NOT EXISTS idx_reporter_points_month_rank
+        ON reporter_points(month, points DESC, report_count DESC);
+      CREATE INDEX IF NOT EXISTS idx_leaderboard_awards_month
+        ON leaderboard_awards(month, rank);
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {
@@ -1338,34 +1366,52 @@ async function ensureMigrationsTable(client: PoolClient) {
 export async function runPostgresMigrations(
   pool: Pool = pgPool,
 ): Promise<string[]> {
-  const client = await pool.connect();
   const applied: string[] = [];
 
+  // Ensure the tracking table exists (own transaction).
+  const setupClient = await pool.connect();
   try {
-    await client.query("BEGIN");
-    await ensureMigrationsTable(client);
+    await ensureMigrationsTable(setupClient);
+  } finally {
+    setupClient.release();
+  }
 
-    for (const migration of POSTGRES_MIGRATIONS) {
-      const existing = await client.query(
+  // Apply each migration in its OWN transaction. A single failing migration is
+  // logged and skipped instead of rolling back every migration — otherwise one
+  // broken migration would prevent foundation tables (e.g. `capa`) from ever
+  // being created while earlier tables (from a previous run) survive.
+  for (const migration of POSTGRES_MIGRATIONS) {
+    const checkClient = await pool.connect();
+    let alreadyApplied = false;
+    try {
+      const existing = await checkClient.query(
         "SELECT id FROM schema_migrations WHERE id = $1",
         [migration.id],
       );
-      if ((existing.rowCount ?? 0) > 0) continue;
+      alreadyApplied = (existing.rowCount ?? 0) > 0;
+    } finally {
+      checkClient.release();
+    }
+    if (alreadyApplied) continue;
 
-      await client.query(migration.sql);
-      await client.query(
+    const runClient = await pool.connect();
+    try {
+      await runClient.query("BEGIN");
+      await runClient.query(migration.sql);
+      await runClient.query(
         "INSERT INTO schema_migrations (id, description) VALUES ($1, $2)",
         [migration.id, migration.description],
       );
+      await runClient.query("COMMIT");
       applied.push(migration.id);
+      console.log(`[migrations] Applied ${migration.id}`);
+    } catch (error) {
+      await runClient.query("ROLLBACK").catch(() => {});
+      console.error(`[migrations] FAILED to apply ${migration.id}:`, error);
+    } finally {
+      runClient.release();
     }
-
-    await client.query("COMMIT");
-    return applied;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
   }
+
+  return applied;
 }

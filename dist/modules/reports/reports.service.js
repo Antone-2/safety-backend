@@ -3,6 +3,7 @@ import { diffRecord, writeAuditLog } from "../../shared/audit/audit.service.js";
 import { allRows, getDb, saveDb } from "../../lib/database.js";
 import { randomBytes } from "crypto";
 import { sendReportAssignmentNotifications, } from "../../lib/email.js";
+import { awardReporterPoints } from "../../services/leaderboard.service.js";
 const PHOTO_COL = "photo_url";
 const DATE_COL = "date";
 const LOCATION_COL = "location";
@@ -385,6 +386,12 @@ export class ReportsService {
             complianceDueAt,
             photoUrl,
         ]);
+        await awardReporterPoints({
+            date: now,
+            reporter: input.reporter,
+            severity: input.severity,
+            anonymous: input.anonymous,
+        });
         if (request) {
             await writeAuditLogBestEffort({
                 action: "report.created",

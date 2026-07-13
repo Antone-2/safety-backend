@@ -1,8 +1,26 @@
 import { Queue, Worker } from "bullmq";
-import { redisClient } from "./redis.client.js";
+import { getEnv } from "../../../config/index.js";
+const redisUrl = getEnv().REDIS_URL;
+const bullConnection = redisUrl ? redisConnectionOptions(redisUrl) : undefined;
+function redisConnectionOptions(value) {
+    const url = new URL(value);
+    const database = Number(url.pathname.replace("/", "") || 0);
+    return {
+        host: url.hostname,
+        port: Number(url.port || 6379),
+        username: url.username || undefined,
+        password: url.password ? decodeURIComponent(url.password) : undefined,
+        db: Number.isFinite(database) ? database : 0,
+        maxRetriesPerRequest: null,
+        ...(url.protocol === "rediss:" ? { tls: {} } : {}),
+    };
+}
 export function createQueue(name) {
+    if (!bullConnection) {
+        throw new Error(`REDIS_URL is required to create the ${name} queue`);
+    }
     return new Queue(name, {
-        connection: redisClient,
+        connection: bullConnection,
         defaultJobOptions: {
             attempts: 3,
             backoff: {
@@ -21,8 +39,11 @@ export function createQueue(name) {
     });
 }
 export function createWorker(name, processor, concurrency = 1) {
+    if (!bullConnection) {
+        throw new Error(`REDIS_URL is required to create the ${name} worker`);
+    }
     const worker = new Worker(name, processor, {
-        connection: redisClient,
+        connection: bullConnection,
         concurrency,
     });
     worker.on("completed", (job) => {
