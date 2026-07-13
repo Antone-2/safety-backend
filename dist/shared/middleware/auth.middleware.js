@@ -8,6 +8,8 @@ function isPgConfigured() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
 export async function authenticateUser(req, res, next) {
+    if (req.user?.id && req.user?.jti)
+        return next();
     const authHeader = req.headers.authorization;
     const queryToken = typeof req.query.access_token === "string" ? req.query.access_token : "";
     if (!authHeader?.startsWith("Bearer ") && !queryToken) {

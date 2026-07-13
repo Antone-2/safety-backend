@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { hasPermission, rbacMiddleware, requirePermission, requireRole, recordAuthFailure, ROUTE_PERMISSION_MATRIX } from "../../src/shared/middleware/rbac.middleware.js";
+import {
+  canRoleMutate,
+  isWriteExemptPath,
+  normalizeApiPath,
+} from "../../src/shared/middleware/write-authorization.middleware.js";
 
 vi.mock("../../src/shared/audit/audit.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -11,15 +16,16 @@ describe("hasPermission", () => {
     expect(hasPermission("super-admin", "unknown:permission")).toBe(true);
   });
 
-  it("allows a supervisor to create reports but not update settings", () => {
-    expect(hasPermission("supervisor", "reports:create")).toBe(true);
+  it("keeps supervisors read-only", () => {
+    expect(hasPermission("supervisor", "reports:read")).toBe(true);
+    expect(hasPermission("supervisor", "reports:create")).toBe(false);
     expect(hasPermission("supervisor", "settings:update")).toBe(false);
   });
 
-  it("allows operational managers to assign reports", () => {
-    expect(hasPermission("gm", "reports:assign")).toBe(true);
-    expect(hasPermission("plant-manager", "reports:assign")).toBe(true);
-    expect(hasPermission("factory-manager", "reports:assign")).toBe(true);
+  it("prevents operational managers from assigning reports", () => {
+    expect(hasPermission("gm", "reports:assign")).toBe(false);
+    expect(hasPermission("plant-manager", "reports:assign")).toBe(false);
+    expect(hasPermission("factory-manager", "reports:assign")).toBe(false);
   });
 
   it("denies missing roles", () => {
@@ -32,15 +38,15 @@ describe("hasPermission", () => {
     expect(hasPermission("EHS-manager", "medical:delete")).toBe(true);
   });
 
-  it("allows hse-officer read/write on operational domains", () => {
-    expect(hasPermission("hse-officer", "ppe:update")).toBe(true);
-    expect(hasPermission("hse-officer", "contractors:create")).toBe(true);
+  it("keeps hse-officers read-only on operational domains", () => {
+    expect(hasPermission("hse-officer", "ppe:update")).toBe(false);
+    expect(hasPermission("hse-officer", "contractors:create")).toBe(false);
     expect(hasPermission("hse-officer", "fire:read")).toBe(true);
   });
 
-  it("allows plant-manager read/approve on operational domains", () => {
+  it("allows plant managers to read but not approve", () => {
     expect(hasPermission("plant-manager", "ppe:read")).toBe(true);
-    expect(hasPermission("plant-manager", "permits:approve")).toBe(true);
+    expect(hasPermission("plant-manager", "permits:approve")).toBe(false);
     expect(hasPermission("plant-manager", "medical:read")).toBe(true);
   });
 
@@ -62,24 +68,42 @@ describe("hasPermission", () => {
     expect(hasPermission("she-committee-member", "training:create")).toBe(false);
   });
 
-  it("allows gm read/assign but not delete", () => {
-    expect(hasPermission("gm", "reports:assign")).toBe(true);
+  it("allows gm read access only", () => {
+    expect(hasPermission("gm", "reports:assign")).toBe(false);
     expect(hasPermission("gm", "reports:read")).toBe(true);
     expect(hasPermission("gm", "capa:verify")).toBe(false);
   });
 
-  it("allows maintenance-manager equipment/fire/scaffolding access", () => {
-    expect(hasPermission("maintenance-manager", "equipment:update")).toBe(true);
-    expect(hasPermission("maintenance-manager", "fire:update")).toBe(true);
-    expect(hasPermission("maintenance-manager", "scaffolding:update")).toBe(true);
+  it("keeps maintenance managers read-only", () => {
+    expect(hasPermission("maintenance-manager", "equipment:update")).toBe(false);
+    expect(hasPermission("maintenance-manager", "fire:update")).toBe(false);
+    expect(hasPermission("maintenance-manager", "scaffolding:update")).toBe(false);
     expect(hasPermission("maintenance-manager", "heightwork:read")).toBe(true);
   });
 
-  it("allows issuer permit-specific permissions", () => {
+  it("keeps issuers read-only", () => {
     expect(hasPermission("issuer", "permits:read")).toBe(true);
-    expect(hasPermission("issuer", "permits:update")).toBe(true);
-    expect(hasPermission("issuer", "permits:approve")).toBe(true);
+    expect(hasPermission("issuer", "permits:update")).toBe(false);
+    expect(hasPermission("issuer", "permits:approve")).toBe(false);
     expect(hasPermission("issuer", "reports:read")).toBe(false);
+  });
+});
+
+describe("global mutation policy", () => {
+  it("allows writes only for super-admin and EHS-manager", () => {
+    expect(canRoleMutate("super-admin")).toBe(true);
+    expect(canRoleMutate("EHS-manager")).toBe(true);
+    expect(canRoleMutate("hse-officer")).toBe(false);
+    expect(canRoleMutate("supervisor")).toBe(false);
+    expect(canRoleMutate("gm")).toBe(false);
+  });
+
+  it("allows essential authentication mutations", () => {
+    expect(isWriteExemptPath("/api/auth/otp/request")).toBe(true);
+    expect(isWriteExemptPath("/api/v1/auth/otp/verify")).toBe(true);
+    expect(isWriteExemptPath("/auth/logout")).toBe(true);
+    expect(isWriteExemptPath("/reports/RPT-1/assign")).toBe(false);
+    expect(normalizeApiPath("/api/v1/reports/RPT-1/assign")).toBe("/reports/RPT-1/assign");
   });
 });
 

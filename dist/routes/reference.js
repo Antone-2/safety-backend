@@ -27,4 +27,13 @@ router.get("/hazard-categories", async (_req, res) => {
 router.get("/departments", async (_req, res) => {
     res.json(await distinctReportValues("department"));
 });
+router.get("/employees", async (_req, res) => {
+    const result = await pgPool.query(`SELECT DISTINCT employee_name FROM training_records
+     WHERE employee_name IS NOT NULL AND employee_name <> ''
+     UNION
+     SELECT DISTINCT employee_name FROM health_surveillance
+     WHERE employee_name IS NOT NULL AND employee_name <> ''
+     ORDER BY employee_name`);
+    res.json(result.rows.map((row) => row.employee_name));
+});
 export default router;

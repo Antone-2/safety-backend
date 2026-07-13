@@ -388,6 +388,13 @@ export const ROLE_PERMISSIONS = {
     ],
     issuer: ["permits:read", "permits:update", "permits:approve"],
 };
+// All non-administrative roles are globally read-only. Route-specific role
+// lists cannot grant a mutation permission beyond this central policy.
+for (const [role, permissions] of Object.entries(ROLE_PERMISSIONS)) {
+    if (role !== "super-admin" && role !== "EHS-manager") {
+        ROLE_PERMISSIONS[role] = permissions.filter((permission) => permission.endsWith(":read"));
+    }
+}
 export function hasPermission(role, requiredPermission) {
     if (!role)
         return false;

@@ -277,15 +277,20 @@ function normalizeStatus(status) {
 }
 export function parseDate(dateStr) {
     if (!dateStr)
-        return new Date().toISOString();
+        throw new Error("Google Sheets row is missing its report date");
     const value = dateStr.trim();
     if (!value)
-        return new Date().toISOString();
+        throw new Error("Google Sheets row is missing its report date");
+    const configuredOffset = Number(process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180");
+    const utcOffsetMinutes = Number.isFinite(configuredOffset) ? configuredOffset : 180;
+    const fromSheetLocalTime = (year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0) => new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond) -
+        utcOffsetMinutes * 60_000);
     const spreadsheetSerial = Number(value);
     if (Number.isFinite(spreadsheetSerial) && spreadsheetSerial > 0) {
         const excelEpochOffset = 25569;
         const millisecondsPerDay = 86400000;
-        return new Date((spreadsheetSerial - excelEpochOffset) * millisecondsPerDay).toISOString();
+        return new Date((spreadsheetSerial - excelEpochOffset) * millisecondsPerDay -
+            utcOffsetMinutes * 60_000).toISOString();
     }
     const dayFirstMatch = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
     if (dayFirstMatch) {
@@ -304,15 +309,24 @@ export function parseDate(dateStr) {
             hour += 12;
         if (meridiem === "AM" && hour === 12)
             hour = 0;
-        const parsed = new Date(Date.UTC(year, month - 1, day, hour, minute, secondPart));
-        if (parsed.getUTCFullYear() === year &&
-            parsed.getUTCMonth() === month - 1 &&
-            parsed.getUTCDate() === day) {
+        const parsed = fromSheetLocalTime(year, month, day, hour, minute, secondPart);
+        const localCheck = new Date(parsed.getTime() + utcOffsetMinutes * 60_000);
+        if (localCheck.getUTCFullYear() === year &&
+            localCheck.getUTCMonth() === month - 1 &&
+            localCheck.getUTCDate() === day) {
             return parsed.toISOString();
         }
     }
+    const isoLocalMatch = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (isoLocalMatch) {
+        const [, year, month, day, hour, minute, second = "0"] = isoLocalMatch;
+        return fromSheetLocalTime(+year, +month, +day, +hour, +minute, +second).toISOString();
+    }
     const d = new Date(value);
-    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    if (isNaN(d.getTime())) {
+        throw new Error(`Invalid Google Sheets report date: ${value}`);
+    }
+    return d.toISOString();
 }
 function normalizeHeaderKey(value) {
     return value

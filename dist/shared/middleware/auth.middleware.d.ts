@@ -9,6 +9,6 @@ export interface AuthRequest extends Request {
         jti?: string;
     };
 }
-export declare function authenticateUser(req: AuthRequest, res: Response, next: NextFunction): Promise<Response<any, Record<string, any>> | undefined>;
+export declare function authenticateUser(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response<any, Record<string, any>>>;
 export declare function requirePermission(permission: string): (req: AuthRequest, res: Response, next: NextFunction) => Promise<void | Response<any, Record<string, any>>>;
 export declare function requireRole(allowedRoles: string[]): (req: AuthRequest, res: Response, next: NextFunction) => Promise<void | Response<any, Record<string, any>>>;

@@ -42,8 +42,8 @@ test("maps alternate Google Form headers into report fields", () => {
 });
 
 test("parses ambiguous Google Sheets dates as day first by default", () => {
-  assert.equal(parseDate("8/7/2026"), "2026-07-08T00:00:00.000Z");
-  assert.equal(parseDate("08/07/2026 14:30:15"), "2026-07-08T14:30:15.000Z");
+  assert.equal(parseDate("8/7/2026"), "2026-07-07T21:00:00.000Z");
+  assert.equal(parseDate("08/07/2026 14:30:15"), "2026-07-08T11:30:15.000Z");
 });
 
 test("allows Google Sheets dates to be parsed as month first when configured", () => {
@@ -51,7 +51,7 @@ test("allows Google Sheets dates to be parsed as month first when configured", (
   process.env.GOOGLE_SHEETS_DATE_ORDER = "mdy";
 
   try {
-    assert.equal(parseDate("8/7/2026"), "2026-08-07T00:00:00.000Z");
+    assert.equal(parseDate("8/7/2026"), "2026-08-06T21:00:00.000Z");
   } finally {
     if (originalOrder === undefined) {
       delete process.env.GOOGLE_SHEETS_DATE_ORDER;
@@ -62,7 +62,12 @@ test("allows Google Sheets dates to be parsed as month first when configured", (
 });
 
 test("parses Google Sheets numeric date serials", () => {
-  assert.equal(parseDate("46211"), "2026-07-08T00:00:00.000Z");
+  assert.equal(parseDate("46211"), "2026-07-07T21:00:00.000Z");
+});
+
+test("does not fabricate missing or invalid Google Sheets dates", () => {
+  assert.throws(() => parseDate(""), /missing its report date/);
+  assert.throws(() => parseDate("not-a-date"), /Invalid Google Sheets report date/);
 });
 
 test("maps employee name headers into reporter field", () => {

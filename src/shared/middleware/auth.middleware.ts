@@ -28,6 +28,7 @@ export async function authenticateUser(
   res: Response,
   next: NextFunction,
 ) {
+  if (req.user?.id && req.user?.jti) return next();
   const authHeader = req.headers.authorization;
   const queryToken =
     typeof req.query.access_token === "string" ? req.query.access_token : "";

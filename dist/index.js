@@ -12,6 +12,7 @@ import { requestIdMiddleware } from "./shared/middleware/request-id.middleware.j
 import { securityHeadersMiddleware } from "./shared/middleware/security.middleware.js";
 import { metricsMiddleware } from "./shared/middleware/metrics.middleware.js";
 import { errorHandler } from "./shared/middleware/error-handler.middleware.js";
+import { enforcePrivilegedMutations } from "./shared/middleware/write-authorization.middleware.js";
 import { metricsService } from "./shared/metrics/metrics.service.js";
 import { logger } from "./shared/utils/logger.js";
 import { startMonthlyLeaderboardScheduler } from "./services/leaderboard.service.js";
@@ -91,6 +92,7 @@ app.use(securityHeadersMiddleware);
 app.use(metricsMiddleware);
 app.use(rateLimitMiddleware);
 app.use(csrfProtectionMiddleware);
+app.use("/api", enforcePrivilegedMutations);
 app.get("/health", async (_req, res) => {
     try {
         const { checkDatabase } = await import("./shared/infrastructure/database/postgres.client.js");
