@@ -1592,6 +1592,19 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ADD COLUMN IF NOT EXISTS drift_steps INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    id: "047_auth_session_mfa_trust",
+    description: "Track MFA trust windows and activity timestamps on auth sessions",
+    sql: `
+      ALTER TABLE auth_sessions
+        ADD COLUMN IF NOT EXISTS mfa_verified_at TIMESTAMPTZ;
+      ALTER TABLE auth_sessions
+        ADD COLUMN IF NOT EXISTS mfa_trusted_until TIMESTAMPTZ;
+      UPDATE auth_sessions
+      SET last_seen_at = COALESCE(last_seen_at, created_at)
+      WHERE last_seen_at IS NULL;
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {

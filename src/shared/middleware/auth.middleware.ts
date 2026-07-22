@@ -34,9 +34,18 @@ function isPgConfigured() {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
 
-function deviceFingerprint(req: Request) {
+function legacySessionFingerprint(req: Request) {
   return createHash("sha256")
     .update(`${req.get("user-agent") || "unknown"}:${req.ip || req.socket.remoteAddress || "unknown"}`)
+    .digest("hex");
+}
+
+function sessionFingerprint(req: Request) {
+  const userAgent = req.get("user-agent") || "unknown";
+  const language = req.get("accept-language") || "unknown";
+  const platform = req.get("sec-ch-ua-platform") || "unknown";
+  return createHash("sha256")
+    .update(`${userAgent}:${language}:${platform}`)
     .digest("hex");
 }
 
@@ -90,24 +99,49 @@ export async function authenticateUser(
         .status(401)
         .json({ error: "Session has expired or was revoked" });
 
-    const fingerprint = deviceFingerprint(req);
-    const storedFingerprint = isPgConfigured()
+    const fingerprint = sessionFingerprint(req);
+    const legacyFingerprint = legacySessionFingerprint(req);
+    const storedSession = isPgConfigured()
       ? (
           await pgPool
             .query(
-              "SELECT device_fingerprint FROM auth_sessions WHERE id = $1 LIMIT 1",
+              "SELECT device_fingerprint, user_agent FROM auth_sessions WHERE id = $1 LIMIT 1",
               [decoded.jti],
             )
             .catch(() => ({ rows: [] }))
-        ).rows[0]?.device_fingerprint
+        ).rows[0]
       : (allRows(
           await getDb(),
-          "SELECT deviceFingerprint AS deviceFingerprint FROM auth_sessions WHERE id = ?",
+          "SELECT deviceFingerprint AS deviceFingerprint, userAgent AS userAgent FROM auth_sessions WHERE id = ?",
           [decoded.jti],
-        )[0] as { deviceFingerprint?: string } | undefined)?.deviceFingerprint;
+        )[0] as { deviceFingerprint?: string; userAgent?: string } | undefined);
 
-    if (storedFingerprint && storedFingerprint !== fingerprint) {
+    const storedFingerprint = storedSession?.device_fingerprint ?? storedSession?.deviceFingerprint;
+    const storedUserAgent = storedSession?.user_agent ?? storedSession?.userAgent;
+
+    if (
+      storedFingerprint &&
+      storedFingerprint !== fingerprint &&
+      storedFingerprint !== legacyFingerprint &&
+      storedUserAgent !== (req.get("user-agent") || "")
+    ) {
       return res.status(401).json({ error: "Session device changed. Please sign in again." });
+    }
+
+    if (isPgConfigured()) {
+      await pgPool
+        .query(
+          `UPDATE auth_sessions
+           SET last_seen_at = NOW()
+           WHERE id = $1 AND revoked_at IS NULL`,
+          [decoded.jti],
+        )
+        .catch(() => undefined);
+    } else {
+      const db = await getDb();
+      db.prepare(
+        "UPDATE auth_sessions SET lastSeenAt = ? WHERE id = ? AND revokedAt IS NULL",
+      ).run([new Date().toISOString(), decoded.jti]);
     }
 
     next();

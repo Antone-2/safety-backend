@@ -47,6 +47,13 @@ const OTP_MAX_REQUESTS_PER_IP = Number(
 const OTP_MAX_REQUESTS_PER_DEVICE = Number(
   process.env.AUTH_OTP_MAX_REQUESTS_PER_DEVICE || 10,
 );
+const ACCESS_TOKEN_TTL_MINUTES = Number(
+  process.env.AUTH_ACCESS_TOKEN_TTL_MINUTES || 480,
+);
+const REFRESH_SESSION_TTL_DAYS = Number(
+  process.env.AUTH_REFRESH_SESSION_TTL_DAYS || 30,
+);
+const MFA_TRUST_DAYS = Number(process.env.AUTH_MFA_TRUST_DAYS || 30);
 const MAX_ACTIVE_SESSIONS_PER_USER = Number(
   process.env.AUTH_MAX_ACTIVE_SESSIONS_PER_USER || 5,
 );
@@ -239,6 +246,15 @@ function deviceFingerprint(req: Request) {
     .digest("hex");
 }
 
+function sessionFingerprint(req: Request) {
+  const userAgent = req.get("user-agent") || "unknown";
+  const language = req.get("accept-language") || "unknown";
+  const platform = req.get("sec-ch-ua-platform") || "unknown";
+  return createHash("sha256")
+    .update(`${userAgent}:${language}:${platform}`)
+    .digest("hex");
+}
+
 function isPgConfigured() {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
@@ -249,6 +265,18 @@ function publicUser(user: AuthUserRecord) {
 
 function isPrivilegedRole(role: string) {
   return PRIVILEGED_BOOTSTRAP_ROLES.includes(role);
+}
+
+function addDays(days: number) {
+  return new Date(Date.now() + days * 86400000).toISOString();
+}
+
+function getAccessCookieMaxAgeMs() {
+  return ACCESS_TOKEN_TTL_MINUTES * 60 * 1000;
+}
+
+function getMfaTrustedUntil() {
+  return addDays(MFA_TRUST_DAYS);
 }
 
 export function createAuthRouter() {
@@ -270,7 +298,7 @@ export function createAuthRouter() {
         jti: sessionId,
       },
       JWT_SECRET,
-      { expiresIn: "15m" },
+      { expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m` },
     );
   }
 
@@ -543,12 +571,16 @@ export function createAuthRouter() {
     userAgent: string;
     refreshHash: string;
     deviceFingerprint: string;
+    mfaVerifiedAt?: string | null;
+    mfaTrustedUntil?: string | null;
   }) {
     if (isPgConfigured()) {
       try {
         await pgPool.query(
-          `INSERT INTO auth_sessions (id, user_id, email, expires_at, ip_address, user_agent, refresh_hash, device_fingerprint)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          `INSERT INTO auth_sessions (
+             id, user_id, email, expires_at, ip_address, user_agent, refresh_hash, device_fingerprint, mfa_verified_at, mfa_trusted_until
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             input.id,
             input.userId,
@@ -558,6 +590,8 @@ export function createAuthRouter() {
             input.userAgent,
             input.refreshHash,
             input.deviceFingerprint,
+            input.mfaVerifiedAt ?? null,
+            input.mfaTrustedUntil ?? null,
           ],
         );
         return;
@@ -587,7 +621,9 @@ export function createAuthRouter() {
     if (isPgConfigured()) {
       try {
         const result = await pgPool.query(
-          `SELECT id, user_id::text AS "userId", email
+          `SELECT id, user_id::text AS "userId", email,
+                  mfa_verified_at AS "mfaVerifiedAt",
+                  mfa_trusted_until AS "mfaTrustedUntil"
            FROM auth_sessions
            WHERE refresh_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
            LIMIT 1`,
@@ -605,6 +641,54 @@ export function createAuthRouter() {
       "SELECT * FROM auth_sessions WHERE refreshHash = ? AND revokedAt IS NULL AND expiresAt > ?",
       [refreshHash, new Date().toISOString()],
     )[0];
+  }
+
+  async function getTrustedMfaSession(userId: string, fingerprint: string) {
+    if (isPgConfigured()) {
+      try {
+        const result = await pgPool.query(
+          `SELECT mfa_verified_at AS "mfaVerifiedAt", mfa_trusted_until AS "mfaTrustedUntil"
+           FROM auth_sessions
+           WHERE user_id = $1
+             AND device_fingerprint = $2
+             AND revoked_at IS NULL
+             AND expires_at > NOW()
+             AND mfa_trusted_until IS NOT NULL
+             AND mfa_trusted_until > NOW()
+           ORDER BY mfa_trusted_until DESC
+           LIMIT 1`,
+          [userId, fingerprint],
+        );
+        return result.rows[0] ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  async function touchSession(sessionId: string) {
+    const now = new Date().toISOString();
+    if (isPgConfigured()) {
+      try {
+        await pgPool.query(
+          `UPDATE auth_sessions
+           SET last_seen_at = NOW()
+           WHERE id = $1 AND revoked_at IS NULL`,
+          [sessionId],
+        );
+        return;
+      } catch {
+        // Fall through to SQLite fallback.
+      }
+    }
+
+    const db = await getDb();
+    db.prepare(
+      "UPDATE auth_sessions SET lastSeenAt = ? WHERE id = ? AND revokedAt IS NULL",
+    ).run([now, sessionId]);
+    await saveDb(db);
   }
 
   async function listAuthSessions(userId: string) {
@@ -1366,7 +1450,11 @@ export function createAuthRouter() {
       });
     }
 
-    if (mfaEnabled) {
+    const trustedMfaSession = mfaEnabled
+      ? await getTrustedMfaSession(user.id, sessionFingerprint(req))
+      : null;
+
+    if (mfaEnabled && !trustedMfaSession) {
       return res.json({
         user,
         mfaRequired: true,
@@ -1383,16 +1471,18 @@ export function createAuthRouter() {
       id: decoded.jti,
       userId: user.id,
       email,
-      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
       ipAddress: req.ip ?? "",
       userAgent: req.get("user-agent") ?? "",
       refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-      deviceFingerprint: deviceFingerprint(req),
+      deviceFingerprint: sessionFingerprint(req),
+      mfaVerifiedAt: trustedMfaSession?.mfaVerifiedAt ?? null,
+      mfaTrustedUntil: trustedMfaSession?.mfaTrustedUntil ?? null,
     });
     await enforceSessionLimit(user.id);
     await audit(req, "login", email, true, user.id);
 
-    const currentFingerprint = deviceFingerprint(req);
+    const currentFingerprint = sessionFingerprint(req);
     const previousSessions = await listAuthSessions(user.id);
     const isNewDevice = !previousSessions.some(
       (s) => s.device_fingerprint === currentFingerprint,
@@ -1414,21 +1504,21 @@ export function createAuthRouter() {
       httpOnly: true,
       sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
-      maxAge: 15 * 60 * 1000,
+      maxAge: getAccessCookieMaxAgeMs(),
       path: "/",
     });
     res.cookie("ehs_csrf", csrfToken, {
       httpOnly: false,
       sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
-      maxAge: 7 * 86400000,
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
       path: "/",
     });
     res.cookie("ehs_refresh", refreshToken, {
       httpOnly: true,
       sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
-      maxAge: 7 * 86400000,
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
       path: "/api/auth",
     });
     res.json({ token, user });
@@ -1490,17 +1580,19 @@ export function createAuthRouter() {
         id: decoded.jti,
         userId: user.id,
         email,
-        expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+        expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
         ipAddress: req.ip ?? "",
         userAgent: req.get("user-agent") ?? "",
         refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-        deviceFingerprint: deviceFingerprint(req),
+        deviceFingerprint: sessionFingerprint(req),
+        mfaVerifiedAt: new Date().toISOString(),
+        mfaTrustedUntil: getMfaTrustedUntil(),
       });
 
       await enforceSessionLimit(user.id);
       await audit(req, "login.mfa.completed", email, true, user.id);
 
-      const currentFingerprint = deviceFingerprint(req);
+      const currentFingerprint = sessionFingerprint(req);
       const previousSessions = await listAuthSessions(user.id);
       const isNewDevice = !previousSessions.some(
         (s) => s.device_fingerprint === currentFingerprint,
@@ -1519,21 +1611,21 @@ export function createAuthRouter() {
         httpOnly: true,
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
-        maxAge: 15 * 60 * 1000,
+        maxAge: getAccessCookieMaxAgeMs(),
         path: "/",
       });
       res.cookie("ehs_csrf", csrfToken, {
         httpOnly: false,
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
-        maxAge: 7 * 86400000,
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
         path: "/",
       });
       res.cookie("ehs_refresh", refreshToken, {
         httpOnly: true,
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
-        maxAge: 7 * 86400000,
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
         path: "/api/auth",
       });
 
@@ -1575,11 +1667,13 @@ export function createAuthRouter() {
       id: newSessionId,
       userId: user.id,
       email: session.email,
-      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
       ipAddress: req.ip ?? "",
       userAgent: req.get("user-agent") ?? "",
       refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
-      deviceFingerprint: session.device_fingerprint ?? deviceFingerprint(req),
+      deviceFingerprint: sessionFingerprint(req),
+      mfaVerifiedAt: session.mfaVerifiedAt ?? null,
+      mfaTrustedUntil: session.mfaTrustedUntil ?? null,
     });
 
     const cookieSameSite: "none" | "lax" =
@@ -1588,14 +1682,14 @@ export function createAuthRouter() {
       httpOnly: true,
       sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
-      maxAge: 15 * 60 * 1000,
+      maxAge: getAccessCookieMaxAgeMs(),
       path: "/",
     });
     res.cookie("ehs_refresh", newRefreshToken, {
       httpOnly: true,
       sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
-      maxAge: 7 * 86400000,
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
       path: "/api/auth",
     });
     res.json({
@@ -2405,15 +2499,17 @@ export function createAuthRouter() {
         id: decoded.jti,
         userId: user.id,
         email: userEmail,
-        expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+        expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
         ipAddress: req.ip ?? "",
         userAgent: req.get("user-agent") ?? "",
         refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-        deviceFingerprint: deviceFingerprint(req),
+        deviceFingerprint: sessionFingerprint(req),
+        mfaVerifiedAt: new Date().toISOString(),
+        mfaTrustedUntil: getMfaTrustedUntil(),
       });
       await enforceSessionLimit(user.id);
 
-      const currentFingerprint = deviceFingerprint(req);
+      const currentFingerprint = sessionFingerprint(req);
       const previousSessions = await listAuthSessions(user.id);
       const isNewDevice = !previousSessions.some(
         (s) => s.device_fingerprint === currentFingerprint,
@@ -2432,21 +2528,21 @@ export function createAuthRouter() {
         httpOnly: true,
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
-        maxAge: 15 * 60 * 1000,
+        maxAge: getAccessCookieMaxAgeMs(),
         path: "/",
       });
       res.cookie("ehs_csrf", csrfToken, {
         httpOnly: false,
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
-        maxAge: 7 * 86400000,
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
         path: "/",
       });
       res.cookie("ehs_refresh", refreshToken, {
         httpOnly: true,
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
-        maxAge: 7 * 86400000,
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
         path: "/api/auth",
       });
 
