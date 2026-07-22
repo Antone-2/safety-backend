@@ -207,50 +207,52 @@ function mapReport(
 ) {
   if (!row || !row.id) return null;
   const mapped = toCamelCase(row);
-  return {
-    id: mapped.id,
-    date: mapped.date,
-    location: mapped.location,
-    reporter: mapped.reporter,
-    description: mapped.description,
-    severity: mapped.severity,
-    status: mapped.status,
-    category: mapped.category,
-    type: mapped.type,
-    resolutionDays: mapped.resolutionDays,
-    slaHours: mapped.slaHours,
-    dueAt: mapped.dueAt,
-    assignedTo: mapped.assignedTo,
-    assignedToCopy: parseJsonArray(mapped.assignedToCopy),
-    comments: comments.map((c) => ({
-      author: c.author,
-      at: c.created_at ?? c.at ?? "",
-      text: c.text,
-    })),
-    isNearMiss: mapped.isNearMiss,
-    isRecordable: Boolean(mapped.isRecordable),
-    isLostTimeInjury: Boolean(mapped.isLostTimeInjury),
-    medicalTreatmentCase: Boolean(mapped.medicalTreatmentCase),
-    lostWorkDays: Number(mapped.lostWorkDays ?? 0),
-    restrictedWorkDays: Number(mapped.restrictedWorkDays ?? 0),
-    classificationSource: mapped.classificationSource,
-    classificationVerifiedBy: mapped.classificationVerifiedBy,
-    classificationVerifiedAt: mapped.classificationVerifiedAt,
-    anonymous: mapped.anonymous,
-    department: mapped.department,
-    shift: mapped.shift,
-    complianceRequired: mapped.complianceRequired,
-    complianceDueAt: mapped.complianceDueAt,
-    photoUrl: String(mapped.photoUrl ?? "").trim(),
+   return {
+     id: mapped.id,
+     date: sanitizeIsoDate(mapped.date, mapped.createdAt, mapped.updatedAt),
+     location: mapped.location,
+     reporter: mapped.reporter,
+     description: mapped.description,
+     severity: mapped.severity,
+     status: mapped.status,
+     category: mapped.category,
+     type: mapped.type,
+     resolutionDays: mapped.resolutionDays,
+     slaHours: mapped.slaHours,
+     dueAt: sanitizeIsoDate(mapped.dueAt, mapped.date, mapped.createdAt),
+     assignedTo: mapped.assignedTo,
+     assignedToCopy: parseJsonArray(mapped.assignedToCopy),
+     comments: comments.map((c) => ({
+       author: c.author,
+       at: c.created_at ?? c.at ?? "",
+       text: c.text,
+     })),
+     isNearMiss: mapped.isNearMiss,
+     isRecordable: Boolean(mapped.isRecordable),
+     isLostTimeInjury: Boolean(mapped.isLostTimeInjury),
+     medicalTreatmentCase: Boolean(mapped.medicalTreatmentCase),
+     lostWorkDays: Number(mapped.lostWorkDays ?? 0),
+     restrictedWorkDays: Number(mapped.restrictedWorkDays ?? 0),
+     classificationSource: mapped.classificationSource,
+     classificationVerifiedBy: mapped.classificationVerifiedBy,
+     classificationVerifiedAt: mapped.classificationVerifiedAt,
+     anonymous: mapped.anonymous,
+     department: mapped.department,
+     shift: mapped.shift,
+     complianceRequired: mapped.complianceRequired,
+     complianceDueAt: mapped.complianceDueAt
+       ? sanitizeIsoDate(mapped.complianceDueAt, mapped.date, mapped.createdAt)
+       : undefined,
+     photoUrl: String(mapped.photoUrl ?? "").trim(),
      source: mapped.source,
      sourceSyncedAt: mapped.sourceSyncedAt,
      auditHistory: audit.map((entry) => ({
-      at: entry.created_at ?? entry.timestamp ?? "",
-      actor: entry.actor_email || entry.actor || entry.actor_id || "System",
-      action: entry.action,
-      detail: entry.context?.detail ?? entry.context?.event ?? undefined,
-    })),
-  };
+       at: entry.created_at ?? entry.timestamp ?? "",
+       actor: entry.actor_email || entry.actor || entry.actor_id || "System",
+       action: entry.action,
+       detail: entry.context?.detail ?? entry.context?.event ?? undefined,
+     })),
+   };
 }
 
 function parseJsonArray(value: unknown): string[] {
@@ -355,6 +357,33 @@ async function syncReportWorkflowState(input: {
   }
 }
 
+function sanitizeIsoDate(value: unknown, ...fallbacks: string[]): string {
+  const attempt = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    const parsed = new Date(trimmed);
+    if (
+      !Number.isNaN(parsed.getTime()) &&
+      Number.isFinite(parsed.getTime()) &&
+      parsed.getUTCFullYear() >= 2000 &&
+      parsed.getUTCFullYear() <= 2100
+    ) {
+      return parsed.toISOString();
+    }
+    return "";
+  };
+
+  const primary = attempt(typeof value === "string" ? value : String(value ?? ""));
+  if (primary) return primary;
+
+  for (const fallback of fallbacks) {
+    const result = attempt(fallback);
+    if (result) return result;
+  }
+
+  return new Date().toISOString();
+}
+
 function getPlaceholderPhotoUrl(id: unknown, size = 80) {
   const shortId = String(id ?? "").slice(-3) || "N/A";
   return `https://placehold.co/${size}x${size}/1e293b/ffffff?text=${encodeURIComponent(shortId)}`;
@@ -363,7 +392,7 @@ function getPlaceholderPhotoUrl(id: unknown, size = 80) {
 function normalizeReportInput(input: any): ReportRow {
   return {
     id: input.id,
-    date: input.date instanceof Date ? input.date.toISOString() : input.date,
+    date: sanitizeIsoDate(input.date),
     location: input.location,
     reporter: input.reporter,
     description: input.description,
@@ -373,10 +402,7 @@ function normalizeReportInput(input: any): ReportRow {
     type: input.type,
     resolutionDays: input.resolutionDays ?? input.resolution_days,
     slaHours: input.slaHours ?? input.sla_hours,
-    dueAt:
-      input.dueAt instanceof Date
-        ? input.dueAt.toISOString()
-        : (input.dueAt ?? input.due_at),
+    dueAt: sanitizeIsoDate(input.dueAt),
     assignedTo: input.assignedTo ?? input.assigned_to,
     assignedToCopy: JSON.stringify(
       Array.isArray(input.assignedToCopy) ? input.assignedToCopy : [],
@@ -402,10 +428,7 @@ function normalizeReportInput(input: any): ReportRow {
     shift: input.shift,
     complianceRequired:
       (input.complianceRequired ?? input.compliance_required) ? 1 : 0,
-    complianceDueAt:
-      input.complianceDueAt instanceof Date
-        ? input.complianceDueAt.toISOString()
-        : (input.complianceDueAt ?? input.compliance_due_at),
+    complianceDueAt: sanitizeIsoDate(input.complianceDueAt),
     photoUrl: input.photoUrl ?? input.photo_url ?? "",
     source: input.source ?? "manual",
     createdAt: input.createdAt ?? input.created_at ?? new Date().toISOString(),

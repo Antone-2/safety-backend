@@ -6,6 +6,7 @@ import { writeAuditLog } from "../shared/audit/audit.service.js";
 import { getEnv } from "../config/index.js";
 import {
   sendCorrectiveActionAcknowledgementEmail,
+  sendCorrectiveActionAcknowledgementReminderEmail,
   sendCorrectiveActionReminderEmail,
   sendCorrectiveActionRequestEmail,
   sendCorrectiveActionSubmissionNotification,
@@ -93,7 +94,8 @@ export type CorrectiveActionNotificationRecipient = {
     | "task-reminder"
     | "review-update"
     | "comment"
-    | "acknowledgement";
+    | "acknowledgement"
+    | "acknowledgement-reminder";
   delivered: boolean;
   mode: "brevo" | "smtp" | "failed" | "internal";
   message?: string;
@@ -473,7 +475,8 @@ async function getCorrectiveActionNotificationHistory(
               item.stage === "task-reminder" ||
               item.stage === "review-update" ||
               item.stage === "comment" ||
-              item.stage === "acknowledgement"
+              item.stage === "acknowledgement" ||
+              item.stage === "acknowledgement-reminder"
                 ? item.stage
                 : "request",
             delivered: Boolean(item.delivered),
@@ -1154,6 +1157,90 @@ export async function acknowledgeCorrectiveActionSupervisorFollowUp(input: {
   }
 
   return record;
+}
+
+export async function sendCorrectiveActionAcknowledgementReminder(input: {
+  requestId: string;
+  actor?: { id?: string; email?: string; role?: string; name?: string } | null;
+}): Promise<CorrectiveActionNotificationSummary> {
+  let record: CorrectiveActionRequestRecord | null = null;
+  if (isPgConfigured()) {
+    const result = await pgPool.query(
+      "SELECT * FROM corrective_action_requests WHERE id = $1 LIMIT 1",
+      [input.requestId],
+    );
+    record = result.rows[0] ? mapRecord(result.rows[0]) : null;
+  } else {
+    const db = await getDb();
+    const row = allRows(
+      db,
+      "SELECT * FROM corrective_action_requests WHERE id = ? LIMIT 1",
+      [input.requestId],
+    )[0] as Record<string, unknown> | undefined;
+    record = row ? mapRecord(row) : null;
+  }
+
+  if (!record) throw new Error("Corrective action request not found");
+  if (!record.supervisorComments.length) {
+    throw new Error("No supervisor follow-up comment is available for acknowledgement reminder");
+  }
+  if (record.supervisorAcknowledgedAt) {
+    throw new Error("Supervisor follow-up has already been acknowledged");
+  }
+  if (!isEmail(record.recipientEmail)) {
+    throw new Error("Corrective action assignee email is invalid");
+  }
+
+  const latestComment = record.supervisorComments[0];
+  const recipients: CorrectiveActionNotificationRecipient[] = [];
+  try {
+    const delivery = await sendCorrectiveActionAcknowledgementReminderEmail({
+      to: record.recipientEmail,
+      recipientName: record.recipientName || undefined,
+      supervisorName: input.actor?.name || input.actor?.email || "Supervisor",
+      reportId: record.reportId,
+      reminderSummary: latestComment.text,
+      url: buildCorrectiveActionUrl(record.accessToken),
+    });
+    recipients.push({
+      recipient: delivery.recipient,
+      role: "recipient",
+      stage: "acknowledgement-reminder",
+      delivered: Boolean(delivery.delivered),
+      mode: normalizeNotificationMode(delivery.mode),
+      message: delivery.message,
+    });
+  } catch (error) {
+    recipients.push({
+      recipient: record.recipientEmail,
+      role: "recipient",
+      stage: "acknowledgement-reminder",
+      delivered: false,
+      mode: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const summary = {
+    ...summarizeNotificationResults(
+      recipients,
+      `Corrective action acknowledgement reminder processed for ${record.reportId}.`,
+    ),
+    recipients,
+  };
+
+  if (isPgConfigured()) {
+    await recordCorrectiveActionNotificationHistory({
+      reportId: record.reportId,
+      requestId: record.id,
+      action: "corrective-action.acknowledgement-reminder.notified",
+      actor: input.actor,
+      recipients,
+      message: summary.message,
+    });
+  }
+
+  return summary;
 }
 
 export async function getCorrectiveActionRequestByToken(

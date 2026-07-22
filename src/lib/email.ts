@@ -119,6 +119,19 @@ export type CorrectiveActionAcknowledgementEmailInput = z.infer<
   typeof CorrectiveActionAcknowledgementEmailSchema
 >;
 
+export const CorrectiveActionAcknowledgementReminderEmailSchema = z.object({
+  to: z.string().email(),
+  reportId: z.string().min(1),
+  recipientName: z.string().optional(),
+  supervisorName: z.string().optional(),
+  reminderSummary: z.string().min(1),
+  url: z.string().min(1).optional(),
+});
+
+export type CorrectiveActionAcknowledgementReminderEmailInput = z.infer<
+  typeof CorrectiveActionAcknowledgementReminderEmailSchema
+>;
+
 export interface CapaAssignmentDeliveryResult {
   recipient: string;
   role: "owner" | "backup" | "escalation";
@@ -914,6 +927,32 @@ export function buildCorrectiveActionAcknowledgementNotification(
   };
 }
 
+export function buildCorrectiveActionAcknowledgementReminderNotification(
+  input: CorrectiveActionAcknowledgementReminderEmailInput,
+) {
+  const parsed = CorrectiveActionAcknowledgementReminderEmailSchema.parse(input);
+  const subject = `Reminder: acknowledge corrective action follow-up for ${parsed.reportId}`;
+  const opening = parsed.recipientName
+    ? `Hello ${parsed.recipientName}, this is a reminder to acknowledge the supervisor follow-up for report ${parsed.reportId}.`
+    : `This is a reminder to acknowledge the supervisor follow-up for report ${parsed.reportId}.`;
+  const message = [
+    opening,
+    parsed.supervisorName
+      ? `${parsed.supervisorName} is still waiting for your acknowledgement.`
+      : "A supervisor is still waiting for your acknowledgement.",
+    `Latest follow-up: ${parsed.reminderSummary}`,
+    parsed.url ? `Open corrective action form: ${parsed.url}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    recipient: parsed.to,
+    subject,
+    message,
+  };
+}
+
 export function buildCapaAssignmentNotification(
   input: CapaAssignmentNotificationInput,
 ) {
@@ -1277,6 +1316,55 @@ export async function sendCorrectiveActionAcknowledgementEmail(
     delivered: true,
     mode: "smtp",
     message: `Corrective action acknowledgement sent to ${notification.recipient}.`,
+    recipient: notification.recipient,
+  };
+}
+
+export async function sendCorrectiveActionAcknowledgementReminderEmail(
+  input: CorrectiveActionAcknowledgementReminderEmailInput,
+) {
+  const parsed = CorrectiveActionAcknowledgementReminderEmailSchema.parse(input);
+  const notification = buildCorrectiveActionAcknowledgementReminderNotification(parsed);
+
+  if (!hasBrevoConfig() && !hasSmtpConfig()) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "internal",
+      message: `Corrective action acknowledgement reminder queued locally for ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  if (hasBrevoConfig()) {
+    await sendBrevoEmail({
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.message,
+      html: htmlFromText(notification.message, notification.subject),
+    });
+    return {
+      ok: true,
+      delivered: true,
+      mode: "brevo",
+      message: `Corrective action acknowledgement reminder sent to ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  await createTransporter().sendMail({
+    from: getSenderEmail(),
+    to: notification.recipient,
+    subject: notification.subject,
+    text: notification.message,
+    html: htmlFromText(notification.message, notification.subject),
+  });
+
+  return {
+    ok: true,
+    delivered: true,
+    mode: "smtp",
+    message: `Corrective action acknowledgement reminder sent to ${notification.recipient}.`,
     recipient: notification.recipient,
   };
 }

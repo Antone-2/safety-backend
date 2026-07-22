@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, createHmac, randomBytes } from "crypto";
 import type { Pool } from "pg";
 import * as QRCode from "qrcode";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
@@ -56,15 +56,13 @@ function base32Decode(str: string): Buffer {
 function generateHOTP(secret: Buffer, counter: number): number {
   const buf = Buffer.alloc(8);
   buf.writeBigUInt64BE(BigInt(counter));
-  const hash = createHash("sha1")
-    .update(Buffer.concat([secret, buf]))
-    .digest();
-  const offset = hash[hash.length - 1] & 0xf;
+  const hmac = createHmac("sha1", secret).update(buf).digest();
+  const offset = hmac[hmac.length - 1] & 0xf;
   const code =
-    ((hash[offset] & 0x7f) << 24) |
-    ((hash[offset + 1] & 0xff) << 16) |
-    ((hash[offset + 2] & 0xff) << 8) |
-    (hash[offset + 3] & 0xff);
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
   return code % 1000000;
 }
 

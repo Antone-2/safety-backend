@@ -19,6 +19,7 @@ import {
   getCorrectiveActionRequestByToken,
   listCorrectiveActionRequestsByReport,
   resendCorrectiveActionNotifications,
+  sendCorrectiveActionAcknowledgementReminder,
   sendCorrectiveActionReminders,
   startCorrectiveActionReminderScheduler,
   submitCorrectiveActionRequest,
@@ -257,6 +258,29 @@ export function createReportsRouter() {
         const message =
           error instanceof Error ? error.message : "Failed to resend corrective action notifications";
         const status = /not found/i.test(message) ? 404 : 500;
+        res.status(status).json({ error: message });
+      }
+    },
+  );
+
+  router.post(
+    "/corrective-action-requests/:requestId/acknowledgement-reminder",
+    authenticateUser,
+    requirePermission("reports:assign"),
+    async (req: AuthRequest, res) => {
+      const requestId = routeParam(req, "requestId");
+      try {
+        const result = await sendCorrectiveActionAcknowledgementReminder({
+          requestId,
+          actor: req.user,
+        });
+        res.json(result);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to send corrective action acknowledgement reminder";
+        const status = /not found/i.test(message) ? 404 : 400;
         res.status(status).json({ error: message });
       }
     },

@@ -128,7 +128,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     sql: `
       CREATE TABLE IF NOT EXISTS reports (
         id TEXT PRIMARY KEY,
-        date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        date TIMESTAMPTZ NOT NULL DEFAULT NOW() CHECK (EXTRACT(YEAR FROM date) BETWEEN 2000 AND 2100),
         location TEXT NOT NULL,
         reporter TEXT NOT NULL,
         description TEXT NOT NULL,
@@ -138,7 +138,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         type TEXT NOT NULL,
         resolution_days INTEGER,
         sla_hours INTEGER NOT NULL,
-        due_at TIMESTAMPTZ NOT NULL,
+        due_at TIMESTAMPTZ NOT NULL CHECK (EXTRACT(YEAR FROM due_at) BETWEEN 2000 AND 2100),
         assigned_to TEXT,
         assigned_to_copy JSONB NOT NULL DEFAULT '[]'::jsonb,
         is_near_miss BOOLEAN NOT NULL DEFAULT FALSE,
@@ -146,7 +146,7 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         department TEXT NOT NULL,
         shift TEXT NOT NULL,
         compliance_required BOOLEAN NOT NULL DEFAULT FALSE,
-        compliance_due_at TIMESTAMPTZ,
+        compliance_due_at TIMESTAMPTZ CHECK (EXTRACT(YEAR FROM compliance_due_at) BETWEEN 2000 AND 2100),
         photo_url TEXT,
         source TEXT NOT NULL DEFAULT 'manual',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

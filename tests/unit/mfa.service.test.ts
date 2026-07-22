@@ -185,7 +185,9 @@ describe("MFA Service", () => {
       codes.map((c) => c.code),
     );
 
-    const result = await pool.query("SELECT * FROM user_mfa WHERE user_id = $1", [testUserId]);
+    const result = await pool.query("SELECT * FROM user_mfa WHERE user_id = $1", [
+      testUserId,
+    ]);
 
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].secret).toBe(challenge2.secret);
