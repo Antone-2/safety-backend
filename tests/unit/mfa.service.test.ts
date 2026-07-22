@@ -95,13 +95,12 @@ describe("MFA Service", () => {
     mfaService = new MFAService(pool as Pool);
   });
 
-  it("should generate a valid TOTP secret and QR code", () => {
-    const challenge = mfaService.generateSecret("test@example.com");
+  it("should generate a valid TOTP secret and QR code", async () => {
+    const challenge = await mfaService.generateSecret("test@example.com");
 
     expect(challenge.secret).toBeDefined();
     expect(challenge.secret).toMatch(/^[A-Z2-7=]+$/);
-    expect(challenge.qrCode).toContain("otpauth://totp/");
-    expect(challenge.qrCode).toContain("Crown%20Safety");
+    expect(challenge.qrCode).toMatch(/^data:image\/png;base64,/);
   });
 
   it("should generate recovery codes", () => {
@@ -114,7 +113,7 @@ describe("MFA Service", () => {
   });
 
   it("should create MFA enrollment", async () => {
-    const challenge = mfaService.generateSecret("test@example.com");
+    const challenge = await mfaService.generateSecret("test@example.com");
     const codes = mfaService.generateRecoveryCodes(10);
 
     await mfaService.createMFAEnrollment(
@@ -143,7 +142,7 @@ describe("MFA Service", () => {
   });
 
   it("should disable MFA", async () => {
-    const challenge = mfaService.generateSecret("test@example.com");
+    const challenge = await mfaService.generateSecret("test@example.com");
     const codes = mfaService.generateRecoveryCodes(10);
 
     await mfaService.createMFAEnrollment(
@@ -170,8 +169,8 @@ describe("MFA Service", () => {
   });
 
   it("should handle duplicate enrollment attempts", async () => {
-    const challenge1 = mfaService.generateSecret("test@example.com");
-    const challenge2 = mfaService.generateSecret("test@example.com");
+    const challenge1 = await mfaService.generateSecret("test@example.com");
+    const challenge2 = await mfaService.generateSecret("test@example.com");
     const codes = mfaService.generateRecoveryCodes(10);
 
     await mfaService.createMFAEnrollment(

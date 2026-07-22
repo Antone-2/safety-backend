@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import type { Pool } from "pg";
+import * as QRCode from "qrcode";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
 // TOTP implementation using HMAC-SHA1 and base32
@@ -104,10 +105,15 @@ export type MFARecoveryCode = {
 export class MFAService {
   constructor(private pool: Pool = pgPool) {}
 
-  generateSecret(email: string): MFASetupChallenge {
+  async generateSecret(email: string): Promise<MFASetupChallenge> {
     const secret = randomBytes(20);
     const base32Secret = base32Encode(secret);
-    const qrCode = `otpauth://totp/Crown%20Safety%20(${encodeURIComponent(email)})?secret=${base32Secret}&issuer=Crown%20Safety`;
+    const otpauthUrl = `otpauth://totp/Crown%20Safety%20(${encodeURIComponent(email)})?secret=${base32Secret}&issuer=Crown%20Safety`;
+    const qrCode = await QRCode.toDataURL(otpauthUrl, {
+      width: 200,
+      margin: 2,
+      errorCorrectionLevel: "M",
+    });
     return { secret: base32Secret, qrCode };
   }
 

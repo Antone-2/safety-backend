@@ -1414,6 +1414,11 @@ addMigration(
 `,
 );
 
+addMigration(
+  "062_corrective_action_supervisor_comments",
+  `ALTER TABLE corrective_action_requests ADD COLUMN supervisorComments TEXT DEFAULT '[]';`,
+);
+
 export async function seedAdminUsers(db: any) {
   // Idempotent seeding: ensure these admin emails exist without ever violating UNIQUE(email).
   // This prevents startup crashes when the DB is partially seeded.

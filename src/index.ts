@@ -266,10 +266,39 @@ async function bootstrap() {
     }
 
     if (!env.DATABASE_URL) {
-      throw new Error("DATABASE_URL is required; PostgreSQL is the only application database");
+      logger.error("DATABASE_URL is required; PostgreSQL is the only application database");
+      console.error("Bootstrap failed: DATABASE_URL is required");
+      process.exit(1);
+      return;
     }
-    await runPostgresMigrations();
-    setGoogleSheetsPostgresAvailability(true);
+
+    const sanitizedDbUrl = env.DATABASE_URL.replace(/\/\/.*@/, "//***@");
+    logger.info({ db: sanitizedDbUrl }, "Connecting to PostgreSQL");
+
+    let postgresReady = false;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        await runPostgresMigrations();
+        postgresReady = true;
+        logger.info("PostgreSQL migrations completed");
+        break;
+      } catch (error) {
+        logger.warn(
+          { err: error as Error, attempt },
+          "PostgreSQL migration attempt failed",
+        );
+        if (attempt < 5) {
+          await new Promise((r) => setTimeout(r, attempt * 2000));
+        }
+      }
+    }
+
+    if (!postgresReady) {
+      logger.error("PostgreSQL is unavailable after 5 attempts; starting in degraded mode");
+      console.error("Bootstrap degraded: PostgreSQL unavailable after retries");
+    }
+
+    setGoogleSheetsPostgresAvailability(postgresReady);
     startServer();
     startGoogleSheetsScheduler();
     startMonthlyLeaderboardScheduler();

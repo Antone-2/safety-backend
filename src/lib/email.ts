@@ -92,6 +92,20 @@ export type CorrectiveActionReminderEmailInput = z.infer<
   typeof CorrectiveActionReminderEmailSchema
 >;
 
+export const CorrectiveActionSupervisorUpdateEmailSchema = z.object({
+  to: z.string().email(),
+  reportId: z.string().min(1),
+  recipientName: z.string().optional(),
+  supervisorName: z.string().optional(),
+  updateType: z.enum(["review-update", "comment"]),
+  summary: z.string().min(1),
+  url: z.string().min(1).optional(),
+});
+
+export type CorrectiveActionSupervisorUpdateEmailInput = z.infer<
+  typeof CorrectiveActionSupervisorUpdateEmailSchema
+>;
+
 export interface CapaAssignmentDeliveryResult {
   recipient: string;
   role: "owner" | "backup" | "escalation";
@@ -833,6 +847,40 @@ export function buildCorrectiveActionReminderNotification(
   };
 }
 
+export function buildCorrectiveActionSupervisorUpdateNotification(
+  input: CorrectiveActionSupervisorUpdateEmailInput,
+) {
+  const parsed = CorrectiveActionSupervisorUpdateEmailSchema.parse(input);
+  const subject =
+    parsed.updateType === "comment"
+      ? `Supervisor comment added: ${parsed.reportId}`
+      : `Corrective action review updated: ${parsed.reportId}`;
+  const opening =
+    parsed.recipientName && parsed.supervisorName
+      ? `Hello ${parsed.recipientName}, ${parsed.supervisorName} updated your corrective action request for report ${parsed.reportId}.`
+      : parsed.recipientName
+        ? `Hello ${parsed.recipientName}, your corrective action request for report ${parsed.reportId} was updated by a supervisor.`
+        : `Your corrective action request for report ${parsed.reportId} was updated by a supervisor.`;
+  const actionLine =
+    parsed.updateType === "comment"
+      ? "A supervisor added follow-up comments that need your attention."
+      : "A supervisor reviewed the action plan and updated the task status or due date.";
+  const message = [
+    opening,
+    actionLine,
+    `Update summary: ${parsed.summary}`,
+    parsed.url ? `Open corrective action form: ${parsed.url}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    recipient: parsed.to,
+    subject,
+    message,
+  };
+}
+
 export function buildCapaAssignmentNotification(
   input: CapaAssignmentNotificationInput,
 ) {
@@ -1098,6 +1146,55 @@ export async function sendCorrectiveActionReminderEmail(
     delivered: true,
     mode: "smtp",
     message: `Corrective action reminder sent to ${notification.recipient}.`,
+    recipient: notification.recipient,
+  };
+}
+
+export async function sendCorrectiveActionSupervisorUpdateEmail(
+  input: CorrectiveActionSupervisorUpdateEmailInput,
+) {
+  const parsed = CorrectiveActionSupervisorUpdateEmailSchema.parse(input);
+  const notification = buildCorrectiveActionSupervisorUpdateNotification(parsed);
+
+  if (!hasBrevoConfig() && !hasSmtpConfig()) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "internal",
+      message: `Corrective action supervisor update queued locally for ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  if (hasBrevoConfig()) {
+    await sendBrevoEmail({
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.message,
+      html: htmlFromText(notification.message, notification.subject),
+    });
+    return {
+      ok: true,
+      delivered: true,
+      mode: "brevo",
+      message: `Corrective action supervisor update sent to ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  await createTransporter().sendMail({
+    from: getSenderEmail(),
+    to: notification.recipient,
+    subject: notification.subject,
+    text: notification.message,
+    html: htmlFromText(notification.message, notification.subject),
+  });
+
+  return {
+    ok: true,
+    delivered: true,
+    mode: "smtp",
+    message: `Corrective action supervisor update sent to ${notification.recipient}.`,
     recipient: notification.recipient,
   };
 }

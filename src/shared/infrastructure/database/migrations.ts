@@ -1562,6 +1562,15 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ADD COLUMN IF NOT EXISTS action_plan_due_date TIMESTAMPTZ;
     `,
   },
+  {
+    id: "044_corrective_action_supervisor_comments",
+    description:
+      "Add stored supervisor review comments to corrective action requests",
+    sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_comments JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {

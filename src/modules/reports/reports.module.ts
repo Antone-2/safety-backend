@@ -11,6 +11,7 @@ import {
 import { reportsService } from "./reports.service.js";
 import { isUrlAllowedForFetch, safeFetch } from "../../shared/infrastructure/storage/ssrf.protection.js";
 import {
+  addCorrectiveActionSupervisorComment,
   CORRECTIVE_ACTION_EVENT_TYPES,
   CORRECTIVE_ACTION_ITEM_STATUSES,
   createCorrectiveActionRequest,
@@ -20,6 +21,7 @@ import {
   sendCorrectiveActionReminders,
   startCorrectiveActionReminderScheduler,
   submitCorrectiveActionRequest,
+  updateCorrectiveActionRequestReview,
 } from "../../services/corrective-action-request.service.js";
 
 const BulkReportStatusSchema = z.object({
@@ -57,6 +59,26 @@ const CorrectiveActionRequestSubmitSchema = z.object({
     )
     .min(1)
     .max(50),
+});
+
+const CorrectiveActionRequestReviewSchema = z.object({
+  actionPlanDueDate: z.string().nullable().optional(),
+  actionPlanItems: z
+    .array(
+      z.object({
+        action: z.string().min(1).max(500),
+        byWho: z.string().min(1).max(200),
+        byWhoEmail: z.string().email().optional(),
+        byWhen: z.string().min(1),
+        status: z.enum(CORRECTIVE_ACTION_ITEM_STATUSES),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+const CorrectiveActionRequestCommentSchema = z.object({
+  text: z.string().min(1).max(5000),
 });
 
 type SseClient = {
@@ -209,6 +231,59 @@ export function createReportsRouter() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to resend corrective action notifications";
+        const status = /not found/i.test(message) ? 404 : 500;
+        res.status(status).json({ error: message });
+      }
+    },
+  );
+
+  router.patch(
+    "/corrective-action-requests/:requestId/review",
+    authenticateUser,
+    requirePermission("reports:assign"),
+    async (req: AuthRequest, res) => {
+      const requestId = routeParam(req, "requestId");
+      const parsed = CorrectiveActionRequestReviewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors });
+      }
+      try {
+        const result = await updateCorrectiveActionRequestReview({
+          requestId,
+          actionPlanDueDate: parsed.data.actionPlanDueDate ?? null,
+          actionPlanItems: parsed.data.actionPlanItems,
+          actor: req.user,
+        });
+        res.json(result);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to update corrective action review";
+        const status = /not found/i.test(message) ? 404 : 500;
+        res.status(status).json({ error: message });
+      }
+    },
+  );
+
+  router.post(
+    "/corrective-action-requests/:requestId/comments",
+    authenticateUser,
+    requirePermission("reports:assign"),
+    async (req: AuthRequest, res) => {
+      const requestId = routeParam(req, "requestId");
+      const parsed = CorrectiveActionRequestCommentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors });
+      }
+      try {
+        const result = await addCorrectiveActionSupervisorComment({
+          requestId,
+          text: parsed.data.text,
+          actor: req.user,
+        });
+        res.json(result);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to add corrective action comment";
         const status = /not found/i.test(message) ? 404 : 500;
         res.status(status).json({ error: message });
       }

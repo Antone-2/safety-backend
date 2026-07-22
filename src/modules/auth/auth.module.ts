@@ -2298,7 +2298,7 @@ export function createAuthRouter() {
       const { MFAService } = await import("../../services/mfa.service.js");
       const mfaService = new MFAService(pgPool);
 
-      const challenge = mfaService.generateSecret(userEmail);
+      const challenge = await mfaService.generateSecret(userEmail);
       const recoveryCodes = mfaService.generateRecoveryCodes(10);
 
       await mfaService.createMFAEnrollment(
