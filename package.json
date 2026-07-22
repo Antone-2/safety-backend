@@ -10,6 +10,7 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "db:reset": "tsx src/scripts/reset.ts",
     "db:refresh-reports": "tsx src/scripts/refresh-reports.ts",
+    "db:backfill-report-timestamps": "tsx src/scripts/backfill-report-timestamps.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:migrate:dry": "tsx src/scripts/migrate.ts -- --dry-run",
     "db:migrate:backup": "tsx src/scripts/migrate.ts -- --backup-before",
