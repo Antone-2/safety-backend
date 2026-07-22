@@ -9,6 +9,8 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/api/auth/bootstrap/register",
   "/api/auth/mfa/enroll",
   "/api/auth/mfa/verify-enrollment",
+  "/api/auth/mfa/verify-token",
+  "/api/auth/mfa/recovery-code",
   "/api/auth/login/mfa-complete",
 ]);
 

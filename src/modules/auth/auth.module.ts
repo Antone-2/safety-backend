@@ -2324,6 +2324,7 @@ export function createAuthRouter() {
     try {
       let userId: string;
       let userEmail: string;
+      let userRole: string | undefined;
 
       const enrollmentToken = req.body?.mfaEnrollmentToken as string | undefined;
       const authHeader = req.headers.authorization;
@@ -2344,6 +2345,11 @@ export function createAuthRouter() {
           }
           userId = decoded.userId;
           userEmail = decoded.email;
+          const userRecord = await findUserByEmail(userEmail);
+          if (!userRecord) {
+            return res.status(401).json({ error: "User not found" });
+          }
+          userRole = userRecord.role;
         } catch {
           return res.status(401).json({ error: "Invalid or expired MFA enrollment token" });
         }
@@ -2360,6 +2366,7 @@ export function createAuthRouter() {
           }
           userId = authedUser.id;
           userEmail = authedUser.email;
+          userRole = authedUser.role;
         } catch {
           return res.status(401).json({ error: "Invalid or expired session token" });
         }
@@ -2367,7 +2374,7 @@ export function createAuthRouter() {
         return res.status(401).json({ error: "Missing authorization or MFA enrollment token" });
       }
 
-      const { token } = req.body;
+      const token = String(req.body?.token || "").replace(/\s+/g, "").trim();
 
       if (!token || token.length !== 6) {
         return res.status(400).json({ error: "Invalid TOTP token format" });
@@ -2383,8 +2390,67 @@ export function createAuthRouter() {
       }
 
       await audit(req, "mfa_enrollment_completed", userEmail, true, userId);
+      const foundUser = await findUserByEmail(userEmail);
+      if (!foundUser) {
+        return res.status(401).json({ error: "Account is no longer active" });
+      }
+      const user = publicUser(foundUser);
 
-      res.json({ ok: true, message: "MFA enrollment verified successfully" });
+      const sessionId = randomBytes(16).toString("hex");
+      const refreshToken = randomBytes(48).toString("base64url");
+      const accessToken = generateToken(user, sessionId);
+      const decoded = jwt.decode(accessToken) as { jti: string; exp: number };
+
+      await createAuthSession({
+        id: decoded.jti,
+        userId: user.id,
+        email: userEmail,
+        expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+        ipAddress: req.ip ?? "",
+        userAgent: req.get("user-agent") ?? "",
+        refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
+        deviceFingerprint: deviceFingerprint(req),
+      });
+      await enforceSessionLimit(user.id);
+
+      const currentFingerprint = deviceFingerprint(req);
+      const previousSessions = await listAuthSessions(user.id);
+      const isNewDevice = !previousSessions.some(
+        (s) => s.device_fingerprint === currentFingerprint,
+      );
+      if (isNewDevice) {
+        sendNewDeviceNotification(userEmail, req.ip ?? "", req.get("user-agent") ?? "").catch(
+          () => undefined,
+        );
+      }
+
+      const csrfToken = randomBytes(24).toString("base64url");
+      const cookieSameSite: "none" | "lax" =
+        env.NODE_ENV === "production" ? "none" : "lax";
+
+      res.cookie("ehs_access", accessToken, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: 15 * 60 * 1000,
+        path: "/",
+      });
+      res.cookie("ehs_csrf", csrfToken, {
+        httpOnly: false,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: 7 * 86400000,
+        path: "/",
+      });
+      res.cookie("ehs_refresh", refreshToken, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: 7 * 86400000,
+        path: "/api/auth",
+      });
+
+      res.json({ token: accessToken, user });
     } catch (error) {
       console.error("MFA verification error:", error);
       res.status(500).json({ error: "Failed to verify MFA enrollment" });
@@ -2413,7 +2479,8 @@ export function createAuthRouter() {
     "/mfa/verify-token",
     async (req: Request, res: Response) => {
       try {
-        const { mfaChallengeToken, token } = req.body;
+        const mfaChallengeToken = req.body?.mfaChallengeToken as string | undefined;
+        const token = String(req.body?.token || "").replace(/\s+/g, "").trim();
 
         if (!mfaChallengeToken || !token || token.length !== 6) {
           return res.status(400).json({ error: "Invalid request parameters" });

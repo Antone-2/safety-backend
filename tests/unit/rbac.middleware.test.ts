@@ -104,6 +104,8 @@ describe("global mutation policy", () => {
     expect(isWriteExemptPath("/auth/logout")).toBe(true);
     expect(isWriteExemptPath("/api/auth/mfa/enroll")).toBe(true);
     expect(isWriteExemptPath("/api/v1/auth/mfa/verify-enrollment")).toBe(true);
+    expect(isWriteExemptPath("/api/auth/mfa/verify-token")).toBe(true);
+    expect(isWriteExemptPath("/api/v1/auth/mfa/recovery-code")).toBe(true);
     expect(isWriteExemptPath("/api/auth/login/mfa-complete")).toBe(true);
     expect(isWriteExemptPath("/reports/RPT-1/assign")).toBe(false);
     expect(normalizeApiPath("/api/v1/reports/RPT-1/assign")).toBe("/reports/RPT-1/assign");

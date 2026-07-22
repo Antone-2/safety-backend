@@ -7,6 +7,9 @@ import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 // Based on RFC 6238 (TOTP) and RFC 4648 (Base32)
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const MFA_TOTP_TIME_STEP_SECONDS = 30;
+const MFA_TOTP_ALLOWED_WINDOW = 2;
+const MFA_TOTP_ENROLLMENT_WINDOW = 6;
 
 function base32Encode(bytes: Buffer): string {
   let result = "";
@@ -75,20 +78,25 @@ function generateTOTP(
   return generateHOTP(secret, counter);
 }
 
-function verifyTOTP(
+function findTOTPMatchOffset(
   secret: Buffer,
   token: string,
-  timeStep: number = 30,
-  window: number = 1,
+  timeStep: number = MFA_TOTP_TIME_STEP_SECONDS,
+  window: number = MFA_TOTP_ALLOWED_WINDOW,
   time: number = Date.now(),
-): boolean {
-  const tokenNum = parseInt(token, 10);
-  if (isNaN(tokenNum) || token.length !== 6) return false;
+  driftSteps: number = 0,
+): number | null {
+  const normalizedToken = token.replace(/\s+/g, "").trim();
+  const tokenNum = parseInt(normalizedToken, 10);
+  if (isNaN(tokenNum) || normalizedToken.length !== 6) return null;
   const counter = Math.floor(time / 1000 / timeStep);
   for (let i = -window; i <= window; i++) {
-    if (generateHOTP(secret, counter + i) === tokenNum) return true;
+    const offset = driftSteps + i;
+    if (generateHOTP(secret, counter + offset) === tokenNum) {
+      return offset;
+    }
   }
-  return false;
+  return null;
 }
 
 export type MFASetupChallenge = {
@@ -166,13 +174,24 @@ export class MFAService {
       const storedSecret = result.rows[0].secret;
       const secretBinary = base32Decode(storedSecret);
 
-      const isValid = verifyTOTP(secretBinary, token, 30, 1);
+      const driftOffset = findTOTPMatchOffset(
+        secretBinary,
+        token,
+        MFA_TOTP_TIME_STEP_SECONDS,
+        MFA_TOTP_ENROLLMENT_WINDOW,
+      );
+      const isValid = driftOffset !== null;
 
       if (isValid) {
         await this.pool.query(
-          `UPDATE user_mfa SET verified = TRUE, enabled = TRUE, verified_at = NOW()
+          `UPDATE user_mfa
+           SET verified = TRUE,
+               enabled = TRUE,
+               verified_at = NOW(),
+               drift_steps = $2,
+               updated_at = NOW()
            WHERE user_id = $1`,
-          [userId],
+          [userId, driftOffset],
         );
       }
 
@@ -185,16 +204,48 @@ export class MFAService {
   async verifyTOTPToken(userId: string, token: string): Promise<boolean> {
     try {
       const result = await this.pool.query(
-        "SELECT secret FROM user_mfa WHERE user_id = $1 AND enabled = TRUE",
+        "SELECT secret, drift_steps FROM user_mfa WHERE user_id = $1 AND enabled = TRUE",
         [userId],
       );
 
       if (!result.rows[0]) return false;
 
       const storedSecret = result.rows[0].secret;
+      const storedDrift = Number(result.rows[0].drift_steps ?? 0);
       const secretBinary = base32Decode(storedSecret);
+      let driftOffset = findTOTPMatchOffset(
+        secretBinary,
+        token,
+        MFA_TOTP_TIME_STEP_SECONDS,
+        MFA_TOTP_ALLOWED_WINDOW,
+        Date.now(),
+        storedDrift,
+      );
 
-      return verifyTOTP(secretBinary, token, 30, 1);
+      if (driftOffset === null) {
+        driftOffset = findTOTPMatchOffset(
+          secretBinary,
+          token,
+          MFA_TOTP_TIME_STEP_SECONDS,
+          MFA_TOTP_ENROLLMENT_WINDOW,
+        );
+      }
+
+      if (driftOffset === null) {
+        return false;
+      }
+
+      if (driftOffset !== storedDrift) {
+        await this.pool.query(
+          `UPDATE user_mfa
+           SET drift_steps = $2,
+               updated_at = NOW()
+           WHERE user_id = $1`,
+          [userId, driftOffset],
+        );
+      }
+
+      return true;
     } catch {
       return false;
     }

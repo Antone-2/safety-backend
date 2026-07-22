@@ -8,6 +8,14 @@ let bullMqSupportChecked = false;
 let bullMqSupported = false;
 let bullMqRedisVersion: string | null = null;
 
+function isLocalhostRedisUrl(url: string): boolean {
+  const normalized = url.replace(/^redis(s?):\/\//i, "").split("/")[0]?.split("?")[0]?.split("@").pop()?.trim() || "";
+  if (!normalized) return true;
+  const [host] = normalized.split(":");
+  if (!host) return true;
+  return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host.toLowerCase());
+}
+
 export const redisClient = env.REDIS_URL
   ? new Redis(env.REDIS_URL, {
       lazyConnect: true,
@@ -20,13 +28,17 @@ export const redisClient = env.REDIS_URL
     })
   : null;
 
+if (redisClient && env.REDIS_URL && isLocalhostRedisUrl(env.REDIS_URL)) {
+  console.warn(`REDIS_URL points to ${env.REDIS_URL}; Redis on localhost is not available in this environment. Redis-backed features will remain disabled.`);
+}
+
 if (redisClient) {
   let redisErrorLogged = false;
 
-  redisClient.on("error", (err: Error) => {
+  redisClient.on("error", () => {
     if (!redisErrorLogged) {
       redisErrorLogged = true;
-      console.warn("Redis unavailable. Background jobs/rate-limiting will be disabled until Redis is reachable.", err);
+      console.warn("Redis unavailable. Background jobs and rate-limiting will be disabled until Redis is reachable.");
     }
   });
 
@@ -41,7 +53,11 @@ if (redisClient) {
 
 export async function connectRedis() {
   if (!env.REDIS_URL || !redisClient) {
-    console.warn("Redis not configured; set REDIS_URL to enable Redis-backed features.");
+    console.warn("Redis not configured; rate-limiting and background jobs are disabled.");
+    return false;
+  }
+  if (isLocalhostRedisUrl(env.REDIS_URL)) {
+    console.warn("Skipping Redis connection because REDIS_URL points to localhost.");
     return false;
   }
   try {
@@ -50,14 +66,7 @@ export async function connectRedis() {
     }
     await redisClient.ping();
     return true;
-  } catch (error) {
-    if (redisClient.status !== "end") {
-      try {
-        redisClient.disconnect();
-      } catch {
-        // ignore cleanup failures
-      }
-    }
+  } catch {
     return false;
   }
 }
@@ -85,19 +94,31 @@ export async function supportsBullMq() {
     return bullMqSupported;
   }
 
-  await connectRedis();
-  const serverInfo = await redisClient.info("server");
-  bullMqRedisVersion = parseRedisVersion(serverInfo);
-  bullMqSupported = isBullMqCompatibleVersion(bullMqRedisVersion);
-  bullMqSupportChecked = true;
-
-  if (!bullMqSupported) {
-    console.warn(
-      `Redis ${bullMqRedisVersion || "unknown"} detected. BullMQ requires Redis ${MINIMUM_BULLMQ_REDIS_MAJOR}.0.0 or newer; background jobs will stay disabled.`,
-    );
+  const connected = await connectRedis();
+  if (!connected) {
+    bullMqSupportChecked = true;
+    bullMqSupported = false;
+    return false;
   }
 
-  return bullMqSupported;
+  try {
+    const serverInfo = await redisClient.info("server");
+    bullMqRedisVersion = parseRedisVersion(serverInfo);
+    bullMqSupported = isBullMqCompatibleVersion(bullMqRedisVersion);
+    bullMqSupportChecked = true;
+
+    if (!bullMqSupported) {
+      console.warn(
+        `Redis ${bullMqRedisVersion || "unknown"} detected. BullMQ requires Redis ${MINIMUM_BULLMQ_REDIS_MAJOR}.0.0 or newer; background jobs will stay disabled.`,
+      );
+    }
+
+    return bullMqSupported;
+  } catch {
+    bullMqSupportChecked = true;
+    bullMqSupported = false;
+    return false;
+  }
 }
 
 export function getBullMqRedisVersion() {

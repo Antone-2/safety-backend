@@ -16,6 +16,8 @@ const AUTH_WRITE_EXEMPTIONS = new Set([
   "/auth/logout",
   "/auth/mfa/enroll",
   "/auth/mfa/verify-enrollment",
+  "/auth/mfa/verify-token",
+  "/auth/mfa/recovery-code",
   "/auth/login/mfa-complete",
 ]);
 

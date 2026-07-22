@@ -1584,6 +1584,14 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ADD COLUMN IF NOT EXISTS supervisor_acknowledgement_note TEXT;
     `,
   },
+  {
+    id: "046_mfa_totp_drift_tracking",
+    description: "Track TOTP clock drift for MFA enrollment and login",
+    sql: `
+      ALTER TABLE user_mfa
+        ADD COLUMN IF NOT EXISTS drift_steps INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {
