@@ -11,6 +11,7 @@ import {
 import { reportsService } from "./reports.service.js";
 import { isUrlAllowedForFetch, safeFetch } from "../../shared/infrastructure/storage/ssrf.protection.js";
 import {
+  acknowledgeCorrectiveActionSupervisorFollowUp,
   addCorrectiveActionSupervisorComment,
   CORRECTIVE_ACTION_EVENT_TYPES,
   CORRECTIVE_ACTION_ITEM_STATUSES,
@@ -79,6 +80,10 @@ const CorrectiveActionRequestReviewSchema = z.object({
 
 const CorrectiveActionRequestCommentSchema = z.object({
   text: z.string().min(1).max(5000),
+});
+
+const CorrectiveActionAcknowledgementSchema = z.object({
+  note: z.string().max(5000).optional(),
 });
 
 type SseClient = {
@@ -192,6 +197,26 @@ export function createReportsRouter() {
       res.json(submitted);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit corrective action";
+      const status = /not found/i.test(message) ? 404 : 400;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  router.post("/corrective-action-requests/:token/acknowledge", async (req, res) => {
+    const token = routeParam(req, "token");
+    const parsed = CorrectiveActionAcknowledgementSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors });
+    }
+    try {
+      const acknowledged = await acknowledgeCorrectiveActionSupervisorFollowUp({
+        token,
+        note: parsed.data.note,
+      });
+      res.json(acknowledged);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to acknowledge corrective action follow-up";
       const status = /not found/i.test(message) ? 404 : 400;
       res.status(status).json({ error: message });
     }

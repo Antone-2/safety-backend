@@ -1571,6 +1571,19 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ADD COLUMN IF NOT EXISTS supervisor_comments JSONB NOT NULL DEFAULT '[]'::jsonb;
     `,
   },
+  {
+    id: "045_corrective_action_acknowledgement_fields",
+    description:
+      "Add assignee acknowledgement tracking to corrective action requests",
+    sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_acknowledged_at TIMESTAMPTZ;
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_acknowledged_by TEXT;
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_acknowledgement_note TEXT;
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {

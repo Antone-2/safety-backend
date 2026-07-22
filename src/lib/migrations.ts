@@ -1419,6 +1419,15 @@ addMigration(
   `ALTER TABLE corrective_action_requests ADD COLUMN supervisorComments TEXT DEFAULT '[]';`,
 );
 
+addMigration(
+  "063_corrective_action_acknowledgement_fields",
+  `
+  ALTER TABLE corrective_action_requests ADD COLUMN supervisorAcknowledgedAt TEXT;
+  ALTER TABLE corrective_action_requests ADD COLUMN supervisorAcknowledgedBy TEXT;
+  ALTER TABLE corrective_action_requests ADD COLUMN supervisorAcknowledgementNote TEXT;
+`,
+);
+
 export async function seedAdminUsers(db: any) {
   // Idempotent seeding: ensure these admin emails exist without ever violating UNIQUE(email).
   // This prevents startup crashes when the DB is partially seeded.

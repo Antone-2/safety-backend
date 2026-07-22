@@ -5,6 +5,7 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { writeAuditLog } from "../shared/audit/audit.service.js";
 import { getEnv } from "../config/index.js";
 import {
+  sendCorrectiveActionAcknowledgementEmail,
   sendCorrectiveActionReminderEmail,
   sendCorrectiveActionRequestEmail,
   sendCorrectiveActionSubmissionNotification,
@@ -71,6 +72,9 @@ export interface CorrectiveActionRequestRecord {
   rootCauseAnalysis?: string | null;
   actionPlanItems: CorrectiveActionPlanItem[];
   supervisorComments: CorrectiveActionRequestComment[];
+  supervisorAcknowledgedAt?: string | null;
+  supervisorAcknowledgedBy?: string | null;
+  supervisorAcknowledgementNote?: string | null;
   capaId?: string | null;
   submittedAt?: string | null;
   expiresAt?: string | null;
@@ -88,7 +92,8 @@ export type CorrectiveActionNotificationRecipient = {
     | "plan-reminder"
     | "task-reminder"
     | "review-update"
-    | "comment";
+    | "comment"
+    | "acknowledgement";
   delivered: boolean;
   mode: "brevo" | "smtp" | "failed" | "internal";
   message?: string;
@@ -255,6 +260,15 @@ function mapRecord(row: Record<string, unknown>): CorrectiveActionRequestRecord 
     supervisorComments: normalizeSupervisorComments(
       row.supervisor_comments ?? row.supervisorComments ?? [],
     ),
+    supervisorAcknowledgedAt: (row.supervisor_acknowledged_at ??
+      row.supervisorAcknowledgedAt ??
+      null) as string | null,
+    supervisorAcknowledgedBy: (row.supervisor_acknowledged_by ??
+      row.supervisorAcknowledgedBy ??
+      null) as string | null,
+    supervisorAcknowledgementNote: (row.supervisor_acknowledgement_note ??
+      row.supervisorAcknowledgementNote ??
+      null) as string | null,
     capaId: (row.capa_id ?? row.capaId ?? null) as string | null,
     submittedAt: (row.submitted_at ?? row.submittedAt ?? null) as string | null,
     expiresAt: (row.expires_at ?? row.expiresAt ?? null) as string | null,
@@ -324,6 +338,86 @@ async function recordCorrectiveActionNotificationHistory(input: {
   });
 }
 
+async function notifyCorrectiveActionSupervisorFollowUp(input: {
+  record: CorrectiveActionRequestRecord;
+  actor?: { id?: string; email?: string; role?: string; name?: string } | null;
+  updateType: "review-update" | "comment";
+  summary: string;
+  action: "corrective-action.review.notified" | "corrective-action.comment.notified";
+}): Promise<CorrectiveActionNotificationRecipient[]> {
+  const recipients: CorrectiveActionNotificationRecipient[] = [];
+  const notifyRecipients = new Map<
+    string,
+    { role: CorrectiveActionNotificationRecipient["role"]; recipientName?: string }
+  >();
+
+  if (isEmail(input.record.recipientEmail)) {
+    notifyRecipients.set(input.record.recipientEmail, {
+      role: "recipient",
+      recipientName: input.record.recipientName || undefined,
+    });
+  }
+
+  if (isEmail(input.record.assignedByEmail)) {
+    notifyRecipients.set(input.record.assignedByEmail as string, {
+      role: "sender",
+    });
+  }
+
+  for (const email of input.record.copiedRecipientEmails) {
+    if (!isEmail(email)) continue;
+    notifyRecipients.set(email, { role: "copied" });
+  }
+
+  for (const [email, recipientMeta] of notifyRecipients.entries()) {
+    try {
+      const delivery = await sendCorrectiveActionSupervisorUpdateEmail({
+        to: email,
+        recipientName: recipientMeta.recipientName,
+        supervisorName:
+          input.actor?.name || input.actor?.email || "Supervisor",
+        reportId: input.record.reportId,
+        updateType: input.updateType,
+        summary: input.summary,
+        url: buildCorrectiveActionUrl(input.record.accessToken),
+      });
+      recipients.push({
+        recipient: delivery.recipient,
+        role: recipientMeta.role,
+        stage: input.updateType,
+        delivered: Boolean(delivery.delivered),
+        mode: normalizeNotificationMode(delivery.mode),
+        message: delivery.message,
+      });
+    } catch (error) {
+      recipients.push({
+        recipient: email,
+        role: recipientMeta.role,
+        stage: input.updateType,
+        delivered: false,
+        mode: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if (isPgConfigured() && recipients.length > 0) {
+    await recordCorrectiveActionNotificationHistory({
+      reportId: input.record.reportId,
+      requestId: input.record.id,
+      action: input.action,
+      actor: input.actor,
+      recipients,
+      message:
+        input.updateType === "comment"
+          ? `Corrective action supervisor comment processed for ${input.record.reportId}.`
+          : `Corrective action review update processed for ${input.record.reportId}.`,
+    });
+  }
+
+  return recipients;
+}
+
 export type CorrectiveActionNotificationSummary = {
   delivered: number;
   queued: number;
@@ -378,7 +472,8 @@ async function getCorrectiveActionNotificationHistory(
               item.stage === "plan-reminder" ||
               item.stage === "task-reminder" ||
               item.stage === "review-update" ||
-              item.stage === "comment"
+              item.stage === "comment" ||
+              item.stage === "acknowledgement"
                 ? item.stage
                 : "request",
             delivered: Boolean(item.delivered),
@@ -469,12 +564,13 @@ export async function createCorrectiveActionRequest(input: {
         id, report_id, access_token, recipient_email, recipient_name,
         assigned_by_email, assigned_by_name, copied_recipient_emails, report_type, report_category,
         report_description, report_location, report_department, assignee_note, priority, due_date,
-        status, supervisor_comments, expires_at, created_at, updated_at
+        status, supervisor_comments, supervisor_acknowledged_at, supervisor_acknowledged_by,
+        supervisor_acknowledgement_note, expires_at, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8::jsonb, $9, $10,
         $11, $12, $13, $14, $15, $16,
-        'pending', '[]'::jsonb, $17, $18, $19
+        'pending', '[]'::jsonb, NULL, NULL, NULL, $17, $18, $19
       ) RETURNING *`,
       [
         id,
@@ -534,8 +630,9 @@ export async function createCorrectiveActionRequest(input: {
       id, reportId, accessToken, recipientEmail, recipientName,
       assignedByEmail, assignedByName, copiedRecipientEmails, reportType, reportCategory,
       reportDescription, reportLocation, reportDepartment, assigneeNote, priority, dueDate,
-      status, supervisorComments, expiresAt, createdAt, updatedAt, actionPlanItems
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '[]', ?, ?, ?, '[]')`,
+      status, supervisorComments, supervisorAcknowledgedAt, supervisorAcknowledgedBy,
+      supervisorAcknowledgementNote, expiresAt, createdAt, updatedAt, actionPlanItems
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '[]', NULL, NULL, NULL, ?, ?, ?, '[]')`,
   ).run([
     id,
     input.reportId,
@@ -762,64 +859,23 @@ export async function updateCorrectiveActionRequestReview(input: {
       ],
     );
     const record = mapRecord(result.rows[0]);
-    if (isEmail(record.recipientEmail)) {
-      const changedTasks = record.actionPlanItems.filter((item, index) => {
-        const previous = previousRecord?.actionPlanItems[index];
-        return !previous || previous.status !== item.status || previous.byWhen !== item.byWhen;
-      });
-      const summary =
-        changedTasks.length > 0
-          ? changedTasks
-              .map((item) => `${item.action}: ${item.status} (due ${item.byWhen})`)
-              .join("; ")
-          : "The overall action-plan review was updated.";
-      try {
-        const delivery = await sendCorrectiveActionSupervisorUpdateEmail({
-          to: record.recipientEmail,
-          recipientName: record.recipientName || undefined,
-          supervisorName: input.actor?.email || "Supervisor",
-          reportId: record.reportId,
-          updateType: "review-update",
-          summary,
-          url: buildCorrectiveActionUrl(record.accessToken),
-        });
-        await recordCorrectiveActionNotificationHistory({
-          reportId: record.reportId,
-          requestId: record.id,
-          action: "corrective-action.review.notified",
-          actor: input.actor,
-          recipients: [
-            {
-              recipient: delivery.recipient,
-              role: "recipient",
-              stage: "review-update",
-              delivered: Boolean(delivery.delivered),
-              mode: normalizeNotificationMode(delivery.mode),
-              message: delivery.message,
-            },
-          ],
-          message: delivery.message,
-        });
-      } catch (error) {
-        await recordCorrectiveActionNotificationHistory({
-          reportId: record.reportId,
-          requestId: record.id,
-          action: "corrective-action.review.notified",
-          actor: input.actor,
-          recipients: [
-            {
-              recipient: record.recipientEmail,
-              role: "recipient",
-              stage: "review-update",
-              delivered: false,
-              mode: "failed",
-              error: error instanceof Error ? error.message : String(error),
-            },
-          ],
-          message: `Failed to send corrective action review update to ${record.recipientEmail}.`,
-        });
-      }
-    }
+    const changedTasks = record.actionPlanItems.filter((item, index) => {
+      const previous = previousRecord?.actionPlanItems[index];
+      return !previous || previous.status !== item.status || previous.byWhen !== item.byWhen;
+    });
+    const summary =
+      changedTasks.length > 0
+        ? changedTasks
+            .map((item) => `${item.action}: ${item.status} (due ${item.byWhen})`)
+            .join("; ")
+        : "The overall action-plan review was updated.";
+    await notifyCorrectiveActionSupervisorFollowUp({
+      record,
+      actor: input.actor,
+      updateType: "review-update",
+      summary,
+      action: "corrective-action.review.notified",
+    });
     await writeAuditLog({
       action: "corrective-action.review.updated",
       resourceType: "report",
@@ -862,27 +918,23 @@ export async function updateCorrectiveActionRequestReview(input: {
   )[0] as Record<string, unknown> | undefined;
   if (!row) throw new Error("Corrective action request not found");
   const record = mapRecord(row);
-  if (isEmail(record.recipientEmail)) {
-    const changedTasks = record.actionPlanItems.filter((item, index) => {
-      const previous = previousRecord?.actionPlanItems[index];
-      return !previous || previous.status !== item.status || previous.byWhen !== item.byWhen;
+  const changedTasks = record.actionPlanItems.filter((item, index) => {
+    const previous = previousRecord?.actionPlanItems[index];
+    return !previous || previous.status !== item.status || previous.byWhen !== item.byWhen;
+  });
+  try {
+    await notifyCorrectiveActionSupervisorFollowUp({
+      record,
+      actor: input.actor,
+      updateType: "review-update",
+      summary:
+        changedTasks.length > 0
+          ? changedTasks.map((item) => `${item.action}: ${item.status}`).join("; ")
+          : "The overall action-plan review was updated.",
+      action: "corrective-action.review.notified",
     });
-    try {
-      await sendCorrectiveActionSupervisorUpdateEmail({
-        to: record.recipientEmail,
-        recipientName: record.recipientName || undefined,
-        supervisorName: input.actor?.email || "Supervisor",
-        reportId: record.reportId,
-        updateType: "review-update",
-        summary:
-          changedTasks.length > 0
-            ? changedTasks.map((item) => `${item.action}: ${item.status}`).join("; ")
-            : "The overall action-plan review was updated.",
-        url: buildCorrectiveActionUrl(record.accessToken),
-      });
-    } catch {
-      // Mock/sqlite path should not block the review save if notifications fail.
-    }
+  } catch {
+    // Mock/sqlite path should not block the review save if notifications fail.
   }
   return record;
 }
@@ -922,54 +974,13 @@ export async function addCorrectiveActionSupervisorComment(input: {
       [JSON.stringify(nextComments), new Date().toISOString(), input.requestId],
     );
     const updated = mapRecord(result.rows[0]);
-    if (isEmail(updated.recipientEmail)) {
-      try {
-        const delivery = await sendCorrectiveActionSupervisorUpdateEmail({
-          to: updated.recipientEmail,
-          recipientName: updated.recipientName || undefined,
-          supervisorName: input.actor?.name || input.actor?.email || "Supervisor",
-          reportId: updated.reportId,
-          updateType: "comment",
-          summary: text,
-          url: buildCorrectiveActionUrl(updated.accessToken),
-        });
-        await recordCorrectiveActionNotificationHistory({
-          reportId: updated.reportId,
-          requestId: updated.id,
-          action: "corrective-action.comment.notified",
-          actor: input.actor,
-          recipients: [
-            {
-              recipient: delivery.recipient,
-              role: "recipient",
-              stage: "comment",
-              delivered: Boolean(delivery.delivered),
-              mode: normalizeNotificationMode(delivery.mode),
-              message: delivery.message,
-            },
-          ],
-          message: delivery.message,
-        });
-      } catch (error) {
-        await recordCorrectiveActionNotificationHistory({
-          reportId: updated.reportId,
-          requestId: updated.id,
-          action: "corrective-action.comment.notified",
-          actor: input.actor,
-          recipients: [
-            {
-              recipient: updated.recipientEmail,
-              role: "recipient",
-              stage: "comment",
-              delivered: false,
-              mode: "failed",
-              error: error instanceof Error ? error.message : String(error),
-            },
-          ],
-          message: `Failed to send corrective action comment update to ${updated.recipientEmail}.`,
-        });
-      }
-    }
+    await notifyCorrectiveActionSupervisorFollowUp({
+      record: updated,
+      actor: input.actor,
+      updateType: "comment",
+      summary: text,
+      action: "corrective-action.comment.notified",
+    });
     await writeAuditLog({
       action: "corrective-action.comment.added",
       resourceType: "report",
@@ -1021,22 +1032,128 @@ export async function addCorrectiveActionSupervisorComment(input: {
     [input.requestId],
   )[0] as Record<string, unknown>;
   const updated = mapRecord(updatedRow);
-  if (isEmail(updated.recipientEmail)) {
-    try {
-      await sendCorrectiveActionSupervisorUpdateEmail({
-        to: updated.recipientEmail,
-        recipientName: updated.recipientName || undefined,
-        supervisorName: input.actor?.name || input.actor?.email || "Supervisor",
-        reportId: updated.reportId,
-        updateType: "comment",
-        summary: text,
-        url: buildCorrectiveActionUrl(updated.accessToken),
-      });
-    } catch {
-      // Mock/sqlite path should not block comment capture if notifications fail.
-    }
+  try {
+    await notifyCorrectiveActionSupervisorFollowUp({
+      record: updated,
+      actor: input.actor,
+      updateType: "comment",
+      summary: text,
+      action: "corrective-action.comment.notified",
+    });
+  } catch {
+    // Mock/sqlite path should not block comment capture if notifications fail.
   }
   return updated;
+}
+
+export async function acknowledgeCorrectiveActionSupervisorFollowUp(input: {
+  token: string;
+  note?: string;
+}): Promise<CorrectiveActionRequestRecord> {
+  const existing = await getCorrectiveActionRequestByToken(input.token);
+  if (!existing) {
+    throw new Error("Corrective action request not found");
+  }
+
+  const acknowledgedAt = new Date().toISOString();
+  const acknowledgedBy = existing.recipientName || existing.recipientEmail;
+  const note = input.note?.trim() || null;
+
+  let record: CorrectiveActionRequestRecord;
+  if (isPgConfigured()) {
+    const result = await pgPool.query(
+      `UPDATE corrective_action_requests
+       SET supervisor_acknowledged_at = $1,
+           supervisor_acknowledged_by = $2,
+           supervisor_acknowledgement_note = $3,
+           updated_at = $1
+       WHERE access_token = $4
+       RETURNING *`,
+      [acknowledgedAt, acknowledgedBy, note, input.token],
+    );
+    if (!result.rows[0]) throw new Error("Corrective action request not found");
+    record = mapRecord(result.rows[0]);
+  } else {
+    const db = await getDb();
+    db.prepare(
+      `UPDATE corrective_action_requests
+       SET supervisorAcknowledgedAt = ?,
+           supervisorAcknowledgedBy = ?,
+           supervisorAcknowledgementNote = ?,
+           updatedAt = ?
+       WHERE accessToken = ?`,
+    ).run([acknowledgedAt, acknowledgedBy, note, acknowledgedAt, input.token]);
+    await saveDb(db);
+    const row = allRows(
+      db,
+      "SELECT * FROM corrective_action_requests WHERE accessToken = ? LIMIT 1",
+      [input.token],
+    )[0] as Record<string, unknown> | undefined;
+    if (!row) throw new Error("Corrective action request not found");
+    record = mapRecord(row);
+  }
+
+  const recipients: CorrectiveActionNotificationRecipient[] = [];
+  const notifyRecipients = Array.from(
+    new Set(
+      [record.assignedByEmail || "", ...record.copiedRecipientEmails].filter((email) =>
+        isEmail(email),
+      ),
+    ),
+  );
+
+  for (const email of notifyRecipients) {
+    try {
+      const delivery = await sendCorrectiveActionAcknowledgementEmail({
+        to: email,
+        reportId: record.reportId,
+        recipientName: record.recipientName || undefined,
+        acknowledgedBy,
+        note: note || undefined,
+        url: buildCorrectiveActionUrl(record.accessToken),
+      });
+      recipients.push({
+        recipient: delivery.recipient,
+        role: email === record.assignedByEmail ? "sender" : "copied",
+        stage: "acknowledgement",
+        delivered: Boolean(delivery.delivered),
+        mode: normalizeNotificationMode(delivery.mode),
+        message: delivery.message,
+      });
+    } catch (error) {
+      recipients.push({
+        recipient: email,
+        role: email === record.assignedByEmail ? "sender" : "copied",
+        stage: "acknowledgement",
+        delivered: false,
+        mode: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if (isPgConfigured() && recipients.length > 0) {
+    await recordCorrectiveActionNotificationHistory({
+      reportId: record.reportId,
+      requestId: record.id,
+      action: "corrective-action.acknowledgement.notified",
+      recipients,
+      message: `Corrective action acknowledgement processed for ${record.reportId}.`,
+    });
+    await writeAuditLog({
+      action: "corrective-action.acknowledged",
+      resourceType: "report",
+      resourceId: record.reportId,
+      context: {
+        correctiveActionRequestId: record.id,
+        acknowledgedAt,
+        acknowledgedBy,
+        note,
+      },
+    });
+  }
+
+  return record;
 }
 
 export async function getCorrectiveActionRequestByToken(
