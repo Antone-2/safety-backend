@@ -14,16 +14,7 @@ import {
   ConflictError,
   ExternalServiceError,
 } from "../../shared/domain/errors/index.js";
-import { AuthRequest } from "../../shared/middleware/auth.middleware.js";
-import {
-  isFirebaseAvailable,
-  getFirebase,
-  sanitizeForFirestore,
-} from "../../shared/integrations/firebase/firebase.client.js";
-import {
-  authenticateUser,
-  requireRole,
-} from "../../shared/middleware/auth.middleware.js";
+import { AuthRequest, authenticateUser, getCookieValue, requireRole } from "../../shared/middleware/auth.middleware.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import { allRows, getDb, saveDb } from "../../lib/database.js";
 import { sendOtpEmail } from "../../lib/email.js";
@@ -59,9 +50,173 @@ const OTP_MAX_REQUESTS_PER_DEVICE = Number(
 const MAX_ACTIVE_SESSIONS_PER_USER = Number(
   process.env.AUTH_MAX_ACTIVE_SESSIONS_PER_USER || 5,
 );
+const ACCOUNT_LOCKOUT_THRESHOLD = Number(
+  process.env.AUTH_ACCOUNT_LOCKOUT_THRESHOLD || 5,
+);
+const ACCOUNT_LOCKOUT_DURATION_MINUTES = Number(
+  process.env.AUTH_ACCOUNT_LOCKOUT_DURATION_MINUTES || 30,
+);
+const PASSWORD_MIN_LENGTH = Number(process.env.AUTH_PASSWORD_MIN_LENGTH || 12);
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function validatePasswordComplexity(password: string): void {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    throw new Error(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+  }
+  if (!/[A-Z]/.test(password)) {
+    throw new Error("Password must contain at least one uppercase letter");
+  }
+  if (!/[a-z]/.test(password)) {
+    throw new Error("Password must contain at least one lowercase letter");
+  }
+  if (!/[0-9]/.test(password)) {
+    throw new Error("Password must contain at least one number");
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    throw new Error("Password must contain at least one special character");
+  }
+}
+
+const COMMON_PASSWORDS = new Set([
+  "password",
+  "123456",
+  "12345678",
+  "qwerty",
+  "abc123",
+  "monkey",
+  "master",
+  "dragon",
+  "login",
+  "admin",
+  "root",
+  "toor",
+  "letmein",
+  "passw0rd",
+  "welcome",
+  "iloveyou",
+  "sunshine",
+  "princess",
+  "football",
+  "shadow",
+  "michael",
+  "ninja",
+  "mustang",
+  "jessica",
+  "charlie",
+  "password1",
+  "1q2w3e4r",
+  "qwerty123",
+  "password123",
+  "crown123",
+  "ehs123",
+  "safety123",
+]);
+
+function rejectCommonPassword(password: string): void {
+  if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+    throw new Error("Password is too common. Choose a more unique password.");
+  }
+}
+
+async function isAccountLocked(email: string): Promise<{ locked: boolean; reason?: string }> {
+  if (!isPgConfigured()) return { locked: false };
+
+  try {
+    const result = await pgPool.query(
+      "SELECT locked_until FROM users WHERE lower(email) = $1 LIMIT 1",
+      [normalizeEmail(email)],
+    );
+    const lockedUntil = result.rows[0]?.locked_until;
+    if (lockedUntil && Date.parse(lockedUntil) > Date.now()) {
+      const remainingMinutes = Math.ceil((Date.parse(lockedUntil) - Date.now()) / 60000);
+      return {
+        locked: true,
+        reason: `Account locked. Try again in ${remainingMinutes} minutes.`,
+      };
+    }
+
+    if (lockedUntil && Date.parse(lockedUntil) <= Date.now()) {
+      await pgPool.query(
+        "UPDATE users SET locked_until = NULL WHERE lower(email) = $1",
+        [normalizeEmail(email)],
+      );
+    }
+
+    return { locked: false };
+  } catch {
+    return { locked: false };
+  }
+}
+
+async function recordFailedLogin(email: string): Promise<{ locked: boolean; reason?: string }> {
+  if (!isPgConfigured()) return { locked: false };
+
+  try {
+    const result = await pgPool.query(
+      "SELECT failed_login_attempts, locked_until FROM users WHERE lower(email) = $1 LIMIT 1",
+      [normalizeEmail(email)],
+    );
+
+    const attempts = (result.rows[0]?.failed_login_attempts || 0) + 1;
+    const lockedUntil =
+      attempts >= ACCOUNT_LOCKOUT_THRESHOLD
+        ? new Date(Date.now() + ACCOUNT_LOCKOUT_DURATION_MINUTES * 60000).toISOString()
+        : null;
+
+    await pgPool.query(
+      `UPDATE users SET failed_login_attempts = $1, locked_until = $2 WHERE lower(email) = $3`,
+      [attempts, lockedUntil, normalizeEmail(email)],
+    );
+
+    if (lockedUntil) {
+      return {
+        locked: true,
+        reason: `Too many failed attempts. Account locked for ${ACCOUNT_LOCKOUT_DURATION_MINUTES} minutes.`,
+      };
+    }
+
+    return { locked: false };
+  } catch {
+    return { locked: false };
+  }
+}
+
+async function resetFailedLoginAttempts(email: string): Promise<void> {
+  if (!isPgConfigured()) return;
+
+  try {
+    await pgPool.query(
+      "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE lower(email) = $1",
+      [normalizeEmail(email)],
+    );
+  } catch {
+    // Ignore reset failures
+  }
+}
+
+async function sendNewDeviceNotification(email: string, ip: string, userAgent: string): Promise<void> {
+  try {
+    const { sendBrevoEmail } = await import("../../lib/email.js");
+    await sendBrevoEmail({
+      to: email,
+      subject: "New login to Crown Paints EHS",
+      text: `A new login was detected from IP: ${ip}, Device: ${userAgent}. If this wasn't you, please contact your administrator immediately.`,
+      html: `
+        <p>A new login was detected to your Crown Paints EHS account.</p>
+        <ul>
+          <li><strong>IP Address:</strong> ${ip}</li>
+          <li><strong>Device:</strong> ${userAgent}</li>
+          <li><strong>Time:</strong> ${new Date().toLocaleString()}</li>
+        </ul>
+        <p>If this wasn't you, please contact your administrator immediately.</p>
+      `,
+    });
+  } catch {
+    // Ignore notification failures
+  }
 }
 
 function hashOtp(email: string, code: string) {
@@ -92,6 +247,10 @@ function publicUser(user: AuthUserRecord) {
   return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
 
+function isPrivilegedRole(role: string) {
+  return PRIVILEGED_BOOTSTRAP_ROLES.includes(role);
+}
+
 export function createAuthRouter() {
   const router = Router();
   const env = getEnv();
@@ -112,6 +271,25 @@ export function createAuthRouter() {
       },
       JWT_SECRET,
       { expiresIn: "15m" },
+    );
+  }
+
+  function generateMfaChallengeToken(user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  }) {
+    return jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        type: "mfa-challenge",
+      },
+      JWT_SECRET,
+      { expiresIn: "10m" },
     );
   }
 
@@ -364,12 +542,13 @@ export function createAuthRouter() {
     ipAddress: string;
     userAgent: string;
     refreshHash: string;
+    deviceFingerprint: string;
   }) {
     if (isPgConfigured()) {
       try {
         await pgPool.query(
-          `INSERT INTO auth_sessions (id, user_id, email, expires_at, ip_address, user_agent, refresh_hash)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO auth_sessions (id, user_id, email, expires_at, ip_address, user_agent, refresh_hash, device_fingerprint)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             input.id,
             input.userId,
@@ -378,6 +557,7 @@ export function createAuthRouter() {
             input.ipAddress,
             input.userAgent,
             input.refreshHash,
+            input.deviceFingerprint,
           ],
         );
         return;
@@ -388,7 +568,7 @@ export function createAuthRouter() {
 
     const db = await getDb();
     db.prepare(
-      "INSERT INTO auth_sessions (id, userId, email, createdAt, expiresAt, ipAddress, userAgent, refreshHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO auth_sessions (id, userId, email, createdAt, expiresAt, ipAddress, userAgent, refreshHash, deviceFingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run([
       input.id,
       input.userId,
@@ -398,6 +578,7 @@ export function createAuthRouter() {
       input.ipAddress,
       input.userAgent,
       input.refreshHash,
+      input.deviceFingerprint,
     ]);
     await saveDb(db);
   }
@@ -857,57 +1038,10 @@ export function createAuthRouter() {
     await saveDb(db);
   }
 
-  function getDemoUser(password: string) {
-    if (
-      env.ENABLE_DEMO_LOGIN !== "true" ||
-      !env.DEMO_EMAIL ||
-      !env.DEMO_PASSWORD
-    )
-      return null;
-    if (password !== env.DEMO_PASSWORD) return null;
-    return {
-      id: "local-demo",
-      email: env.DEMO_EMAIL,
-      name: env.DEMO_NAME || "Demo User",
-      role: env.DEMO_ROLE || "EHS-manager",
-    };
-  }
-
   async function findUserByEmail(
     email: string,
   ): Promise<AuthUserRecord | null> {
     const normalized = normalizeEmail(email);
-
-    if (
-      !isPgConfigured() &&
-      env.ENABLE_DEMO_LOGIN === "true" &&
-      env.DEMO_EMAIL &&
-      normalized === normalizeEmail(env.DEMO_EMAIL)
-    ) {
-      return {
-        id: "local-demo",
-        email: normalizeEmail(env.DEMO_EMAIL),
-        name: env.DEMO_NAME || "Demo User",
-        role: env.DEMO_ROLE || "EHS-manager",
-      };
-    }
-
-    if (isFirebaseAvailable()) {
-      const db = getFirebase()!;
-      const snap = await (db as any)
-        .collection("users")
-        .where("email", "==", normalized)
-        .limit(1)
-        .get();
-      if (snap.empty) return null;
-      const data = snap.docs[0].data();
-      return {
-        id: snap.docs[0].id,
-        email: data.email,
-        name: data.name,
-        role: data.role,
-      };
-    }
 
     if (isPgConfigured()) {
       try {
@@ -962,39 +1096,6 @@ export function createAuthRouter() {
     );
     const createdAt = new Date().toISOString();
 
-    if (isFirebaseAvailable()) {
-      const db = getFirebase()!;
-      const existing = await (db as any)
-        .collection("users")
-        .where("email", "==", email)
-        .limit(1)
-        .get();
-      if (!existing.empty) throw new ConflictError("Email already registered");
-
-      const id = uuidv4();
-      await (db as any)
-        .collection("users")
-        .doc(id)
-        .set(
-          sanitizeForFirestore({
-            email,
-            passwordHash: placeholderHash,
-            name: input.name,
-            role,
-            phone: input.phone,
-            createdAt,
-          }),
-        );
-      return {
-        id,
-        email,
-        name: input.name,
-        role,
-        phone: input.phone,
-        createdAt,
-      };
-    }
-
     if (isPgConfigured()) {
       try {
         const result = await pgPool.query(
@@ -1045,16 +1146,6 @@ export function createAuthRouter() {
   }
 
   async function hasPrivilegedUser() {
-    if (isFirebaseAvailable()) {
-      const db = getFirebase()!;
-      const snap = await (db as any)
-        .collection("users")
-        .where("role", "in", PRIVILEGED_BOOTSTRAP_ROLES)
-        .limit(1)
-        .get();
-      return !snap.empty;
-    }
-
     if (isPgConfigured()) {
       try {
         const result = await pgPool.query(
@@ -1083,45 +1174,6 @@ export function createAuthRouter() {
     const parsed = LoginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.errors });
-    }
-
-    const demoUser =
-      parsed.data.email === env.DEMO_EMAIL
-        ? getDemoUser(parsed.data.password)
-        : null;
-    if (demoUser) {
-      const token = generateToken(demoUser);
-      return res.json({ token, user: demoUser });
-    }
-
-    if (isFirebaseAvailable()) {
-      const db = getFirebase()!;
-      const userSnap = await (db as any)
-        .collection("users")
-        .where("email", "==", parsed.data.email)
-        .limit(1)
-        .get();
-
-      if (userSnap.empty)
-        return res.status(401).json({ error: "Invalid credentials" });
-      const user = userSnap.docs[0].data();
-      const valid = await bcrypt.compare(
-        parsed.data.password,
-        user.passwordHash,
-      );
-      if (!valid) return res.status(401).json({ error: "Invalid credentials" });
-
-      const id = userSnap.docs[0].id;
-      const token = generateToken({
-        id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      });
-      return res.json({
-        token,
-        user: { id, email: user.email, name: user.name, role: user.role },
-      });
     }
 
     return res
@@ -1241,6 +1293,12 @@ export function createAuthRouter() {
       return res.status(400).json({ error: parsed.error.errors });
 
     const email = normalizeEmail(parsed.data.email);
+
+    const lockoutCheck = await isAccountLocked(email);
+    if (lockoutCheck.locked) {
+      return res.status(423).json({ error: lockoutCheck.reason });
+    }
+
     const record = await getOtpChallenge(email);
     if (!record)
       return res.status(401).json({ error: "OTP code not found or expired" });
@@ -1254,10 +1312,12 @@ export function createAuthRouter() {
         record.userId,
         "Expired code",
       );
+      await recordFailedLogin(email);
       return res.status(401).json({ error: "OTP code expired" });
     }
     if (record.attempts >= OTP_MAX_ATTEMPTS) {
       await deleteOtpChallenge(email);
+      await recordFailedLogin(email);
       return res
         .status(429)
         .json({ error: "Too many OTP attempts. Request a new code." });
@@ -1273,6 +1333,7 @@ export function createAuthRouter() {
         record.userId,
         "Invalid code",
       );
+      await recordFailedLogin(email);
       return res.status(401).json({ error: "Invalid OTP code" });
     }
 
@@ -1281,6 +1342,39 @@ export function createAuthRouter() {
     if (!foundUser)
       return res.status(401).json({ error: "Account is no longer active" });
     const user = publicUser(foundUser);
+    const { MFAService } = await import("../../services/mfa.service.js");
+    const mfaService = new MFAService(pgPool);
+    const mfaEnabled = await mfaService.isMFAEnabled(user.id);
+
+    await resetFailedLoginAttempts(email);
+    await audit(req, "otp.verify", email, true, user.id, "OTP verified successfully");
+
+    if (isPrivilegedRole(user.role) && !mfaEnabled) {
+      const mfaEnrollmentToken = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          type: "mfa-enrollment",
+        },
+        JWT_SECRET,
+        { expiresIn: "10m" },
+      );
+      return res.status(403).json({
+        user,
+        mfaEnrollmentRequired: true,
+        mfaEnrollmentToken,
+      });
+    }
+
+    if (mfaEnabled) {
+      return res.json({
+        user,
+        mfaRequired: true,
+        mfaChallengeToken: generateMfaChallengeToken(user),
+      });
+    }
+
+    // Normal flow without MFA
     const sessionId = randomBytes(16).toString("hex");
     const refreshToken = randomBytes(48).toString("base64url");
     const token = generateToken(user, sessionId);
@@ -1293,9 +1387,22 @@ export function createAuthRouter() {
       ipAddress: req.ip ?? "",
       userAgent: req.get("user-agent") ?? "",
       refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
+      deviceFingerprint: deviceFingerprint(req),
     });
     await enforceSessionLimit(user.id);
     await audit(req, "login", email, true, user.id);
+
+    const currentFingerprint = deviceFingerprint(req);
+    const previousSessions = await listAuthSessions(user.id);
+    const isNewDevice = !previousSessions.some(
+      (s) => s.device_fingerprint === currentFingerprint,
+    );
+    if (isNewDevice) {
+      sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(
+        () => undefined,
+      );
+    }
+
     const csrfToken = randomBytes(24).toString("base64url");
     // The frontend and backend are served from different origins (e.g. Vercel
     // + Render), so the refresh cookie must be allowed on cross-site requests.
@@ -1303,6 +1410,13 @@ export function createAuthRouter() {
     // so only use it in production where HTTPS is guaranteed.
     const cookieSameSite: "none" | "lax" =
       env.NODE_ENV === "production" ? "none" : "lax";
+    res.cookie("ehs_access", token, {
+      httpOnly: true,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: 15 * 60 * 1000,
+      path: "/",
+    });
     res.cookie("ehs_csrf", csrfToken, {
       httpOnly: false,
       sameSite: cookieSameSite,
@@ -1318,6 +1432,116 @@ export function createAuthRouter() {
       path: "/api/auth",
     });
     res.json({ token, user });
+  });
+
+  router.post("/login/mfa-complete", async (req: Request, res: Response) => {
+    try {
+      const { mfaChallengeToken, mfaVerificationToken } = req.body;
+
+      if (!mfaChallengeToken || !mfaVerificationToken) {
+        return res.status(400).json({ error: "Missing required tokens" });
+      }
+
+      // Verify both tokens
+      let challenge: any;
+      let verification: any;
+
+      try {
+        challenge = jwt.verify(mfaChallengeToken, JWT_SECRET) as any;
+      } catch {
+        return res.status(401).json({ error: "Invalid or expired MFA challenge" });
+      }
+
+      try {
+        verification = jwt.verify(mfaVerificationToken, JWT_SECRET) as any;
+      } catch {
+        return res.status(401).json({ error: "Invalid or expired MFA verification" });
+      }
+
+      // Verify tokens match
+      if (challenge.userId !== verification.userId) {
+        return res.status(401).json({ error: "Token mismatch" });
+      }
+      if (verification.challenge !== mfaChallengeToken) {
+        return res.status(401).json({ error: "MFA verification challenge mismatch" });
+      }
+
+      if (!verification.mfaVerified) {
+        return res
+          .status(401)
+          .json({ error: "MFA not verified in provided token" });
+      }
+
+      // Now create the full session
+      const email = challenge.email;
+      const user = publicUser({
+        id: challenge.userId,
+        email,
+        name: challenge.name,
+        role: challenge.role,
+      } as AuthUserRecord);
+
+      const sessionId = randomBytes(16).toString("hex");
+      const refreshToken = randomBytes(48).toString("base64url");
+      const token = generateToken(user, sessionId);
+      const decoded = jwt.decode(token) as { jti: string; exp: number };
+
+      await createAuthSession({
+        id: decoded.jti,
+        userId: user.id,
+        email,
+        expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+        ipAddress: req.ip ?? "",
+        userAgent: req.get("user-agent") ?? "",
+        refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
+        deviceFingerprint: deviceFingerprint(req),
+      });
+
+      await enforceSessionLimit(user.id);
+      await audit(req, "login.mfa.completed", email, true, user.id);
+
+      const currentFingerprint = deviceFingerprint(req);
+      const previousSessions = await listAuthSessions(user.id);
+      const isNewDevice = !previousSessions.some(
+        (s) => s.device_fingerprint === currentFingerprint,
+      );
+      if (isNewDevice) {
+        sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(
+          () => undefined,
+        );
+      }
+
+      const csrfToken = randomBytes(24).toString("base64url");
+      const cookieSameSite: "none" | "lax" =
+        env.NODE_ENV === "production" ? "none" : "lax";
+
+      res.cookie("ehs_access", token, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: 15 * 60 * 1000,
+        path: "/",
+      });
+      res.cookie("ehs_csrf", csrfToken, {
+        httpOnly: false,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: 7 * 86400000,
+        path: "/",
+      });
+      res.cookie("ehs_refresh", refreshToken, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: 7 * 86400000,
+        path: "/api/auth",
+      });
+
+      res.json({ token, user });
+    } catch (error) {
+      console.error("MFA login completion error:", error);
+      res.status(500).json({ error: "Failed to complete MFA login" });
+    }
   });
 
   router.post("/refresh", async (req: Request, res: Response) => {
@@ -1339,8 +1563,43 @@ export function createAuthRouter() {
     const user = await findUserByEmail(session.email);
     if (!user)
       return res.status(401).json({ error: "Account is no longer active" });
+
+    const oldSessionId = String(session.id);
+    await revokeSession(oldSessionId, user.id);
+
+    const newSessionId = randomBytes(16).toString("hex");
+    const newRefreshToken = randomBytes(48).toString("base64url");
+    const token = generateToken(publicUser(user), newSessionId);
+
+    await createAuthSession({
+      id: newSessionId,
+      userId: user.id,
+      email: session.email,
+      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      ipAddress: req.ip ?? "",
+      userAgent: req.get("user-agent") ?? "",
+      refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
+      deviceFingerprint: session.device_fingerprint ?? deviceFingerprint(req),
+    });
+
+    const cookieSameSite: "none" | "lax" =
+      env.NODE_ENV === "production" ? "none" : "lax";
+    res.cookie("ehs_access", token, {
+      httpOnly: true,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: 15 * 60 * 1000,
+      path: "/",
+    });
+    res.cookie("ehs_refresh", newRefreshToken, {
+      httpOnly: true,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: 7 * 86400000,
+      path: "/api/auth",
+    });
     res.json({
-      token: generateToken(publicUser(user), session.id),
+      token,
       user: publicUser(user),
     });
   });
@@ -1428,21 +1687,10 @@ export function createAuthRouter() {
       "depot-admin",
     ]),
     async (req: AuthRequest, res: Response) => {
-      if (isFirebaseAvailable()) {
-        const db = getFirebase()!;
-        const usersSnap = await (db as any)
-          .collection("users")
-          .orderBy("createdAt", "desc")
-          .get();
-        return res.json(
-          usersSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })),
-        );
-      }
-
       if (isPgConfigured()) {
         try {
           const result = await pgPool.query(
-            `SELECT id::text, email, name, role, phone, created_at AS "createdAt"
+            `SELECT id::text, email, name, role, phone, active, created_at AS "createdAt"
            FROM users
            ORDER BY created_at DESC`,
           );
@@ -1458,7 +1706,7 @@ export function createAuthRouter() {
       const db = await getDb();
       const users = allRows(
         db,
-        "SELECT id, email, name, role, createdAt FROM users ORDER BY createdAt DESC",
+        "SELECT id, email, name, role, active, createdAt FROM users ORDER BY createdAt DESC",
       ) as any[];
       res.json(users);
     },
@@ -1487,14 +1735,7 @@ export function createAuthRouter() {
         typeof req.body.phone === "string" ? req.body.phone.trim() : "";
       if (!name) return res.status(400).json({ error: "Name is required" });
 
-      if (isFirebaseAvailable()) {
-        const db = getFirebase()!;
-        const ref = (db as any).collection("users").doc(req.user.id);
-        const doc = await ref.get();
-        if (!doc.exists)
-          return res.status(404).json({ error: "User not found" });
-        await ref.update({ name, phone, updatedAt: new Date().toISOString() });
-      } else if (isPgConfigured()) {
+      if (isPgConfigured()) {
         try {
           const result = await pgPool.query(
             "UPDATE users SET name = $1, phone = $2, updated_at = NOW() WHERE id = $3 AND active = TRUE RETURNING id",
@@ -1988,8 +2229,469 @@ export function createAuthRouter() {
     async (req: AuthRequest, res: Response) => {
       await revokeSession(String((req.user as any).jti), req.user!.id);
       await audit(req, "logout", req.user!.email, true, req.user!.id);
+      res.clearCookie("ehs_access", { path: "/" });
       res.clearCookie("ehs_refresh", { path: "/api/auth" });
+      res.clearCookie("ehs_csrf", { path: "/" });
       res.json({ ok: true });
+    },
+  );
+
+  // MFA (TOTP) Endpoints for Privileged Roles
+  router.post("/mfa/enroll", async (req: Request, res: Response) => {
+    try {
+      let userId: string;
+      let userEmail: string;
+      let userRole: string;
+
+      const enrollmentToken = req.body?.mfaEnrollmentToken as string | undefined;
+      const authHeader = req.headers.authorization;
+      const bearerToken =
+        authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : undefined;
+      const cookieToken = getCookieValue(req, "ehs_access");
+      const sessionToken = bearerToken || cookieToken;
+
+      if (enrollmentToken) {
+        try {
+          const decoded = jwt.verify(enrollmentToken, JWT_SECRET) as {
+            userId?: string;
+            email?: string;
+            type?: string;
+          };
+          if (decoded.type !== "mfa-enrollment" || !decoded.userId || !decoded.email) {
+            return res.status(401).json({ error: "Invalid MFA enrollment token" });
+          }
+          userId = decoded.userId;
+          userEmail = decoded.email;
+          const userRecord = await findUserByEmail(userEmail);
+          if (!userRecord) {
+            return res.status(401).json({ error: "User not found" });
+          }
+          userRole = userRecord.role;
+        } catch {
+          return res.status(401).json({ error: "Invalid or expired MFA enrollment token" });
+        }
+      } else if (sessionToken) {
+        try {
+          const decoded = jwt.verify(sessionToken, JWT_SECRET) as AuthRequest["user"] & {
+            userId?: string;
+          };
+          const authedUser = decoded
+            ? { ...decoded, id: decoded.id || decoded.userId || "" }
+            : decoded;
+          if (!authedUser?.id || !authedUser?.jti) {
+            return res.status(401).json({ error: "Invalid session token" });
+          }
+          userId = authedUser.id;
+          userEmail = authedUser.email;
+          userRole = authedUser.role;
+        } catch {
+          return res.status(401).json({ error: "Invalid or expired session token" });
+        }
+      } else {
+        return res.status(401).json({ error: "Missing authorization or MFA enrollment token" });
+      }
+
+      if (!PRIVILEGED_BOOTSTRAP_ROLES.includes(userRole)) {
+        return res.status(403).json({ error: "MFA enrollment not available for your role" });
+      }
+
+      const { MFAService } = await import("../../services/mfa.service.js");
+      const mfaService = new MFAService(pgPool);
+
+      const challenge = mfaService.generateSecret(userEmail);
+      const recoveryCodes = mfaService.generateRecoveryCodes(10);
+
+      await mfaService.createMFAEnrollment(
+        userId,
+        challenge.secret,
+        recoveryCodes.map((rc) => rc.code),
+      );
+
+      await audit(req, "mfa_enroll_started", userEmail, true, userId);
+
+      res.json({
+        qrCode: challenge.qrCode,
+        secret: challenge.secret,
+        recoveryCodes: recoveryCodes.map((rc) => rc.code),
+      });
+    } catch (error) {
+      console.error("MFA enrollment error:", error);
+      res.status(500).json({ error: "Failed to initiate MFA enrollment" });
+    }
+  });
+
+  router.post("/mfa/verify-enrollment", async (req: Request, res: Response) => {
+    try {
+      let userId: string;
+      let userEmail: string;
+
+      const enrollmentToken = req.body?.mfaEnrollmentToken as string | undefined;
+      const authHeader = req.headers.authorization;
+      const bearerToken =
+        authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : undefined;
+      const cookieToken = getCookieValue(req, "ehs_access");
+      const sessionToken = bearerToken || cookieToken;
+
+      if (enrollmentToken) {
+        try {
+          const decoded = jwt.verify(enrollmentToken, JWT_SECRET) as {
+            userId?: string;
+            email?: string;
+            type?: string;
+          };
+          if (decoded.type !== "mfa-enrollment" || !decoded.userId || !decoded.email) {
+            return res.status(401).json({ error: "Invalid MFA enrollment token" });
+          }
+          userId = decoded.userId;
+          userEmail = decoded.email;
+        } catch {
+          return res.status(401).json({ error: "Invalid or expired MFA enrollment token" });
+        }
+      } else if (sessionToken) {
+        try {
+          const decoded = jwt.verify(sessionToken, JWT_SECRET) as AuthRequest["user"] & {
+            userId?: string;
+          };
+          const authedUser = decoded
+            ? { ...decoded, id: decoded.id || decoded.userId || "" }
+            : decoded;
+          if (!authedUser?.id) {
+            return res.status(401).json({ error: "Invalid session token" });
+          }
+          userId = authedUser.id;
+          userEmail = authedUser.email;
+        } catch {
+          return res.status(401).json({ error: "Invalid or expired session token" });
+        }
+      } else {
+        return res.status(401).json({ error: "Missing authorization or MFA enrollment token" });
+      }
+
+      const { token } = req.body;
+
+      if (!token || token.length !== 6) {
+        return res.status(400).json({ error: "Invalid TOTP token format" });
+      }
+
+      const { MFAService } = await import("../../services/mfa.service.js");
+      const mfaService = new MFAService(pgPool);
+
+      const verified = await mfaService.verifyMFAEnrollment(userId, token);
+
+      if (!verified) {
+        return res.status(401).json({ error: "Invalid TOTP code. Please try again." });
+      }
+
+      await audit(req, "mfa_enrollment_completed", userEmail, true, userId);
+
+      res.json({ ok: true, message: "MFA enrollment verified successfully" });
+    } catch (error) {
+      console.error("MFA verification error:", error);
+      res.status(500).json({ error: "Failed to verify MFA enrollment" });
+    }
+  });
+
+  router.get(
+    "/mfa/status",
+    authenticateUser,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const userId = req.user!.id;
+        const { MFAService } = await import("../../services/mfa.service.js");
+        const mfaService = new MFAService(pgPool);
+
+        const enabled = await mfaService.isMFAEnabled(userId);
+        res.json({ enabled });
+      } catch (error) {
+        console.error("MFA status check error:", error);
+        res.status(500).json({ error: "Failed to check MFA status" });
+      }
+    },
+  );
+
+  router.post(
+    "/mfa/verify-token",
+    async (req: Request, res: Response) => {
+      try {
+        const { mfaChallengeToken, token } = req.body;
+
+        if (!mfaChallengeToken || !token || token.length !== 6) {
+          return res.status(400).json({ error: "Invalid request parameters" });
+        }
+
+        let challenge: {
+          userId?: string;
+          email?: string;
+          type?: string;
+        };
+        try {
+          challenge = jwt.verify(mfaChallengeToken, JWT_SECRET) as typeof challenge;
+        } catch {
+          return res.status(401).json({ error: "Invalid or expired MFA challenge" });
+        }
+        if (challenge.type !== "mfa-challenge" || !challenge.userId) {
+          return res.status(401).json({ error: "Invalid MFA challenge" });
+        }
+
+        const challengeLimit = await enforceAuthRateLimit({
+          scope: "device",
+          identifier: mfaChallengeToken,
+          action: "mfa.verify",
+          max: OTP_MAX_ATTEMPTS,
+          windowMinutes: OTP_TTL_MINUTES,
+        });
+        if (!challengeLimit.allowed) {
+          return res.status(429).json({
+            error: "Too many MFA verification attempts. Please restart login.",
+            retryAfter: challengeLimit.retryAfter,
+          });
+        }
+
+        const { MFAService } = await import("../../services/mfa.service.js");
+        const mfaService = new MFAService(pgPool);
+
+        const verified = await mfaService.verifyTOTPToken(challenge.userId, token);
+
+        if (!verified) {
+          return res.status(401).json({ error: "Invalid TOTP code" });
+        }
+
+        // Create a temporary MFA verification token for session creation
+        const mfaVerificationToken = jwt.sign(
+          {
+            userId: challenge.userId,
+            challenge: mfaChallengeToken,
+            mfaVerified: true,
+            type: "mfa-verification",
+          },
+          JWT_SECRET,
+          { expiresIn: "5m" },
+        );
+
+        res.json({
+          ok: true,
+          mfaVerificationToken,
+        });
+      } catch (error) {
+        console.error("MFA token verification error:", error);
+        res.status(500).json({ error: "Failed to verify TOTP token" });
+      }
+    },
+  );
+
+  router.post(
+    "/mfa/recovery-code",
+    async (req: Request, res: Response) => {
+      try {
+        const { mfaChallengeToken, code } = req.body;
+
+        if (!mfaChallengeToken || !code) {
+          return res.status(400).json({ error: "Missing required parameters" });
+        }
+
+        let challenge: {
+          userId?: string;
+          email?: string;
+          type?: string;
+        };
+        try {
+          challenge = jwt.verify(mfaChallengeToken, JWT_SECRET) as typeof challenge;
+        } catch {
+          return res.status(401).json({ error: "Invalid or expired MFA challenge" });
+        }
+        if (challenge.type !== "mfa-challenge" || !challenge.userId) {
+          return res.status(401).json({ error: "Invalid MFA challenge" });
+        }
+
+        const challengeLimit = await enforceAuthRateLimit({
+          scope: "device",
+          identifier: mfaChallengeToken,
+          action: "mfa.recovery",
+          max: OTP_MAX_ATTEMPTS,
+          windowMinutes: OTP_TTL_MINUTES,
+        });
+        if (!challengeLimit.allowed) {
+          return res.status(429).json({
+            error: "Too many recovery code attempts. Please restart login.",
+            retryAfter: challengeLimit.retryAfter,
+          });
+        }
+
+        const { MFAService } = await import("../../services/mfa.service.js");
+        const mfaService = new MFAService(pgPool);
+
+        const verified = await mfaService.verifyRecoveryCode(challenge.userId, code);
+
+        if (!verified) {
+          return res
+            .status(401)
+            .json({ error: "Invalid or already-used recovery code" });
+        }
+
+        const mfaVerificationToken = jwt.sign(
+          {
+            userId: challenge.userId,
+            challenge: mfaChallengeToken,
+            mfaVerified: true,
+            type: "mfa-recovery",
+            recoveryUsed: true,
+          },
+          JWT_SECRET,
+          { expiresIn: "5m" },
+        );
+
+        res.json({
+          ok: true,
+          mfaVerificationToken,
+          warning:
+            "You used a recovery code. Please generate new recovery codes in your account settings.",
+        });
+      } catch (error) {
+        console.error("Recovery code verification error:", error);
+        res.status(500).json({ error: "Failed to verify recovery code" });
+      }
+    },
+  );
+
+  router.delete(
+    "/mfa",
+    authenticateUser,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const userId = req.user!.id;
+        const userEmail = req.user!.email;
+        const { password } = req.body;
+
+        if (!password) {
+          return res
+            .status(400)
+            .json({ error: "Password required to disable MFA" });
+        }
+
+        // Get user from PostgreSQL and verify password
+        let passwordHash = "";
+        try {
+          const result = await pgPool.query(
+            "SELECT password_hash FROM users WHERE id = $1",
+            [userId],
+          );
+          if (!result.rows[0]) {
+            return res.status(401).json({ error: "User not found" });
+          }
+          passwordHash = result.rows[0].password_hash;
+        } catch {
+          // Fall back to SQLite or return error
+          return res.status(500).json({ error: "Failed to verify password" });
+        }
+
+        if (!(await bcrypt.compare(password, passwordHash || ""))) {
+          return res.status(401).json({ error: "Invalid password" });
+        }
+
+        const { MFAService } = await import("../../services/mfa.service.js");
+        const mfaService = new MFAService(pgPool);
+
+        await mfaService.disableMFA(userId);
+
+        await audit(req, "mfa_disabled", userEmail, true, userId);
+
+        res.json({ ok: true, message: "MFA has been disabled" });
+      } catch (error) {
+        console.error("MFA disable error:", error);
+        res.status(500).json({ error: "Failed to disable MFA" });
+      }
+    },
+  );
+
+  router.post(
+    "/mfa/recovery-codes/regenerate",
+    authenticateUser,
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const userId = req.user!.id;
+        const userEmail = req.user!.email;
+        const { password } = req.body;
+
+        if (!password) {
+          return res
+            .status(400)
+            .json({ error: "Password required to regenerate recovery codes" });
+        }
+
+        // Get user from PostgreSQL and verify password
+        let passwordHash = "";
+        try {
+          const result = await pgPool.query(
+            "SELECT password_hash FROM users WHERE id = $1",
+            [userId],
+          );
+          if (!result.rows[0]) {
+            return res.status(401).json({ error: "User not found" });
+          }
+          passwordHash = result.rows[0].password_hash;
+        } catch {
+          // Fall back to SQLite or return error
+          return res.status(500).json({ error: "Failed to verify password" });
+        }
+
+        if (!(await bcrypt.compare(password, passwordHash || ""))) {
+          return res.status(401).json({ error: "Invalid password" });
+        }
+
+        const { MFAService } = await import("../../services/mfa.service.js");
+        const mfaService = new MFAService(pgPool);
+
+        // Check MFA is enabled
+        const mfaEnabled = await mfaService.isMFAEnabled(userId);
+        if (!mfaEnabled) {
+          return res
+            .status(400)
+            .json({ error: "MFA is not currently enabled" });
+        }
+
+        const recoveryCodes = mfaService.generateRecoveryCodes(10);
+
+        // Update recovery codes in database
+        if (isPgConfigured()) {
+          try {
+            await pgPool.query(
+              `DELETE FROM mfa_recovery_codes WHERE user_id = $1`,
+              [userId],
+            );
+
+            for (const code of recoveryCodes.map((rc) => rc.code)) {
+              const codeHash = createHash("sha256")
+                .update(code)
+                .digest("hex");
+              await pgPool.query(
+                `INSERT INTO mfa_recovery_codes (user_id, code_hash)
+                 VALUES ($1, $2)`,
+                [userId, codeHash],
+              );
+            }
+          } catch (error) {
+            console.error("PostgreSQL recovery code update failed:", error);
+            throw error;
+          }
+        }
+
+        await audit(
+          req,
+          "mfa_recovery_codes_regenerated",
+          userEmail,
+          true,
+          userId,
+        );
+
+        res.json({
+          ok: true,
+          recoveryCodes: recoveryCodes.map((rc) => rc.code),
+          message: "Recovery codes regenerated. Store them in a safe place.",
+        });
+      } catch (error) {
+        console.error("Recovery codes regenerate error:", error);
+        res.status(500).json({ error: "Failed to regenerate recovery codes" });
+      }
     },
   );
 

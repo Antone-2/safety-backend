@@ -50,10 +50,7 @@ export async function rateLimitMiddleware(req, res, next) {
     const windowMs = RATE_LIMIT.WINDOW_MS;
     const maxRequests = RATE_LIMIT.MAX_REQUESTS;
     const ttlSeconds = Math.ceil(windowMs / 1000);
-    // Redis is required for the distributed counter. When it isn't connected
-    // (degraded mode), allow the request instead of failing open on every hit
-    // and spamming the logs.
-    if (!redisClient.isOpen) {
+    if (!redisClient || redisClient.status !== "ready") {
         if (!rateLimitRedisUnavailableLogged) {
             rateLimitRedisUnavailableLogged = true;
             logger.warn("Redis unavailable; rate limiting disabled until Redis is reachable.");

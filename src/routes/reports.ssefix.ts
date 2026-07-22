@@ -8,8 +8,6 @@ import { describeFieldChanges } from "../lib/audit.js";
 
 
 // NOTE: This SSE route file previously had additional assignment/notification logic.
-// The current project build expects the simpler reports SSE behavior.
-// We intentionally keep this module self-contained to avoid missing symbols.
 
 type AppUser = {
   id: string;
@@ -26,9 +24,6 @@ async function findUserByIdentifier(_identifier: string): Promise<AppUser | null
 async function sendSmsNotification(_report: any, _phone: string): Promise<boolean> {
   return false;
 }
-
-// import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
-
 
 const router = Router();
 
@@ -88,6 +83,7 @@ const mapRow = (row: any, comments: { author: string; at: string; text: string }
   complianceDueAt: row.complianceDueAt ?? undefined,
   assignedTo: row.assignedTo ?? undefined,
   photoUrl: String(row.photoUrl ?? "").trim() || getPlaceholderPhotoUrl(row.id),
+  sourceSyncedAt: row.source_synced_at ?? undefined,
 });
 
 const fetchComments = (db: any, reportId: string) => {

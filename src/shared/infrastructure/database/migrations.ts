@@ -1053,7 +1053,8 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
   },
   {
     id: "019_foundation_environmental",
-    description: "Create environmental tables for waste, emissions, chemicals, and spills",
+    description:
+      "Create environmental tables for waste, emissions, chemicals, and spills",
     sql: `
       CREATE TABLE IF NOT EXISTS waste_records (
         id TEXT PRIMARY KEY,
@@ -1364,6 +1365,201 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_notification_recipients_read
         ON notification_recipients(recipient, read_at, created_at DESC);
+    `,
+  },
+  {
+    id: "033_auditable_report_classification",
+    description: "Add structured and auditable safety classification fields",
+    sql: `
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_recordable BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_lost_time_injury BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS medical_treatment_case BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS lost_work_days INTEGER NOT NULL DEFAULT 0 CHECK (lost_work_days >= 0);
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS restricted_work_days INTEGER NOT NULL DEFAULT 0 CHECK (restricted_work_days >= 0);
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS classification_source TEXT;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS classification_verified_by TEXT;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS classification_verified_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_reports_classification
+        ON reports(is_recordable, is_lost_time_injury, classification_verified_at);
+    `,
+  },
+  {
+    id: "034_mfa_totp_security",
+    description: "Add TOTP-based MFA support for privileged users",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_mfa (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        secret TEXT NOT NULL,
+        verified BOOLEAN NOT NULL DEFAULT FALSE,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        verified_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_mfa_user ON user_mfa(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_mfa_enabled ON user_mfa(enabled);
+
+      CREATE TABLE IF NOT EXISTS mfa_recovery_codes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_mfa_recovery_codes_user ON mfa_recovery_codes(user_id, used_at);
+
+      CREATE TABLE IF NOT EXISTS mfa_verification_challenges (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        challenge_token TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_mfa_verification_challenges_user ON mfa_verification_challenges(user_id);
+       CREATE INDEX IF NOT EXISTS idx_mfa_verification_challenges_expires ON mfa_verification_challenges(expires_at);
+    `,
+  },
+  {
+    id: "035_account_lockout",
+    description: "Add account lockout support to users",
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_users_locked_until ON users(locked_until);
+    `,
+  },
+  {
+    id: "036_report_photos",
+    description: "Store Google Sheets report photos fetched from Drive in PostgreSQL",
+    sql: `
+      CREATE TABLE IF NOT EXISTS report_photos (
+        report_id TEXT PRIMARY KEY REFERENCES reports(id) ON DELETE CASCADE,
+        drive_file_id TEXT,
+        original_name TEXT,
+        content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+        width INTEGER,
+        height INTEGER,
+        data BYTEA,
+        source_url TEXT,
+        storage_key TEXT,
+        storage_url TEXT,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_report_photos_drive_file_id ON report_photos(drive_file_id);
+      CREATE INDEX IF NOT EXISTS idx_report_photos_storage_key ON report_photos(storage_key);
+    `,
+  },
+  {
+    id: "037_reports_source_synced_at",
+    description: "Track when reports were last synced from Google Sheets",
+    sql: `
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS source_synced_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_reports_source_synced_at ON reports(source_synced_at);
+    `,
+  },
+  {
+    id: "038_report_photo_storage_columns",
+    description: "Add object-storage metadata for report photos",
+    sql: `
+      ALTER TABLE report_photos ADD COLUMN IF NOT EXISTS storage_key TEXT;
+      ALTER TABLE report_photos ADD COLUMN IF NOT EXISTS storage_url TEXT;
+      ALTER TABLE report_photos ALTER COLUMN data DROP NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_report_photos_storage_key ON report_photos(storage_key);
+    `,
+  },
+  {
+    id: "039_report_closure_requests",
+    description: "Add report closure request workflow table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS report_closure_requests (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        submitted_by TEXT NOT NULL,
+        submitted_by_email TEXT NOT NULL,
+        resolution_notes TEXT NOT NULL,
+        photos TEXT[] DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'pending',
+        reviewed_by TEXT,
+        reviewed_by_email TEXT,
+        review_notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_closure_requests_report ON report_closure_requests(report_id);
+      CREATE INDEX IF NOT EXISTS idx_closure_requests_status ON report_closure_requests(status);
+    `,
+  },
+  {
+    id: "040_corrective_action_requests",
+    description:
+      "Add tokenized corrective action request workflow for assigned report follow-up",
+    sql: `
+      CREATE TABLE IF NOT EXISTS corrective_action_requests (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        access_token TEXT NOT NULL UNIQUE,
+        recipient_email TEXT NOT NULL,
+        recipient_name TEXT,
+        assigned_by_email TEXT,
+        assigned_by_name TEXT,
+        report_type TEXT NOT NULL,
+        report_category TEXT,
+        report_description TEXT NOT NULL,
+        report_location TEXT,
+        report_department TEXT,
+        assignee_note TEXT,
+        priority TEXT NOT NULL DEFAULT 'Medium',
+        due_date TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'pending',
+        unsafe_event_type TEXT,
+        immediate_action_taken TEXT,
+        completed_tasks TEXT,
+        root_cause_analysis TEXT,
+        action_plan_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        capa_id UUID REFERENCES capa(id) ON DELETE SET NULL,
+        submitted_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_report
+        ON corrective_action_requests(report_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_recipient
+        ON corrective_action_requests(recipient_email, status);
+      CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_token
+        ON corrective_action_requests(access_token);
+    `,
+  },
+  {
+    id: "041_corrective_action_request_note",
+    description: "Add assignee note to corrective action requests",
+    sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS assignee_note TEXT;
+    `,
+  },
+  {
+    id: "042_capa_assignment_fields",
+    description:
+      "Add assignment contacts, reminder controls, and structured task rows to CAPA",
+    sql: `
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS owner_email TEXT;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS backup_owner TEXT;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS escalation_owner TEXT;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS reminder_days INTEGER;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS action_items JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `,
+  },
+  {
+    id: "043_corrective_action_followup_fields",
+    description:
+      "Add copied recipients and assignee action-plan due date to corrective action requests",
+    sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS copied_recipient_emails JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS action_plan_due_date TIMESTAMPTZ;
     `,
   },
 ];

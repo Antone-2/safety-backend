@@ -62,6 +62,39 @@ export declare class NotificationCenterService {
         createdAt: any;
         updatedAt: any;
     }>;
+    listDigests(filters?: {
+        userId?: string;
+        recipient?: string;
+    }): Promise<{
+        id: any;
+        userId: any;
+        recipient: any;
+        cadence: any;
+        channels: any;
+        active: any;
+        nextRunAt: any;
+        createdAt: any;
+        updatedAt: any;
+    }[]>;
+    updateDigest(id: string, input: {
+        cadence?: string;
+        channels?: NotificationChannel[];
+        active?: boolean;
+    }): Promise<{
+        id: any;
+        userId: any;
+        recipient: any;
+        cadence: any;
+        channels: any;
+        active: any;
+        nextRunAt: any;
+        createdAt: any;
+        updatedAt: any;
+    }>;
+    deleteDigest(id: string): Promise<{
+        ok: boolean;
+    }>;
+    private mapDigestRow;
     private deliver;
 }
 export declare const notificationCenterService: NotificationCenterService;

@@ -53,8 +53,9 @@ export declare const CapaSchema: z.ZodObject<{
     owner: string;
     site: string;
     id?: string | undefined;
-    createdAt?: string | undefined;
     rootCause?: string | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
     startDate?: string | undefined;
     linkedIncidentId?: string | undefined;
     sourceRef?: string | undefined;
@@ -69,7 +70,6 @@ export declare const CapaSchema: z.ZodObject<{
     costEstimate?: number | undefined;
     actualCost?: number | undefined;
     capaNo?: string | undefined;
-    updatedAt?: string | undefined;
 }, {
     dueDate: string;
     department: string;
@@ -85,8 +85,9 @@ export declare const CapaSchema: z.ZodObject<{
     id?: string | undefined;
     attachments?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
-    createdAt?: string | undefined;
     rootCause?: string | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
     startDate?: string | undefined;
     linkedIncidentId?: string | undefined;
     sourceRef?: string | undefined;
@@ -101,7 +102,6 @@ export declare const CapaSchema: z.ZodObject<{
     costEstimate?: number | undefined;
     actualCost?: number | undefined;
     capaNo?: string | undefined;
-    updatedAt?: string | undefined;
 }>;
 export type CapaInput = z.infer<typeof CapaSchema>;
 export declare class CapaService extends BaseService {

@@ -27,7 +27,7 @@ export async function uploadToS3(key, body, contentType) {
         Body: body,
         ContentType: contentType,
     }));
-    return `${publicUrl.replace(/\/$/, "")}/${bucket}/${key}`;
+    return `${publicUrl.replace(/\/$/, "")}/${key}`;
 }
 export async function getFromS3(key) {
     const bucket = requireStorageConfig(env.S3_BUCKET, "S3_BUCKET");

@@ -2,6 +2,16 @@ import type { NextFunction, Request, Response } from "express";
 
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+const CSRF_EXEMPT_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/otp/request",
+  "/api/auth/otp/verify",
+  "/api/auth/bootstrap/register",
+  "/api/auth/mfa/enroll",
+  "/api/auth/mfa/verify-enrollment",
+  "/api/auth/login/mfa-complete",
+]);
+
 function hasRefreshCookie(req: Request) {
   return Boolean(
     req.headers.cookie
@@ -11,14 +21,19 @@ function hasRefreshCookie(req: Request) {
   );
 }
 
+function normalizePath(req: Request): string {
+  return `/${String(req.path || "").replace(/^\/+/, "")}`;
+}
+
 export function csrfProtectionMiddleware(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
-  if (process.env.CSRF_PROTECTION_ENABLED !== "true") return next();
+  if (process.env.CSRF_PROTECTION_ENABLED === "false") return next();
   if (!unsafeMethods.has(req.method)) return next();
   if (!hasRefreshCookie(req)) return next();
+  if (CSRF_EXEMPT_PATHS.has(normalizePath(req))) return next();
 
   const header = req.get("x-csrf-token");
   const cookieToken = req.headers.cookie

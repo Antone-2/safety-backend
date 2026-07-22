@@ -30,3 +30,9 @@ export declare function checkSla(job: {
         action: string;
     };
 }): Promise<void>;
+export declare function processFollowup(job: {
+    data: {
+        reportId?: string;
+        stage?: string;
+    };
+}): Promise<void>;

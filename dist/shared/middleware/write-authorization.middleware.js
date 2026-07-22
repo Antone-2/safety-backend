@@ -9,6 +9,9 @@ const AUTH_WRITE_EXEMPTIONS = new Set([
     "/auth/refresh",
     "/auth/bootstrap/register",
     "/auth/logout",
+    "/auth/mfa/enroll",
+    "/auth/mfa/verify-enrollment",
+    "/auth/login/mfa-complete",
 ]);
 export function normalizeApiPath(path) {
     const normalized = `/${String(path || "").replace(/^\/+/, "")}`

@@ -147,10 +147,6 @@ export function createTrainingRouter() {
     const router = Router();
     router.use(authenticateUser);
     router.get("/", rbacMiddleware("training:read"), controller.getAll);
-    router.get("/:id", rbacMiddleware("training:read"), controller.getById);
-    router.post("/courses", rbacMiddleware("training:create"), validate(TrainingCourseInputSchema), controller.createCourse);
-    router.patch("/courses/:id", rbacMiddleware("training:update"), controller.updateCourse);
-    router.delete("/courses/:id", rbacMiddleware("training:delete"), controller.deleteCourse);
     router.get("/records", rbacMiddleware("training:read"), controller.getRecords);
     router.get("/records/:id", rbacMiddleware("training:read"), controller.getRecordById);
     router.post("/records", rbacMiddleware("training:create"), validate(TrainingRecordInputSchema), controller.createRecord);
@@ -159,5 +155,9 @@ export function createTrainingRouter() {
     router.get("/matrix", rbacMiddleware("training:read"), controller.getMatrix);
     router.post("/matrix", rbacMiddleware("training:create"), controller.createMatrix);
     router.get("/stats", rbacMiddleware("training:read"), controller.getStats);
+    router.post("/courses", rbacMiddleware("training:create"), validate(TrainingCourseInputSchema), controller.createCourse);
+    router.patch("/courses/:id", rbacMiddleware("training:update"), controller.updateCourse);
+    router.delete("/courses/:id", rbacMiddleware("training:delete"), controller.deleteCourse);
+    router.get("/:id", rbacMiddleware("training:read"), controller.getById);
     return router;
 }

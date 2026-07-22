@@ -26,6 +26,10 @@ export class IncidentsRepository {
         const result = await this.pool.query(sql, params);
         return result.rows;
     }
+    async findAllReports() {
+        const result = await this.pool.query(`SELECT id, type, severity, status, location, department, shift, description, reporter, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at FROM reports ORDER BY created_at DESC`);
+        return result.rows;
+    }
     async findById(id) {
         const result = await this.pool.query("SELECT * FROM incidents WHERE id = $1", [id]);
         return result.rows[0] || null;

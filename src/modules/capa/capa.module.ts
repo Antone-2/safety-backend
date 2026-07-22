@@ -3,10 +3,20 @@ import { z } from "zod";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import { authenticateUser, requirePermission, type AuthRequest } from "../../shared/middleware/auth.middleware.js";
 import { diffRecord, writeAuditLog } from "../../shared/audit/audit.service.js";
+import { sendCapaAssignmentNotifications, sendCapaReminder } from "../../lib/email.js";
 
 const CapaPrioritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
 const CapaStatusSchema = z.enum(["Open", "In Progress", "Completed", "Overdue", "Cancelled"]);
 const CapaTypeSchema = z.enum(["Corrective", "Preventive", "Improvement"]);
+const CapaActionItemStatusSchema = z.enum(["Planned", "Assigned", "In Progress", "Completed", "Blocked"]);
+const CapaActionItemSchema = z.object({
+  action: z.string().min(1).max(500),
+  byWho: z.string().min(1).max(200),
+  byWhen: z.string().min(1),
+  status: CapaActionItemStatusSchema.default("Planned"),
+  evidence: z.string().max(500).optional(),
+  remarks: z.string().max(1000).optional(),
+});
 
 const CreateCapaSchema = z.object({
   type: CapaTypeSchema.default("Corrective"),
@@ -22,6 +32,11 @@ const CreateCapaSchema = z.object({
   rootCause: z.string().max(5000).optional(),
   actionPlan: z.string().min(1).max(5000),
   owner: z.string().min(1).max(200),
+  ownerEmail: z.string().email().optional(),
+  backupOwner: z.string().max(200).optional(),
+  escalationOwner: z.string().max(200).optional(),
+  reminderDays: z.number().int().min(0).max(90).optional(),
+  actionItems: z.array(CapaActionItemSchema).optional().default([]),
   department: z.string().min(1).max(100),
   site: z.string().min(1).max(200),
   dueDate: z.string().min(1),
@@ -64,6 +79,29 @@ function attachmentsToJson(value: unknown) {
   return "[]";
 }
 
+function isEmail(value: string | undefined | null) {
+  return !!value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function toDate(value: unknown) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function jsonArray(value: unknown) {
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === "string" && value.trim()) {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return "[]";
+    }
+  }
+  return "[]";
+}
+
 function mapCapa(row: CapaRow) {
   return {
     id: String(row.id),
@@ -81,6 +119,16 @@ function mapCapa(row: CapaRow) {
     rootCause: row.root_cause ?? undefined,
     actionPlan: row.action_plan,
     owner: row.owner,
+    ownerEmail: row.owner_email ?? undefined,
+    backupOwner: row.backup_owner ?? undefined,
+    escalationOwner: row.escalation_owner ?? undefined,
+    reminderDays:
+      row.reminder_days === null || row.reminder_days === undefined
+        ? undefined
+        : Number(row.reminder_days),
+    actionItems: Array.isArray(row.action_items)
+      ? row.action_items
+      : [],
     department: row.department,
     site: row.site,
     dueDate: toIso(row.due_date),
@@ -98,6 +146,201 @@ function mapCapa(row: CapaRow) {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
+}
+
+function assignmentUpdateSummary(before: Record<string, unknown>, after: Record<string, unknown>) {
+  const labels: Record<string, string> = {
+    ownerEmail: "owner email",
+    backupOwner: "backup assignee",
+    escalationOwner: "escalation contact",
+    reminderDays: "reminder days",
+    dueDate: "due date",
+    actionPlan: "action plan",
+    actionItems: "task rows",
+    status: "status",
+  };
+
+  return Object.entries(labels)
+    .filter(([field]) => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
+    .map(([field, label]) => label)
+    .join(", ");
+}
+
+async function notifyCapaAssignment(record: ReturnType<typeof mapCapa>, options?: {
+  assignedBy?: string;
+  updateSummary?: string;
+}) {
+  const recipients: Array<{
+    to: string;
+    role: "owner" | "backup" | "escalation";
+    capaId: string;
+    title: string;
+    source: string;
+    actionPlan: string;
+    dueDate: string;
+    site: string;
+    department: string;
+    owner: string;
+    assignedBy?: string;
+    status?: string;
+    updateSummary?: string;
+  }> = [];
+
+  if (isEmail(record.ownerEmail)) {
+    recipients.push({
+      to: String(record.ownerEmail),
+      role: "owner",
+      capaId: String(record.capaNo || record.id),
+      title: String(record.title),
+      source: String(record.source),
+      actionPlan: String(record.actionPlan),
+      dueDate: String(record.dueDate),
+      site: String(record.site),
+      department: String(record.department),
+      owner: String(record.owner),
+      assignedBy: options?.assignedBy,
+      status: String(record.status),
+      updateSummary: options?.updateSummary,
+    });
+  }
+
+  if (isEmail(record.backupOwner)) {
+    recipients.push({
+      to: String(record.backupOwner),
+      role: "backup",
+      capaId: String(record.capaNo || record.id),
+      title: String(record.title),
+      source: String(record.source),
+      actionPlan: String(record.actionPlan),
+      dueDate: String(record.dueDate),
+      site: String(record.site),
+      department: String(record.department),
+      owner: String(record.owner),
+      assignedBy: options?.assignedBy,
+      status: String(record.status),
+      updateSummary: options?.updateSummary,
+    });
+  }
+
+  if (isEmail(record.escalationOwner)) {
+    recipients.push({
+      to: String(record.escalationOwner),
+      role: "escalation",
+      capaId: String(record.capaNo || record.id),
+      title: String(record.title),
+      source: String(record.source),
+      actionPlan: String(record.actionPlan),
+      dueDate: String(record.dueDate),
+      site: String(record.site),
+      department: String(record.department),
+      owner: String(record.owner),
+      assignedBy: options?.assignedBy,
+      status: String(record.status),
+      updateSummary: options?.updateSummary,
+    });
+  }
+
+  if (!recipients.length) return [];
+  return sendCapaAssignmentNotifications(recipients);
+}
+
+type CapaNotificationRecipientResult = {
+  recipient: string;
+  role: "owner" | "backup" | "escalation";
+  delivered: boolean;
+  mode: "brevo" | "smtp" | "internal" | "failed";
+  error?: string;
+};
+
+type CapaNotificationSummary = {
+  delivered: number;
+  queued: number;
+  failed: number;
+  message: string;
+  recipients: CapaNotificationRecipientResult[];
+};
+
+function summarizeAssignmentNotifications(
+  notifications: Awaited<ReturnType<typeof notifyCapaAssignment>>,
+): CapaNotificationSummary | null {
+  const list = notifications ?? [];
+  if (!list.length) return null;
+  const delivered = list.filter((item) => item.delivered).length;
+  const queued = list.filter((item) => item.mode === "internal").length;
+  const failed = list.filter((item) => item.mode === "failed").length;
+  return {
+    delivered,
+    queued,
+    failed,
+    message:
+      failed > 0
+        ? `Assignment notifications: ${delivered} sent, ${queued} queued locally, ${failed} failed.`
+        : queued > 0
+          ? `Assignment notifications: ${delivered} sent, ${queued} queued locally.`
+          : `Assignment notifications: ${delivered} sent.`,
+    recipients: list.map((item) => ({
+      recipient: item.recipient,
+      role: item.role,
+      delivered: item.delivered,
+      mode: item.mode,
+      error: item.error,
+    })),
+  };
+}
+
+type CapaNotificationHistoryRecipient = CapaNotificationRecipientResult;
+
+type CapaNotificationHistoryEntry = {
+  id: string;
+  action: string;
+  actorEmail?: string;
+  actorRole?: string;
+  createdAt: string;
+  delivered: number;
+  queued: number;
+  failed: number;
+  message: string;
+  recipients: CapaNotificationHistoryRecipient[];
+};
+
+async function getCapaNotificationHistory(id: string): Promise<CapaNotificationHistoryEntry[]> {
+  const result = await pgPool.query(
+    `SELECT id, action, actor_email, actor_role, created_at, context
+     FROM audit_logs
+     WHERE resource_type = 'capa'
+       AND resource_id = $1
+       AND context ? 'notifications'
+     ORDER BY created_at DESC`,
+    [id],
+  );
+
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    action: String(row.action),
+    actorEmail: row.actor_email ?? undefined,
+    actorRole: row.actor_role ?? undefined,
+    createdAt: String(toIso(row.created_at) || new Date().toISOString()),
+    delivered: Number(row.context?.notifications?.delivered ?? 0),
+    queued: Number(row.context?.notifications?.queued ?? 0),
+    failed: Number(row.context?.notifications?.failed ?? 0),
+    message: String(row.context?.notifications?.message ?? ""),
+    recipients: Array.isArray(row.context?.notifications?.recipients)
+      ? row.context.notifications.recipients.map((item: Record<string, unknown>) => ({
+          recipient: String(item.recipient || ""),
+          role:
+            item.role === "backup" || item.role === "escalation" ? item.role : "owner",
+          delivered: Boolean(item.delivered),
+          mode:
+            item.mode === "brevo" ||
+            item.mode === "smtp" ||
+            item.mode === "failed" ||
+            item.mode === "internal"
+              ? item.mode
+              : "internal",
+          error: item.error ? String(item.error) : undefined,
+        }))
+      : [],
+  }));
 }
 
 function nextCapaNo() {
@@ -124,6 +367,11 @@ function buildUpdate(data: Record<string, unknown>) {
     rootCause: "root_cause",
     actionPlan: "action_plan",
     owner: "owner",
+    ownerEmail: "owner_email",
+    backupOwner: "backup_owner",
+    escalationOwner: "escalation_owner",
+    reminderDays: "reminder_days",
+    actionItems: "action_items",
     department: "department",
     site: "site",
     dueDate: "due_date",
@@ -144,9 +392,9 @@ function buildUpdate(data: Record<string, unknown>) {
 
   for (const [key, column] of Object.entries(columns)) {
     if (data[key] !== undefined) {
-      if (key === "attachments") {
+      if (key === "attachments" || key === "actionItems") {
         fields.push(`${column} = $${idx++}::jsonb`);
-        params.push(attachmentsToJson(data[key]));
+        params.push(key === "attachments" ? attachmentsToJson(data[key]) : jsonArray(data[key]));
       } else {
         fields.push(`${column} = $${idx++}`);
         params.push(data[key]);
@@ -214,6 +462,39 @@ export function createCapaRouter() {
     res.json(result.rows.map(mapCapa));
   });
 
+  router.get("/:id/notifications", async (req, res) => {
+    const id = routeParam(req, "id");
+    const record = await getCapaById(id);
+    if (!record) return res.status(404).json({ error: "CAPA not found" });
+    res.json(await getCapaNotificationHistory(id));
+  });
+
+  router.post("/:id/notifications/resend", requirePermission("capa:update"), async (req: AuthRequest, res) => {
+    const id = routeParam(req, "id");
+    const record = await getCapaById(id);
+    if (!record) return res.status(404).json({ error: "CAPA not found" });
+
+    const notifications = await notifyCapaAssignment(record, {
+      assignedBy: req.user?.name || req.user?.email || "System",
+      updateSummary: "manual resend",
+    });
+    const notificationSummary = summarizeAssignmentNotifications(notifications);
+
+    await writeAuditLog({
+      action: "capa.notifications.resent",
+      resourceType: "capa",
+      resourceId: id,
+      context: { notifications: notificationSummary },
+      actor: req.user,
+      request: req,
+    });
+
+    res.json({
+      record,
+      notifications: notificationSummary,
+    });
+  });
+
   router.get("/:id", async (req, res) => {
     const record = await getCapaById(routeParam(req, "id"));
     if (!record) return res.status(404).json({ error: "CAPA not found" });
@@ -230,15 +511,16 @@ export function createCapaRouter() {
       `INSERT INTO capa (
         capa_no, type, status, priority, title, description, source, source_ref,
         linked_incident_id, linked_audit_id, linked_risk_id, root_cause, action_plan,
-        owner, department, site, due_date, start_date, completed_date,
+        owner, owner_email, backup_owner, escalation_owner, reminder_days, action_items,
+        department, site, due_date, start_date, completed_date,
         verification_note, verified_by, verified_at, effectiveness_check,
         effectiveness_result, cost_estimate, actual_cost, attachments, created_by
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8,
         $9, $10, $11, $12, $13,
-        $14, $15, $16, $17, $18, $19,
-        $20, $21, $22, $23,
-        $24, $25, $26, $27::jsonb, $28
+        $14, $15, $16, $17, $18, $19::jsonb,
+        $20, $21, $22, $23, $24, $25,
+        $26, $27, $28, $29::jsonb, $30
       ) RETURNING *`,
       [
         nextCapaNo(),
@@ -255,6 +537,11 @@ export function createCapaRouter() {
         input.rootCause ?? null,
         input.actionPlan,
         input.owner,
+        input.ownerEmail ?? null,
+        input.backupOwner ?? null,
+        input.escalationOwner ?? null,
+        input.reminderDays ?? null,
+        jsonArray(input.actionItems),
         input.department,
         input.site,
         input.dueDate,
@@ -272,15 +559,26 @@ export function createCapaRouter() {
       ],
     );
     const record = mapCapa(result.rows[0]);
+    const notifications = await notifyCapaAssignment(record, {
+      assignedBy: req.user?.name || req.user?.email || createdBy,
+    });
+    const notificationSummary = summarizeAssignmentNotifications(notifications);
     await writeAuditLog({
       action: "capa.created",
       resourceType: "capa",
       resourceId: record.id,
-      context: { capaNo: record.capaNo, source: record.source },
+      context: {
+        capaNo: record.capaNo,
+        source: record.source,
+        notifications: notificationSummary,
+      },
       actor: req.user,
       request: req,
     });
-    res.status(201).json(record);
+    res.status(201).json({
+      record,
+      notifications: notificationSummary,
+    });
   });
 
   router.patch("/:id/status", requirePermission("capa:update"), async (req: AuthRequest, res) => {
@@ -315,15 +613,33 @@ export function createCapaRouter() {
     params.push(id);
     const result = await pgPool.query(`UPDATE capa SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${nextIndex} RETURNING *`, params);
     const record = mapCapa(result.rows[0]);
+    const summary = assignmentUpdateSummary(
+      before as Record<string, unknown>,
+      record as Record<string, unknown>,
+    );
+    const notifications = summary
+      ? await notifyCapaAssignment(record, {
+          assignedBy: req.user?.name || req.user?.email || "System",
+          updateSummary: summary,
+        })
+      : [];
+    const notificationSummary = summary ? summarizeAssignmentNotifications(notifications) : null;
     await writeAuditLog({
       action: "capa.updated",
       resourceType: "capa",
       resourceId: id,
       changes: diffRecord(before as Record<string, unknown>, record as Record<string, unknown>),
+      context: { notifications: notificationSummary },
       actor: req.user,
       request: req,
     });
-    res.json(record);
+    if (summary) {
+      return res.json({
+        record,
+        notifications: notificationSummary,
+      });
+    }
+    res.json({ record, notifications: null });
   });
 
   router.delete("/:id", requirePermission("capa:update"), async (req: AuthRequest, res) => {
@@ -371,13 +687,63 @@ export function createCapaRouter() {
   });
 
   router.post("/reminders", requirePermission("capa:update"), async (req, res) => {
-    const daysBefore = Number(req.body?.daysBefore ?? 3);
+    const fallbackDaysBefore = Number(req.body?.daysBefore ?? 3);
     const result = await pgPool.query(
-      "SELECT COUNT(*)::int AS count FROM capa WHERE status NOT IN ('Cancelled', 'Completed') AND due_date <= NOW() + ($1::int * INTERVAL '1 day')",
-      [daysBefore],
+      `SELECT id, capa_no, title, action_plan, owner, owner_email, escalation_owner, due_date, reminder_days
+       FROM capa
+       WHERE status NOT IN ('Cancelled', 'Completed')`,
     );
-    const sent = result.rows[0]?.count ?? 0;
-    res.json({ sent, message: `Queued ${sent} CAPA reminder${sent === 1 ? "" : "s"}` });
+
+    let sent = 0;
+    let escalated = 0;
+
+    for (const row of result.rows) {
+      const dueDate = toDate(row.due_date);
+      if (!dueDate) continue;
+
+      const now = new Date();
+      const dueStart = new Date(dueDate);
+      dueStart.setHours(0, 0, 0, 0);
+      const nowStart = new Date(now);
+      nowStart.setHours(0, 0, 0, 0);
+      const daysUntilDue = Math.round(
+        (dueStart.getTime() - nowStart.getTime()) / (24 * 60 * 60 * 1000),
+      );
+
+      const reminderDays =
+        row.reminder_days === null || row.reminder_days === undefined
+          ? fallbackDaysBefore
+          : Number(row.reminder_days);
+
+      const shouldRemindOwner = isEmail(row.owner_email) && daysUntilDue >= 0 && daysUntilDue <= reminderDays;
+      const shouldEscalate = isEmail(row.escalation_owner) && daysUntilDue < 0;
+
+      if (shouldRemindOwner) {
+        await sendCapaReminder({
+          to: String(row.owner_email),
+          capaId: String(row.capa_no || row.id),
+          action: String(row.action_plan || row.title || "Assigned CAPA action"),
+          dueDate: dueDate.toISOString(),
+        });
+        sent += 1;
+      }
+
+      if (shouldEscalate) {
+        await sendCapaReminder({
+          to: String(row.escalation_owner),
+          capaId: String(row.capa_no || row.id),
+          action: `Escalation for overdue CAPA owned by ${String(row.owner || "Unassigned")}: ${String(row.action_plan || row.title || "")}`,
+          dueDate: dueDate.toISOString(),
+        });
+        escalated += 1;
+      }
+    }
+
+    res.json({
+      sent,
+      escalated,
+      message: `Processed ${sent} owner reminder${sent === 1 ? "" : "s"} and ${escalated} escalation${escalated === 1 ? "" : "s"}.`,
+    });
   });
 
   return router;

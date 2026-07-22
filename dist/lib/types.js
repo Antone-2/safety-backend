@@ -15,6 +15,11 @@ export const CreateReportSchema = z.object({
     shift: z.string().min(1).max(50),
     anonymous: z.boolean().optional().default(false),
     complianceRequired: z.boolean().optional().default(false),
+    isRecordable: z.boolean().optional(),
+    isLostTimeInjury: z.boolean().optional(),
+    medicalTreatmentCase: z.boolean().optional(),
+    lostWorkDays: z.number().int().min(0).max(36500).optional(),
+    restrictedWorkDays: z.number().int().min(0).max(36500).optional(),
     photoUrl: z
         .string()
         .trim()
@@ -145,7 +150,13 @@ export const UpdatePermitSchema = z.object({
 export const AdvancePermitStatusSchema = z.object({
     status: PermitStatusSchema,
 });
-export const JsaStatusSchema = z.enum(["draft", "in-review", "active", "completed", "archived"]);
+export const JsaStatusSchema = z.enum([
+    "draft",
+    "in-review",
+    "active",
+    "completed",
+    "archived",
+]);
 export const RiskLevelSchema = z.enum(["Low", "Medium", "High", "Critical"]);
 export const JsaStepSchema = z.object({
     id: z.string(),

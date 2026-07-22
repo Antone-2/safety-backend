@@ -5,6 +5,11 @@ export declare function fetchGoogleSheetRows(formId: string, apiKey: string, req
     sheetName: string;
 }>;
 export declare function parseDate(dateStr?: string): string;
+export declare function dedupeGoogleSheetReportsById<T extends {
+    id: string;
+    date?: string;
+}>(reports: T[]): T[];
+export declare function getGoogleSheetReportIdsToDelete(existingIds: string[], incomingIds: string[]): string[];
 export declare function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
     id: string;
     date: string;

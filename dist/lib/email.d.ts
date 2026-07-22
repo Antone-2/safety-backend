@@ -33,6 +33,12 @@ export declare const ReminderSchema: z.ZodObject<{
     phone?: string | undefined;
 }>;
 export type ReminderInput = z.infer<typeof ReminderSchema>;
+export declare function sendBrevoEmail(input: {
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+}): Promise<void>;
 export declare function sendOtpEmail(input: {
     to: string;
     code: string;

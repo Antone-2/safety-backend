@@ -102,6 +102,7 @@ export declare const UpdateContractorSchema: z.ZodObject<{
     performanceScore: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    incidents?: number | undefined;
     companyName?: string | undefined;
     registrationNumber?: string | undefined;
     contactPerson?: string | undefined;
@@ -117,9 +118,9 @@ export declare const UpdateContractorSchema: z.ZodObject<{
     inductionExpiry?: string | null | undefined;
     documents?: string[] | null | undefined;
     performanceScore?: number | null | undefined;
-    incidents?: number | undefined;
 }, {
     status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    incidents?: number | undefined;
     companyName?: string | undefined;
     registrationNumber?: string | undefined;
     contactPerson?: string | undefined;
@@ -135,7 +136,6 @@ export declare const UpdateContractorSchema: z.ZodObject<{
     inductionExpiry?: string | null | undefined;
     documents?: string[] | null | undefined;
     performanceScore?: number | null | undefined;
-    incidents?: number | undefined;
 }>;
 export type UpdateContractorInput = z.infer<typeof UpdateContractorSchema>;
 export interface ContractorIncident {

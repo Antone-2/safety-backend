@@ -27,6 +27,14 @@ export interface Report {
         text: string;
     }[];
     isNearMiss: boolean;
+    isRecordable: boolean;
+    isLostTimeInjury: boolean;
+    medicalTreatmentCase: boolean;
+    lostWorkDays: number;
+    restrictedWorkDays: number;
+    classificationSource?: string;
+    classificationVerifiedBy?: string;
+    classificationVerifiedAt?: string;
     anonymous: boolean;
     department: string;
     shift: string;
@@ -46,6 +54,11 @@ export declare const CreateReportSchema: z.ZodObject<{
     shift: z.ZodString;
     anonymous: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     complianceRequired: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
+    isRecordable: z.ZodOptional<z.ZodBoolean>;
+    isLostTimeInjury: z.ZodOptional<z.ZodBoolean>;
+    medicalTreatmentCase: z.ZodOptional<z.ZodBoolean>;
+    lostWorkDays: z.ZodOptional<z.ZodNumber>;
+    restrictedWorkDays: z.ZodOptional<z.ZodNumber>;
     photoUrl: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
 }, "strip", z.ZodTypeAny, {
     shift: string;
@@ -59,6 +72,11 @@ export declare const CreateReportSchema: z.ZodObject<{
     complianceRequired: boolean;
     category: string;
     photoUrl?: string | undefined;
+    isRecordable?: boolean | undefined;
+    isLostTimeInjury?: boolean | undefined;
+    medicalTreatmentCase?: boolean | undefined;
+    lostWorkDays?: number | undefined;
+    restrictedWorkDays?: number | undefined;
 }, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition";
@@ -71,6 +89,11 @@ export declare const CreateReportSchema: z.ZodObject<{
     anonymous?: boolean | undefined;
     photoUrl?: string | undefined;
     complianceRequired?: boolean | undefined;
+    isRecordable?: boolean | undefined;
+    isLostTimeInjury?: boolean | undefined;
+    medicalTreatmentCase?: boolean | undefined;
+    lostWorkDays?: number | undefined;
+    restrictedWorkDays?: number | undefined;
 }>;
 export type CreateReportInput = z.infer<typeof CreateReportSchema>;
 export declare const CapaStatusSchema: z.ZodEnum<["Pending", "In Progress", "Completed", "Verified", "Closed"]>;
@@ -172,15 +195,15 @@ export declare const CreateUserSchema: z.ZodObject<{
     role: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin"]>;
     phone: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
+    name: string;
     password: string;
     role: "super-admin" | "EHS-manager" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm";
-    name: string;
     email: string;
     phone?: string | undefined;
 }, {
+    name: string;
     password: string;
     role: "super-admin" | "EHS-manager" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm";
-    name: string;
     email: string;
     phone?: string | undefined;
 }>;

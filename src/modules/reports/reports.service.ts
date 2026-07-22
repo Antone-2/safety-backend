@@ -8,6 +8,7 @@ import {
   type AssignmentRecipient,
 } from "../../lib/email.js";
 import { awardReporterPoints } from "../../services/leaderboard.service.js";
+import { scheduleFollowupsForReport } from "../../services/report-followup.service.js";
 
 const PHOTO_COL = "photo_url";
 const DATE_COL = "date";
@@ -33,6 +34,18 @@ const RESOLUTION_COL = "resolution_days";
 const CREATED_COL = "created_at";
 const UPDATED_COL = "updated_at";
 
+export type ReportFilters = {
+  status?: string;
+  severity?: string;
+  location?: string;
+  category?: string;
+  search?: string;
+  days?: string | number;
+  dateFrom?: string;
+  dateTo?: string;
+  all?: boolean;
+};
+
 type ReportRow = Record<string, any>;
 type CommentRow = {
   author: string;
@@ -52,6 +65,74 @@ type AuditRow = {
 
 function isPgAvailable(): boolean {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
+}
+
+export function buildPgFilter(filters: ReportFilters) {
+  const where: string[] = ["1=1"];
+  const params: unknown[] = [];
+  const add = (clause: (placeholder: string) => string, value: unknown) => {
+    params.push(value);
+    where.push(clause(`$${params.length}`));
+  };
+
+  if (filters.status && filters.status !== "All")
+    add((p) => `status = ${p}`, filters.status);
+  if (filters.severity && filters.severity !== "All")
+    add((p) => `severity = ${p}`, filters.severity);
+  if (filters.location && filters.location !== "All")
+    add((p) => `location = ${p}`, filters.location);
+  if (filters.category && filters.category !== "All")
+    add((p) => `category = ${p}`, filters.category);
+  if (filters.dateFrom) add((p) => `date >= ${p}`, filters.dateFrom);
+  if (filters.dateTo) add((p) => `date < ${p}`, filters.dateTo);
+  if (!filters.dateFrom && filters.days && String(filters.days) !== "9999") {
+    add(
+      (p) => `date >= ${p}`,
+      new Date(Date.now() - Number(filters.days) * 86400000).toISOString(),
+    );
+  }
+  if (filters.search) {
+    params.push(`%${filters.search}%`);
+    const p = `$${params.length}`;
+    where.push(
+      `(description ILIKE ${p} OR reporter ILIKE ${p} OR id ILIKE ${p} OR location ILIKE ${p} OR category ILIKE ${p})`,
+    );
+  }
+  return { whereSql: where.join(" AND "), params };
+}
+
+export function buildSqliteFilter(filters: ReportFilters) {
+  const where: string[] = ["1=1"];
+  const params: unknown[] = [];
+  const add = (clause: string, value: unknown) => {
+    where.push(clause);
+    params.push(value);
+  };
+
+  if (filters.status && filters.status !== "All")
+    add("status = ?", filters.status);
+  if (filters.severity && filters.severity !== "All")
+    add("severity = ?", filters.severity);
+  if (filters.location && filters.location !== "All")
+    add("location = ?", filters.location);
+  if (filters.category && filters.category !== "All")
+    add("category = ?", filters.category);
+  if (filters.dateFrom) add("date >= ?", filters.dateFrom);
+  if (filters.dateTo) add("date < ?", filters.dateTo);
+  if (!filters.dateFrom && filters.days && String(filters.days) !== "9999") {
+    add(
+      "date >= ?",
+      new Date(Date.now() - Number(filters.days) * 86400000).toISOString(),
+    );
+  }
+  if (filters.search) {
+    where.push(
+      "(description LIKE ? OR reporter LIKE ? OR id LIKE ? OR location LIKE ? OR category LIKE ?)",
+    );
+    const search = `%${filters.search}%`;
+    params.push(search, search, search, search, search);
+  }
+  return { whereSql: where.join(" AND "), params };
 }
 
 async function writeAuditLogBestEffort(
@@ -85,6 +166,17 @@ function toCamelCase(row: ReportRow): ReportRow {
     r.assignedTo = r.assigned_to ?? undefined;
     r.assignedToCopy = parseJsonArray(r.assigned_to_copy);
     r.isNearMiss = Boolean(r.is_near_miss);
+    r.isRecordable = Boolean(r.is_recordable);
+    r.isLostTimeInjury = Boolean(r.is_lost_time_injury);
+    r.medicalTreatmentCase = Boolean(r.medical_treatment_case);
+    r.lostWorkDays = Number(r.lost_work_days ?? 0);
+    r.restrictedWorkDays = Number(r.restricted_work_days ?? 0);
+    r.classificationSource = r.classification_source ?? undefined;
+    r.classificationVerifiedBy = r.classification_verified_by ?? undefined;
+    r.classificationVerifiedAt =
+      r.classification_verified_at instanceof Date
+        ? r.classification_verified_at.toISOString()
+        : (r.classification_verified_at ?? undefined);
     r.anonymous = Boolean(r.anonymous);
     r.department = r.department;
     r.shift = r.shift;
@@ -95,6 +187,10 @@ function toCamelCase(row: ReportRow): ReportRow {
         : (r.compliance_due_at ?? undefined);
     r.photoUrl = String(r.photo_url ?? "").trim();
     r.source = r.source;
+    r.sourceSyncedAt =
+      r.source_synced_at instanceof Date
+        ? r.source_synced_at.toISOString()
+        : (r.source_synced_at ?? undefined);
     r.createdAt =
       r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at;
     r.updatedAt =
@@ -109,6 +205,7 @@ function mapReport(
   comments: CommentRow[] = [],
   audit: AuditRow[] = [],
 ) {
+  if (!row || !row.id) return null;
   const mapped = toCamelCase(row);
   return {
     id: mapped.id,
@@ -131,14 +228,23 @@ function mapReport(
       text: c.text,
     })),
     isNearMiss: mapped.isNearMiss,
+    isRecordable: Boolean(mapped.isRecordable),
+    isLostTimeInjury: Boolean(mapped.isLostTimeInjury),
+    medicalTreatmentCase: Boolean(mapped.medicalTreatmentCase),
+    lostWorkDays: Number(mapped.lostWorkDays ?? 0),
+    restrictedWorkDays: Number(mapped.restrictedWorkDays ?? 0),
+    classificationSource: mapped.classificationSource,
+    classificationVerifiedBy: mapped.classificationVerifiedBy,
+    classificationVerifiedAt: mapped.classificationVerifiedAt,
     anonymous: mapped.anonymous,
     department: mapped.department,
     shift: mapped.shift,
     complianceRequired: mapped.complianceRequired,
     complianceDueAt: mapped.complianceDueAt,
     photoUrl: String(mapped.photoUrl ?? "").trim(),
-    source: mapped.source,
-    auditHistory: audit.map((entry) => ({
+     source: mapped.source,
+     sourceSyncedAt: mapped.sourceSyncedAt,
+     auditHistory: audit.map((entry) => ({
       at: entry.created_at ?? entry.timestamp ?? "",
       actor: entry.actor_email || entry.actor || entry.actor_id || "System",
       action: entry.action,
@@ -241,7 +347,6 @@ async function syncReportWorkflowState(input: {
         JSON.stringify(input.context ?? {}),
       ],
     );
-
   } catch (error) {
     console.warn(
       "Workflow state sync skipped:",
@@ -277,6 +382,21 @@ function normalizeReportInput(input: any): ReportRow {
       Array.isArray(input.assignedToCopy) ? input.assignedToCopy : [],
     ),
     isNearMiss: (input.isNearMiss ?? input.is_near_miss) ? 1 : 0,
+    isRecordable: (input.isRecordable ?? input.is_recordable) ? 1 : 0,
+    isLostTimeInjury:
+      (input.isLostTimeInjury ?? input.is_lost_time_injury) ? 1 : 0,
+    medicalTreatmentCase:
+      (input.medicalTreatmentCase ?? input.medical_treatment_case) ? 1 : 0,
+    lostWorkDays: Number(input.lostWorkDays ?? input.lost_work_days ?? 0),
+    restrictedWorkDays: Number(
+      input.restrictedWorkDays ?? input.restricted_work_days ?? 0,
+    ),
+    classificationSource:
+      input.classificationSource ?? input.classification_source,
+    classificationVerifiedBy:
+      input.classificationVerifiedBy ?? input.classification_verified_by,
+    classificationVerifiedAt:
+      input.classificationVerifiedAt ?? input.classification_verified_at,
     anonymous: input.anonymous ? 1 : 0,
     department: input.department,
     shift: input.shift,
@@ -294,49 +414,19 @@ function normalizeReportInput(input: any): ReportRow {
 }
 
 export class ReportsService {
-  async list(filters: any = {}, page = 1, limit = 50) {
+  async list(filters: ReportFilters = {}, page = 1, limit = 50) {
+    page = Math.max(1, Math.trunc(page) || 1);
+    limit = filters.all
+      ? 0
+      : Math.min(100, Math.max(1, Math.trunc(limit) || 50));
     if (isPgAvailable()) {
       return this.listPg(filters, page, limit);
     }
     return this.listSqlite(filters, page, limit);
   }
 
-  private async listPg(filters: any, page: number, limit: number) {
-    const where: string[] = ["1=1"];
-    const params: unknown[] = [];
-    let idx = 1;
-
-    if (filters.status) {
-      where.push(`status = $${idx++}`);
-      params.push(filters.status);
-    }
-    if (filters.severity) {
-      where.push(`severity = $${idx++}`);
-      params.push(filters.severity);
-    }
-    if (filters.location && filters.location !== "All") {
-      where.push(`location = $${idx++}`);
-      params.push(filters.location);
-    }
-    if (filters.category && filters.category !== "All") {
-      where.push(`category = $${idx++}`);
-      params.push(filters.category);
-    }
-    if (filters.days && filters.days !== "9999") {
-      where.push(`date >= $${idx++}`);
-      params.push(
-        new Date(Date.now() - Number(filters.days) * 86400000).toISOString(),
-      );
-    }
-    if (filters.search) {
-      where.push(
-        `(description ILIKE $${idx} OR reporter ILIKE $${idx} OR id ILIKE $${idx})`,
-      );
-      params.push(`%${filters.search}%`);
-      idx++;
-    }
-
-    const whereSql = where.join(" AND ");
+  private async listPg(filters: ReportFilters, page: number, limit: number) {
+    const { whereSql, params } = buildPgFilter(filters);
     const offset = (page - 1) * limit;
     const totalResult = await pgPool.query(
       `SELECT COUNT(*)::int AS total FROM reports WHERE ${whereSql}`,
@@ -348,79 +438,46 @@ export class ReportsService {
           params,
         )
       : await pgPool.query(
-          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT $${idx++} OFFSET $${idx}`,
+          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
           [...params, limit, offset],
         );
 
     return {
-      data: rows.rows.map((row) => mapReport(row)),
+      data: rows.rows.map((row) => mapReport(row)).filter((row): row is NonNullable<ReturnType<typeof mapReport>> => row !== null),
       total: totalResult.rows[0]?.total ?? 0,
       page,
       limit: filters.all ? rows.rows.length : limit,
     };
   }
 
-  private async listSqlite(filters: any, page: number, limit: number) {
+  private async listSqlite(
+    filters: ReportFilters,
+    page: number,
+    limit: number,
+  ) {
     const db = await getDb();
-    const where: string[] = [];
-    const params: any[] = [];
-    let idx = 1;
-
-    if (filters.status) {
-      where.push(`status = ?`);
-      params.push(filters.status);
-    }
-    if (filters.severity) {
-      where.push(`severity = ?`);
-      params.push(filters.severity);
-    }
-    if (filters.location && filters.location !== "All") {
-      where.push(`location = ?`);
-      params.push(filters.location);
-    }
-    if (filters.category && filters.category !== "All") {
-      where.push(`category = ?`);
-      params.push(filters.category);
-    }
-    if (filters.days && filters.days !== "9999") {
-      where.push(`date >= ?`);
-      params.push(
-        new Date(Date.now() - Number(filters.days) * 86400000).toISOString(),
-      );
-    }
-    if (filters.search) {
-      where.push(`(description LIKE ? OR reporter LIKE ? OR id LIKE ?)`);
-      params.push(
-        `%${filters.search}%`,
-        `%${filters.search}%`,
-        `%${filters.search}%`,
-      );
-    }
-
-    const whereSql = where.length
-      ? `WHERE ${where.join(" AND ")}`
-      : "WHERE 1=1";
+    const { whereSql, params } = buildSqliteFilter(filters);
     const offset = (page - 1) * limit;
 
     const totalRow = allRows(
       db,
-      `SELECT COUNT(*) as total FROM reports ${whereSql}`,
+      `SELECT COUNT(*) as total FROM reports WHERE ${whereSql}`,
       params,
     )[0];
     const rows = filters.all
       ? allRows(
           db,
-          `SELECT * FROM reports ${whereSql} ORDER BY date DESC`,
+          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC`,
           params,
         )
       : allRows(
           db,
-          `SELECT * FROM reports ${whereSql} ORDER BY date DESC LIMIT ? OFFSET ?`,
+          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT ? OFFSET ?`,
           [...params, limit, offset],
         );
 
     return {
-      data: rows.map((row) => mapReport(row)),
+      data: rows.map((row) => mapReport(row)).filter((row): row is NonNullable<ReturnType<typeof mapReport>> => row !== null),
       total: Number(totalRow?.total ?? 0),
       page,
       limit: filters.all ? rows.length : limit,
@@ -503,8 +560,12 @@ export class ReportsService {
       `INSERT INTO reports (
         id, date, location, reporter, description, severity, status, category, type,
         sla_hours, due_at, is_near_miss, anonymous, department, shift,
-        compliance_required, compliance_due_at, photo_url, source
-      ) VALUES ($1, NOW(), $2, $3, $4, $5, 'Open', $6, $7, $8, $9, FALSE, $10, $11, $12, $13, $14, $15, 'manual')`,
+        compliance_required, compliance_due_at, photo_url, source,
+        is_recordable, is_lost_time_injury, medical_treatment_case,
+        lost_work_days, restricted_work_days, classification_source,
+        classification_verified_by, classification_verified_at
+      ) VALUES ($1, NOW(), $2, $3, $4, $5, 'Open', $6, $7, $8, $9, FALSE, $10, $11, $12, $13, $14, $15, 'manual',
+        $16, $17, $18, $19, $20, $21, $22, $23)`,
       [
         id,
         input.location,
@@ -521,6 +582,16 @@ export class ReportsService {
         complianceRequired,
         complianceDueAt,
         photoUrl,
+        Boolean(input.isRecordable),
+        Boolean(input.isLostTimeInjury),
+        Boolean(input.medicalTreatmentCase),
+        Number(input.lostWorkDays ?? 0),
+        Number(input.restrictedWorkDays ?? 0),
+        input.classificationSource ?? null,
+        input.classificationSource
+          ? request?.user?.email || request?.user?.id || null
+          : null,
+        input.classificationSource ? now.toISOString() : null,
       ],
     );
 
@@ -579,8 +650,11 @@ export class ReportsService {
       `INSERT INTO reports (
         id, date, location, reporter, description, severity, status, category, type,
         slaHours, dueAt, isNearMiss, anonymous, department, shift,
-        complianceRequired, complianceDueAt, photoUrl, source, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
+        complianceRequired, complianceDueAt, photoUrl, source, createdAt,
+        isRecordable, isLostTimeInjury, medicalTreatmentCase, lostWorkDays,
+        restrictedWorkDays, classificationSource, classificationVerifiedBy,
+        classificationVerifiedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         createdAt,
@@ -600,6 +674,16 @@ export class ReportsService {
         photoUrl,
         "manual",
         createdAt,
+        input.isRecordable ? 1 : 0,
+        input.isLostTimeInjury ? 1 : 0,
+        input.medicalTreatmentCase ? 1 : 0,
+        Number(input.lostWorkDays ?? 0),
+        Number(input.restrictedWorkDays ?? 0),
+        input.classificationSource ?? null,
+        input.classificationSource
+          ? request?.user?.email || request?.user?.id || null
+          : null,
+        input.classificationSource ? createdAt : null,
       ],
     );
 
@@ -797,6 +881,7 @@ export class ReportsService {
       assignedToCopy,
       request,
     );
+    await scheduleFollowupsForReport(id).catch(() => {});
     return { ...updated, assignmentNotifications };
   }
 
@@ -857,6 +942,7 @@ export class ReportsService {
       assignedToCopy,
       request,
     );
+    await scheduleFollowupsForReport(id).catch(() => {});
     return { ...updated, assignmentNotifications };
   }
 
@@ -954,6 +1040,11 @@ export class ReportsService {
       assignedTo: "assigned_to",
       status: "status",
       photoUrl: "photo_url",
+      isRecordable: "is_recordable",
+      isLostTimeInjury: "is_lost_time_injury",
+      medicalTreatmentCase: "medical_treatment_case",
+      lostWorkDays: "lost_work_days",
+      restrictedWorkDays: "restricted_work_days",
     };
 
     const sets: string[] = [];
@@ -966,6 +1057,20 @@ export class ReportsService {
         params.push(fields[inputKey]);
       }
     }
+    const classificationFields = [
+      "isRecordable",
+      "isLostTimeInjury",
+      "medicalTreatmentCase",
+      "lostWorkDays",
+      "restrictedWorkDays",
+    ];
+    if (classificationFields.some((field) => fields[field] !== undefined)) {
+      sets.push(`classification_source = $${idx++}`);
+      params.push("manual-verified");
+      sets.push(`classification_verified_by = $${idx++}`);
+      params.push(request?.user?.email || request?.user?.id || "system");
+      sets.push("classification_verified_at = NOW()");
+    }
     if (sets.length === 0) return this.getById(id);
     params.push(id);
 
@@ -975,6 +1080,7 @@ export class ReportsService {
     );
     if (!updatedRow.rows[0]) return null;
     const after = mapReport(updatedRow.rows[0]);
+    if (!after) return null;
 
     if (request) {
       await writeAuditLogBestEffort({
@@ -1022,6 +1128,11 @@ export class ReportsService {
       assignedTo: "assignedTo",
       status: "status",
       photoUrl: "photoUrl",
+      isRecordable: "isRecordable",
+      isLostTimeInjury: "isLostTimeInjury",
+      medicalTreatmentCase: "medicalTreatmentCase",
+      lostWorkDays: "lostWorkDays",
+      restrictedWorkDays: "restrictedWorkDays",
     };
 
     const sets: string[] = [];
@@ -1032,6 +1143,21 @@ export class ReportsService {
         sets.push(`${column} = ?`);
         params.push(fields[inputKey]);
       }
+    }
+    const classificationFields = [
+      "isRecordable",
+      "isLostTimeInjury",
+      "medicalTreatmentCase",
+      "lostWorkDays",
+      "restrictedWorkDays",
+    ];
+    if (classificationFields.some((field) => fields[field] !== undefined)) {
+      sets.push("classificationSource = ?");
+      params.push("manual-verified");
+      sets.push("classificationVerifiedBy = ?");
+      params.push(request?.user?.email || request?.user?.id || "system");
+      sets.push("classificationVerifiedAt = ?");
+      params.push(new Date().toISOString());
     }
     if (sets.length === 0) return this.getById(id);
     params.push(new Date().toISOString(), id);
@@ -1214,7 +1340,161 @@ export class ReportsService {
     };
   }
 
-  async summary() {
+  async summary(filters: ReportFilters = {}) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(Date.now() - 7 * 86400000);
+    const now = new Date();
+
+    function readPositiveNumber(value: unknown, fallback: number) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    }
+
+    const totalWorkforce = readPositiveNumber(process.env.TOTAL_WORKFORCE, 250);
+    const dailyWorkHours = readPositiveNumber(process.env.DAILY_WORK_HOURS, 8);
+    const workDaysPerMonth = readPositiveNumber(process.env.WORK_DAYS_PER_MONTH, 26);
+    const lostDayHours = readPositiveNumber(process.env.LOST_DAY_HOURS, 8);
+
+    const periodMultiplier =
+      filters.days && String(filters.days) !== "9999"
+        ? Math.max(Number(filters.days) / 30, 1 / 30)
+        : 12;
+    const totalManhoursWorked = Math.round(
+      totalWorkforce * dailyWorkHours * workDaysPerMonth * periodMultiplier,
+    );
+
+    if (isPgAvailable()) {
+      const { whereSql, params } = buildPgFilter(filters);
+      const todayParam = `$${params.length + 1}`;
+      const weekParam = `$${params.length + 2}`;
+      const nowParam = `$${params.length + 3}`;
+      const result = await pgPool.query(
+        `SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'Open')::int AS open,
+          COUNT(*) FILTER (WHERE status = 'Closed')::int AS closed,
+          COUNT(*) FILTER (WHERE date >= ${todayParam})::int AS today,
+          COUNT(*) FILTER (WHERE date >= ${weekParam})::int AS week,
+          COUNT(*) FILTER (WHERE severity = 'Critical' AND status != 'Closed')::int AS "criticalOpen",
+          COUNT(*) FILTER (WHERE status != 'Closed' AND due_at IS NOT NULL AND due_at < ${nowParam})::int AS overdue,
+          COALESCE(ROUND(AVG(resolution_days) FILTER (WHERE status = 'Closed' AND resolution_days IS NOT NULL), 1), 0)::float AS "avgResolution",
+          COUNT(*) FILTER (WHERE is_recordable = TRUE)::int AS "recordableIncidents",
+          COUNT(*) FILTER (WHERE is_lost_time_injury = TRUE)::int AS "lostTimeInjuries",
+          COUNT(*) FILTER (WHERE medical_treatment_case = TRUE)::int AS "medicalTreatmentCases",
+          COALESCE(SUM(lost_work_days), 0)::int AS "lostWorkDays",
+          COALESCE(SUM(restricted_work_days), 0)::int AS "restrictedWorkDays",
+          COUNT(*) FILTER (WHERE classification_verified_at IS NULL)::int AS "unclassified",
+          COUNT(*) FILTER (WHERE is_near_miss = TRUE OR LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int AS "nearMissCount",
+          COUNT(*) FILTER (WHERE severity = 'Critical')::int AS "severityCritical",
+          COUNT(*) FILTER (WHERE severity = 'High')::int AS "severityHigh",
+          COUNT(*) FILTER (WHERE severity = 'Medium')::int AS "severityMedium",
+          COUNT(*) FILTER (WHERE severity = 'Low')::int AS "severityLow",
+          COUNT(*) FILTER (WHERE status = 'Closed')::int AS "closedCount",
+          COALESCE(MIN(CASE WHEN is_lost_time_injury = TRUE THEN date END), NULL)::text AS "lastLtiDate"
+        FROM reports WHERE ${whereSql}`,
+        [
+          ...params,
+          today.toISOString(),
+          weekAgo.toISOString(),
+          now.toISOString(),
+        ],
+      );
+      const row = result.rows[0];
+      const lastLtiDate = row?.lastLtiDate ? new Date(row.lastLtiDate) : null;
+      const daysSinceLastLti = lastLtiDate
+        ? Math.max(0, Math.floor((Date.now() - lastLtiDate.getTime()) / 86400000))
+        : row?.lostTimeInjuries ? 0 : -1;
+      return {
+        ...row,
+        daysSinceLastLti,
+        severityCounts: {
+          Critical: row?.severityCritical ?? 0,
+          High: row?.severityHigh ?? 0,
+          Medium: row?.severityMedium ?? 0,
+          Low: row?.severityLow ?? 0,
+        },
+        totalWorkforce,
+        dailyWorkHours,
+        workDaysPerMonth,
+        lostDayHours,
+        totalManhoursWorked,
+      };
+    }
+
+    const db = await getDb();
+    const { whereSql, params } = buildSqliteFilter(filters);
+    const row = allRows(
+      db,
+      `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'Open' THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS closed,
+        SUM(CASE WHEN date >= ? THEN 1 ELSE 0 END) AS today,
+        SUM(CASE WHEN date >= ? THEN 1 ELSE 0 END) AS week,
+        SUM(CASE WHEN severity = 'Critical' AND status != 'Closed' THEN 1 ELSE 0 END) AS criticalOpen,
+        SUM(CASE WHEN status != 'Closed' AND dueAt IS NOT NULL AND dueAt < ? THEN 1 ELSE 0 END) AS overdue,
+        COALESCE(AVG(CASE WHEN status = 'Closed' THEN resolutionDays END), 0) AS avgResolution,
+        SUM(CASE WHEN isRecordable = 1 THEN 1 ELSE 0 END) AS recordableIncidents,
+        SUM(CASE WHEN isLostTimeInjury = 1 THEN 1 ELSE 0 END) AS lostTimeInjuries,
+        SUM(CASE WHEN medicalTreatmentCase = 1 THEN 1 ELSE 0 END) AS medicalTreatmentCases,
+        COALESCE(SUM(lostWorkDays), 0) AS lostWorkDays,
+        COALESCE(SUM(restrictedWorkDays), 0) AS restrictedWorkDays,
+        SUM(CASE WHEN classificationVerifiedAt IS NULL THEN 1 ELSE 0 END) AS unclassified,
+        SUM(CASE WHEN isNearMiss = 1 OR LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%' THEN 1 ELSE 0 END) AS nearMissCount,
+        SUM(CASE WHEN severity = 'Critical' THEN 1 ELSE 0 END) AS severityCritical,
+        SUM(CASE WHEN severity = 'High' THEN 1 ELSE 0 END) AS severityHigh,
+        SUM(CASE WHEN severity = 'Medium' THEN 1 ELSE 0 END) AS severityMedium,
+        SUM(CASE WHEN severity = 'Low' THEN 1 ELSE 0 END) AS severityLow,
+        SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS closedCount,
+        MIN(CASE WHEN isLostTimeInjury = 1 THEN date END) AS lastLtiDate
+      FROM reports WHERE ${whereSql}`,
+      [
+        today.toISOString(),
+        weekAgo.toISOString(),
+        now.toISOString(),
+        ...params,
+      ],
+    )[0] as Record<string, unknown> | undefined;
+
+    const num = (value: unknown) => Number(value ?? 0);
+    const lastLti = row?.lastLtiDate ? new Date(String(row.lastLtiDate)) : null;
+    const daysSinceLastLti = lastLti
+      ? Math.max(0, Math.floor((Date.now() - lastLti.getTime()) / 86400000))
+      : row?.lostTimeInjuries ? 0 : -1;
+    return {
+      total: num(row?.total),
+      open: num(row?.open),
+      closed: num(row?.closed),
+      today: num(row?.today),
+      week: num(row?.week),
+      criticalOpen: num(row?.criticalOpen),
+      overdue: num(row?.overdue),
+      avgResolution: Math.round(num(row?.avgResolution) * 10) / 10,
+      recordableIncidents: num(row?.recordableIncidents),
+      lostTimeInjuries: num(row?.lostTimeInjuries),
+      medicalTreatmentCases: num(row?.medicalTreatmentCases),
+      lostWorkDays: num(row?.lostWorkDays),
+      restrictedWorkDays: num(row?.restrictedWorkDays),
+      unclassified: num(row?.unclassified),
+      nearMissCount: num(row?.nearMissCount),
+      severityCounts: {
+        Critical: num(row?.severityCritical),
+        High: num(row?.severityHigh),
+        Medium: num(row?.severityMedium),
+        Low: num(row?.severityLow),
+      },
+      closedCount: num(row?.closedCount),
+      daysSinceLastLti,
+      totalWorkforce,
+      dailyWorkHours,
+      workDaysPerMonth,
+      lostDayHours,
+      totalManhoursWorked,
+    };
+  }
+
+  private async legacySummary() {
     if (isPgAvailable()) {
       const result = await pgPool.query(`
         SELECT
@@ -1336,16 +1616,84 @@ export class ReportsService {
     );
   }
 
-  async generateExport() {
+  async generateExport(filters: ReportFilters = {}) {
+    const result = await this.list({ ...filters, all: true }, 1, 1);
+    return result.data;
+  }
+
+  async bulkUpdateStatus(ids: string[], status: string, request?: any) {
+    const cleanIds = ids.filter((id) => typeof id === "string" && id.trim().length > 0);
+    if (cleanIds.length === 0) return { updated: 0, ids: [] };
+
     if (isPgAvailable()) {
-      const result = await pgPool.query(
-        "SELECT * FROM reports ORDER BY date DESC",
-      );
-      return result.rows;
+      return this.bulkUpdateStatusPg(cleanIds, status, request);
+    }
+    return this.bulkUpdateStatusSqlite(cleanIds, status, request);
+  }
+
+  private async bulkUpdateStatusPg(ids: string[], status: string, request?: any) {
+    const beforeStatuses = new Map<string, string | undefined>();
+    for (const id of ids) {
+      const existing = await this.getById(id);
+      if (existing) beforeStatuses.set(id, existing.status);
     }
 
+    const result = await pgPool.query(
+      "UPDATE reports SET status = $1, updated_at = NOW() WHERE id = ANY($2::text[]) RETURNING id",
+      [status, ids],
+    );
+
+    if (request) {
+      await writeAuditLogBestEffort({
+        action: "report.status.bulk_updated",
+        resourceType: "report",
+        resourceId: ids.join(","),
+        context: {
+          detail: `Bulk updated ${result.rowCount} reports to ${status}`,
+          count: result.rowCount,
+        },
+        actor: request.user,
+        request,
+      });
+    }
+
+    for (const id of ids) {
+      await syncReportWorkflowState({
+        reportId: id,
+        state: status,
+        context: { source: "report.status.bulk_updated" },
+      });
+    }
+
+    return { updated: result.rowCount ?? 0, ids: result.rows.map((r) => r.id) };
+  }
+
+  private async bulkUpdateStatusSqlite(ids: string[], status: string, request?: any) {
     const db = await getDb();
-    return allRows(db, "SELECT * FROM reports ORDER BY date DESC");
+    const placeholders = ids.map(() => "?").join(",");
+    const now = new Date().toISOString();
+    const rows = allRows(
+      db,
+      `UPDATE reports SET status = ?, updatedAt = ? WHERE id IN (${placeholders}) RETURNING id`,
+      [status, now, ...ids],
+    );
+
+    if (request) {
+      await writeAuditLogBestEffort({
+        action: "report.status.bulk_updated",
+        resourceType: "report",
+        resourceId: ids.join(","),
+        context: {
+          detail: `Bulk updated ${rows.length} reports to ${status}`,
+          count: rows.length,
+        },
+        actor: request.user,
+        request,
+      });
+    }
+
+    await saveDb(db);
+    return { updated: rows.length, ids: rows.map((r: any) => r.id) };
   }
 }
 

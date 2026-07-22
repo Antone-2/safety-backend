@@ -1,6 +1,25 @@
 import { type AssignmentDeliveryResult } from "../../lib/email.js";
+export type ReportFilters = {
+    status?: string;
+    severity?: string;
+    location?: string;
+    category?: string;
+    search?: string;
+    days?: string | number;
+    dateFrom?: string;
+    dateTo?: string;
+    all?: boolean;
+};
+export declare function buildPgFilter(filters: ReportFilters): {
+    whereSql: string;
+    params: unknown[];
+};
+export declare function buildSqliteFilter(filters: ReportFilters): {
+    whereSql: string;
+    params: unknown[];
+};
 export declare class ReportsService {
-    list(filters?: any, page?: number, limit?: number): Promise<{
+    list(filters?: ReportFilters, page?: number, limit?: number): Promise<{
         data: {
             id: any;
             date: any;
@@ -22,6 +41,14 @@ export declare class ReportsService {
                 text: string;
             }[];
             isNearMiss: any;
+            isRecordable: boolean;
+            isLostTimeInjury: boolean;
+            medicalTreatmentCase: boolean;
+            lostWorkDays: number;
+            restrictedWorkDays: number;
+            classificationSource: any;
+            classificationVerifiedBy: any;
+            classificationVerifiedAt: any;
             anonymous: any;
             department: any;
             shift: any;
@@ -29,6 +56,7 @@ export declare class ReportsService {
             complianceDueAt: any;
             photoUrl: string;
             source: any;
+            sourceSyncedAt: any;
             auditHistory: {
                 at: string;
                 actor: string;
@@ -63,6 +91,14 @@ export declare class ReportsService {
             text: string;
         }[];
         isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
         anonymous: any;
         department: any;
         shift: any;
@@ -70,6 +106,7 @@ export declare class ReportsService {
         complianceDueAt: any;
         photoUrl: string;
         source: any;
+        sourceSyncedAt: any;
         auditHistory: {
             at: string;
             actor: string;
@@ -100,6 +137,14 @@ export declare class ReportsService {
             text: string;
         }[];
         isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
         anonymous: any;
         department: any;
         shift: any;
@@ -107,6 +152,7 @@ export declare class ReportsService {
         complianceDueAt: any;
         photoUrl: string;
         source: any;
+        sourceSyncedAt: any;
         auditHistory: {
             at: string;
             actor: string;
@@ -137,6 +183,14 @@ export declare class ReportsService {
             text: string;
         }[];
         isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
         anonymous: any;
         department: any;
         shift: any;
@@ -144,6 +198,7 @@ export declare class ReportsService {
         complianceDueAt: any;
         photoUrl: string;
         source: any;
+        sourceSyncedAt: any;
         auditHistory: {
             at: string;
             actor: string;
@@ -175,6 +230,14 @@ export declare class ReportsService {
             text: string;
         }[];
         isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
         anonymous: any;
         department: any;
         shift: any;
@@ -182,6 +245,7 @@ export declare class ReportsService {
         complianceDueAt: any;
         photoUrl: string;
         source: any;
+        sourceSyncedAt: any;
         auditHistory: {
             at: string;
             actor: string;
@@ -213,6 +277,14 @@ export declare class ReportsService {
             text: string;
         }[];
         isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
         anonymous: any;
         department: any;
         shift: any;
@@ -220,6 +292,7 @@ export declare class ReportsService {
         complianceDueAt: any;
         photoUrl: string;
         source: any;
+        sourceSyncedAt: any;
         auditHistory: {
             at: string;
             actor: string;
@@ -250,6 +323,14 @@ export declare class ReportsService {
             text: string;
         }[];
         isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
         anonymous: any;
         department: any;
         shift: any;
@@ -257,6 +338,7 @@ export declare class ReportsService {
         complianceDueAt: any;
         photoUrl: string;
         source: any;
+        sourceSyncedAt: any;
         auditHistory: {
             at: string;
             actor: string;
@@ -277,8 +359,52 @@ export declare class ReportsService {
         found: boolean;
     }>;
     stats(): Promise<any>;
-    summary(): Promise<any>;
+    summary(filters?: ReportFilters): Promise<any>;
+    private legacySummary;
     selectionExport(ids: string[]): Promise<any[]>;
-    generateExport(): Promise<any[]>;
+    generateExport(filters?: ReportFilters): Promise<{
+        id: any;
+        date: any;
+        location: any;
+        reporter: any;
+        description: any;
+        severity: any;
+        status: any;
+        category: any;
+        type: any;
+        resolutionDays: any;
+        slaHours: any;
+        dueAt: any;
+        assignedTo: any;
+        assignedToCopy: string[];
+        comments: {
+            author: string;
+            at: string;
+            text: string;
+        }[];
+        isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
+        anonymous: any;
+        department: any;
+        shift: any;
+        complianceRequired: any;
+        complianceDueAt: any;
+        photoUrl: string;
+        source: any;
+        sourceSyncedAt: any;
+        auditHistory: {
+            at: string;
+            actor: string;
+            action: string;
+            detail: any;
+        }[];
+    }[]>;
 }
 export declare const reportsService: ReportsService;

@@ -28,6 +28,14 @@ export interface Report {
   assignedTo?: string;
   comments: { author: string; at: string; text: string }[];
   isNearMiss: boolean;
+  isRecordable: boolean;
+  isLostTimeInjury: boolean;
+  medicalTreatmentCase: boolean;
+  lostWorkDays: number;
+  restrictedWorkDays: number;
+  classificationSource?: string;
+  classificationVerifiedBy?: string;
+  classificationVerifiedAt?: string;
   anonymous: boolean;
   department: string;
   shift: string;
@@ -48,6 +56,11 @@ export const CreateReportSchema = z.object({
   shift: z.string().min(1).max(50),
   anonymous: z.boolean().optional().default(false),
   complianceRequired: z.boolean().optional().default(false),
+  isRecordable: z.boolean().optional(),
+  isLostTimeInjury: z.boolean().optional(),
+  medicalTreatmentCase: z.boolean().optional(),
+  lostWorkDays: z.number().int().min(0).max(36500).optional(),
+  restrictedWorkDays: z.number().int().min(0).max(36500).optional(),
   photoUrl: z
     .string()
     .trim()
@@ -137,13 +150,13 @@ export type UserRole = z.infer<typeof UserRoleSchema>;
 
 export const LoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(12),
 });
 export type LoginInput = z.infer<typeof LoginSchema>;
 
 export const CreateUserSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(12),
   name: z.string().min(1),
   role: UserRoleSchema,
   phone: z.string().max(30).optional(),
@@ -199,7 +212,9 @@ export const CreateInvestigationSchema = z.object({
   priority: CapaPrioritySchema.optional().default("Medium"),
   dueDate: z.string().optional(),
 });
-export type CreateInvestigationInput = z.infer<typeof CreateInvestigationSchema>;
+export type CreateInvestigationInput = z.infer<
+  typeof CreateInvestigationSchema
+>;
 
 export interface AuthToken {
   token: string;
@@ -311,9 +326,17 @@ export type UpdatePermitInput = z.infer<typeof UpdatePermitSchema>;
 export const AdvancePermitStatusSchema = z.object({
   status: PermitStatusSchema,
 });
-export type AdvancePermitStatusInput = z.infer<typeof AdvancePermitStatusSchema>;
+export type AdvancePermitStatusInput = z.infer<
+  typeof AdvancePermitStatusSchema
+>;
 
-export const JsaStatusSchema = z.enum(["draft", "in-review", "active", "completed", "archived"]);
+export const JsaStatusSchema = z.enum([
+  "draft",
+  "in-review",
+  "active",
+  "completed",
+  "archived",
+]);
 export type JsaStatus = z.infer<typeof JsaStatusSchema>;
 
 export const RiskLevelSchema = z.enum(["Low", "Medium", "High", "Critical"]);

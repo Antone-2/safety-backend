@@ -1,25 +1,36 @@
+import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { getEnv } from "../../config/index.js";
 import { hasPermission, recordAuthFailure } from "./rbac.middleware.js";
 import { allRows, getDb } from "../../lib/database.js";
 import { pgPool } from "../infrastructure/database/postgres.client.js";
+export function getCookieValue(req, name) {
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader)
+        return "";
+    const cookie = cookieHeader
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${name}=`));
+    return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
+}
 const JWT_SECRET = getEnv().JWT_SECRET;
 function isPgConfigured() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
+}
+function deviceFingerprint(req) {
+    return createHash("sha256")
+        .update(`${req.get("user-agent") || "unknown"}:${req.ip || req.socket.remoteAddress || "unknown"}`)
+        .digest("hex");
 }
 export async function authenticateUser(req, res, next) {
     if (req.user?.id && req.user?.jti)
         return next();
     const authHeader = req.headers.authorization;
-    const queryToken = typeof req.query.access_token === "string" ? req.query.access_token : "";
-    if (!authHeader?.startsWith("Bearer ") && !queryToken) {
-        return res
-            .status(401)
-            .json({ error: "Missing or invalid authorization header" });
-    }
+    const queryToken = typeof req.query.access_token === "string" ? req.query.access_token : undefined;
     const token = authHeader?.startsWith("Bearer ")
         ? authHeader.split(" ")[1]
-        : queryToken;
+        : queryToken ?? getCookieValue(req, "ehs_access");
     if (!token) {
         return res
             .status(401)
@@ -50,6 +61,15 @@ export async function authenticateUser(req, res, next) {
             return res
                 .status(401)
                 .json({ error: "Session has expired or was revoked" });
+        const fingerprint = deviceFingerprint(req);
+        const storedFingerprint = isPgConfigured()
+            ? (await pgPool
+                .query("SELECT device_fingerprint FROM auth_sessions WHERE id = $1 LIMIT 1", [decoded.jti])
+                .catch(() => ({ rows: [] }))).rows[0]?.device_fingerprint
+            : allRows(await getDb(), "SELECT deviceFingerprint AS deviceFingerprint FROM auth_sessions WHERE id = ?", [decoded.jti])[0]?.deviceFingerprint;
+        if (storedFingerprint && storedFingerprint !== fingerprint) {
+            return res.status(401).json({ error: "Session device changed. Please sign in again." });
+        }
         next();
     }
     catch {

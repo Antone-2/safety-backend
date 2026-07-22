@@ -142,7 +142,7 @@ export declare const AiQueryInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     maxSourceRecords: number;
     query: string;
-    exportFormat: "json" | "html";
+    exportFormat: "html" | "json";
     filters?: {
         status?: string | undefined;
         severity?: string | undefined;
@@ -166,7 +166,7 @@ export declare const AiQueryInputSchema: z.ZodObject<{
     } | undefined;
     maxSourceRecords?: number | undefined;
     conversationId?: string | undefined;
-    exportFormat?: "json" | "html" | undefined;
+    exportFormat?: "html" | "json" | undefined;
 }>;
 export type AiQueryInput = z.infer<typeof AiQueryInputSchema>;
 export declare const ComplianceInputSchema: z.ZodObject<{
@@ -269,18 +269,18 @@ export declare const ObservationInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     limit: number;
     department?: string | undefined;
-    siteId?: string | undefined;
-    activity?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
+    siteId?: string | undefined;
+    activity?: string | undefined;
     observer?: string | undefined;
 }, {
     department?: string | undefined;
     limit?: number | undefined;
-    siteId?: string | undefined;
-    activity?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
+    siteId?: string | undefined;
+    activity?: string | undefined;
     observer?: string | undefined;
 }>;
 export type ObservationInput = z.infer<typeof ObservationInputSchema>;
@@ -293,15 +293,15 @@ export declare const EnvironmentalInputSchema: z.ZodObject<{
     horizonHours: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     horizonHours: number;
-    siteId?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
+    siteId?: string | undefined;
     metric?: string | undefined;
     sensorType?: string | undefined;
 }, {
-    siteId?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
+    siteId?: string | undefined;
     metric?: string | undefined;
     sensorType?: string | undefined;
     horizonHours?: number | undefined;
@@ -388,17 +388,17 @@ export declare const SafetyAlertInputSchema: z.ZodObject<{
     severity: z.ZodOptional<z.ZodEnum<["notice", "warning", "critical"]>>;
     channels: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    channels?: string[] | undefined;
     severity?: "notice" | "warning" | "critical" | undefined;
     department?: string | undefined;
     siteId?: string | undefined;
     triggerEvent?: string | undefined;
+    channels?: string[] | undefined;
 }, {
-    channels?: string[] | undefined;
     severity?: "notice" | "warning" | "critical" | undefined;
     department?: string | undefined;
     siteId?: string | undefined;
     triggerEvent?: string | undefined;
+    channels?: string[] | undefined;
 }>;
 export type SafetyAlertInput = z.infer<typeof SafetyAlertInputSchema>;
 export declare const CorrectiveActionInputSchema: z.ZodObject<{
@@ -448,14 +448,14 @@ export declare const ExecutiveReportInputSchema: z.ZodObject<{
     includeBenchmark: z.ZodDefault<z.ZodBoolean>;
     format: z.ZodDefault<z.ZodEnum<["json", "markdown", "pdf"]>>;
 }, "strip", z.ZodTypeAny, {
-    format: "json" | "pdf" | "markdown";
+    format: "pdf" | "json" | "markdown";
     reportType: "monthly" | "quarterly" | "annual" | "adhoc";
     includeBenchmark: boolean;
     department?: string | undefined;
     siteId?: string | undefined;
 }, {
     department?: string | undefined;
-    format?: "json" | "pdf" | "markdown" | undefined;
+    format?: "pdf" | "json" | "markdown" | undefined;
     siteId?: string | undefined;
     reportType?: "monthly" | "quarterly" | "annual" | "adhoc" | undefined;
     includeBenchmark?: boolean | undefined;
@@ -619,12 +619,12 @@ export declare const RootCauseAnalysisResponseSchema: z.ZodObject<{
         evidence: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         level: number;
-        cause: string;
         evidence: string;
+        cause: string;
     }, {
         level: number;
-        cause: string;
         evidence: string;
+        cause: string;
     }>, "many">;
     fishboneCategories: z.ZodOptional<z.ZodArray<z.ZodObject<{
         category: z.ZodString;
@@ -644,8 +644,8 @@ export declare const RootCauseAnalysisResponseSchema: z.ZodObject<{
     methodology: string;
     causalChain: {
         level: number;
-        cause: string;
         evidence: string;
+        cause: string;
     }[];
     fishboneCategories?: {
         category: string;
@@ -658,8 +658,8 @@ export declare const RootCauseAnalysisResponseSchema: z.ZodObject<{
     methodology: string;
     causalChain: {
         level: number;
-        cause: string;
         evidence: string;
+        cause: string;
     }[];
     fishboneCategories?: {
         category: string;
@@ -788,16 +788,16 @@ export declare const TrainingRecommendationSchema: z.ZodObject<{
     modality: z.ZodOptional<z.ZodEnum<["classroom", "e-learning", "vr", "on-the-job"]>>;
 }, "strip", z.ZodTypeAny, {
     priority: "Critical" | "Low" | "Medium" | "High";
-    title: string;
     reason: string;
+    title: string;
     courseId?: string | undefined;
     estimatedCost?: number | undefined;
     estimatedDurationHours?: number | undefined;
     modality?: "classroom" | "e-learning" | "vr" | "on-the-job" | undefined;
 }, {
     priority: "Critical" | "Low" | "Medium" | "High";
-    title: string;
     reason: string;
+    title: string;
     courseId?: string | undefined;
     estimatedCost?: number | undefined;
     estimatedDurationHours?: number | undefined;

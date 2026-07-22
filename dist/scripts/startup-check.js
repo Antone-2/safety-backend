@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { checkDatabase } from "../shared/infrastructure/database/postgres.client.js";
-import { checkRedis } from "../shared/infrastructure/redis/redis.client.js";
+import { checkDatabase, pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { checkRedis, redisClient } from "../shared/infrastructure/redis/redis.client.js";
 import { logger } from "../shared/utils/logger.js";
 import { runPostgresMigrations } from "../shared/infrastructure/database/migrations.js";
 const timeoutMs = Number(process.env.STARTUP_CHECK_TIMEOUT_MS || 60000);
@@ -28,23 +28,31 @@ async function waitFor(name, check) {
     throw new Error(`${name} was not ready within ${timeoutMs}ms: ${lastError}`);
 }
 async function main() {
-    if (process.env.DATABASE_URL) {
-        await waitFor("postgres", checkDatabase);
-        if (process.argv.includes("--migrate")) {
-            const applied = await runPostgresMigrations();
-            logger.info({ applied }, "Startup migrations completed");
+    try {
+        if (process.env.DATABASE_URL) {
+            await waitFor("postgres", checkDatabase);
+            if (process.argv.includes("--migrate")) {
+                const applied = await runPostgresMigrations();
+                logger.info({ applied }, "Startup migrations completed");
+            }
         }
+        else if (process.env.REQUIRE_POSTGRES === "true") {
+            throw new Error("DATABASE_URL is required when REQUIRE_POSTGRES=true");
+        }
+        if (process.env.REDIS_URL) {
+            await waitFor("redis", checkRedis);
+        }
+        else if (process.env.REQUIRE_REDIS === "true") {
+            throw new Error("REDIS_URL is required when REQUIRE_REDIS=true");
+        }
+        logger.info("Startup checks completed successfully");
     }
-    else if (process.env.REQUIRE_POSTGRES === "true") {
-        throw new Error("DATABASE_URL is required when REQUIRE_POSTGRES=true");
+    finally {
+        await Promise.allSettled([
+            pgPool.end(),
+            redisClient ? redisClient.quit() : Promise.resolve("redis-not-configured"),
+        ]);
     }
-    if (process.env.REDIS_URL) {
-        await waitFor("redis", checkRedis);
-    }
-    else if (process.env.REQUIRE_REDIS === "true") {
-        throw new Error("REDIS_URL is required when REQUIRE_REDIS=true");
-    }
-    logger.info("Startup checks completed successfully");
 }
 main().catch((error) => {
     logger.error({ err: error }, "Startup checks failed");

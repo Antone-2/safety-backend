@@ -235,9 +235,11 @@ function otpEmailHtml(code, expiresMinutes) {
 </html>`;
 }
 function hasBrevoConfig() {
-    return Boolean(process.env.BREVO_API_KEY && getSenderEmail());
+    return Boolean(process.env.BREVO_API_KEY &&
+        getSenderEmail() &&
+        process.env.BREVO_API_KEY.trim().length > 0);
 }
-async function sendBrevoEmail(input) {
+export async function sendBrevoEmail(input) {
     const apiKey = process.env.BREVO_API_KEY;
     if (!apiKey)
         throw new Error("BREVO_API_KEY is not configured");
@@ -286,18 +288,29 @@ export async function sendOtpEmail(input) {
         };
     }
     if (hasBrevoConfig()) {
-        await sendBrevoEmail({
-            to: input.to,
-            subject,
-            text: message,
-            html,
-        });
-        return {
-            ok: true,
-            delivered: true,
-            mode: "brevo",
-            message: `OTP sent to ${input.to}.`,
-        };
+        try {
+            await sendBrevoEmail({
+                to: input.to,
+                subject,
+                text: message,
+                html,
+            });
+            return {
+                ok: true,
+                delivered: true,
+                mode: "brevo",
+                message: `OTP sent to ${input.to}.`,
+            };
+        }
+        catch (error) {
+            console.error("Brevo OTP delivery failed:", error);
+            return {
+                ok: true,
+                delivered: false,
+                mode: "brevo-fallback",
+                message: "Email delivery failed. OTP generated locally only.",
+            };
+        }
     }
     await createTransporter().sendMail({
         from: getSenderEmail(),

@@ -2,9 +2,8 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { loadEnv } from "./config/index.js";
-import { connectRedis } from "./shared/infrastructure/redis/redis.client.js";
+import { connectRedis, supportsBullMq } from "./shared/infrastructure/redis/redis.client.js";
 import { runPostgresMigrations } from "./shared/infrastructure/database/migrations.js";
-import { pgPool } from "./shared/infrastructure/database/postgres.client.js";
 import { correlationIdMiddleware } from "./shared/middleware/correlation-id.middleware.js";
 import { rateLimitMiddleware } from "./shared/middleware/rate-limit.middleware.js";
 import { csrfProtectionMiddleware } from "./shared/middleware/csrf.middleware.js";
@@ -29,6 +28,16 @@ import referenceRouter from "./routes/reference.js";
 import operationsRouter from "./routes/operations.js";
 import securityRouter from "./routes/security.js";
 import storageRouter from "./routes/storage.js";
+import auditRouter from "./routes/audit.js";
+import contextRouter from "./routes/context.js";
+import emergencyRouter from "./routes/emergency.js";
+import esgRouter from "./routes/esg.js";
+import hazardRouter from "./routes/hazard.js";
+import jsaRouter from "./routes/jsa.js";
+import medicalRouter from "./routes/medical.js";
+import objectivesRouter from "./routes/objectives.js";
+import riskRouter from "./routes/risk.js";
+import spillRouter from "./routes/spill.js";
 // The frontend calls `/api/...` while the backend historically used `/api/v1/...`.
 // Mount every router under both prefixes so both clients keep working.
 const API_PREFIXES = ["/api", "/api/v1"];
@@ -38,19 +47,6 @@ function mountAll(prefixes, path, router) {
     }
 }
 const env = loadEnv();
-async function ensureConfiguredDemoAdmin() {
-    if (env.ENABLE_DEMO_LOGIN !== "true" || !env.DEMO_EMAIL || !env.DATABASE_URL)
-        return;
-    const role = env.DEMO_ROLE === "EHS-manager" ? "EHS-manager" : "super-admin";
-    await pgPool.query(`INSERT INTO users (email, password_hash, name, role, active)
-     VALUES (lower($1), $2, $3, $4, TRUE)
-     ON CONFLICT (email) DO UPDATE SET
-       name = EXCLUDED.name,
-       role = EXCLUDED.role,
-       active = TRUE,
-       updated_at = NOW()`, [env.DEMO_EMAIL, "!otp-only-account!", env.DEMO_NAME || "Demo Administrator", role]);
-    logger.info({ email: env.DEMO_EMAIL, role }, "Configured demo administrator is ready.");
-}
 if (env.SENTRY_DSN) {
     Sentry.init({
         dsn: env.SENTRY_DSN,
@@ -154,9 +150,19 @@ mountAll(API_PREFIXES, "/heightwork", createHeightWorkRouter());
 mountAll(API_PREFIXES, "/scaffolding", createScaffoldRouter());
 mountAll(API_PREFIXES, "/governance", createGovernanceRouter());
 mountAll(API_PREFIXES, "/analytics", createAnalyticsRouter());
+mountAll(API_PREFIXES, "/audit", auditRouter);
+mountAll(API_PREFIXES, "/context", contextRouter);
+mountAll(API_PREFIXES, "/emergency", emergencyRouter);
+mountAll(API_PREFIXES, "/esg", esgRouter);
+mountAll(API_PREFIXES, "/jsa", jsaRouter);
+mountAll(API_PREFIXES, "/objectives", objectivesRouter);
 mountAll(API_PREFIXES, "/operations", operationsRouter);
+mountAll(API_PREFIXES, "/risk", riskRouter);
 mountAll(API_PREFIXES, "/security", securityRouter);
+mountAll(API_PREFIXES, "/spill", spillRouter);
 mountAll(API_PREFIXES, "/storage", storageRouter);
+mountAll(API_PREFIXES, "/hazard", hazardRouter);
+mountAll(API_PREFIXES, "/medical", medicalRouter);
 mountAll(API_PREFIXES, "/notifications", createNotificationsRouter());
 mountAll(API_PREFIXES, "/documents", createDocumentsRouter());
 mountAll(API_PREFIXES, "/settings", createSettingsRouter());
@@ -190,8 +196,13 @@ function startServer() {
 }
 async function bootstrap() {
     try {
+        let redisReady = false;
+        let bullMqReady = false;
         try {
-            await connectRedis();
+            redisReady = await connectRedis();
+            if (redisReady) {
+                bullMqReady = await supportsBullMq();
+            }
         }
         catch (redisError) {
             if (env.REQUIRE_REDIS === "true")
@@ -202,13 +213,12 @@ async function bootstrap() {
             throw new Error("DATABASE_URL is required; PostgreSQL is the only application database");
         }
         await runPostgresMigrations();
-        await ensureConfiguredDemoAdmin();
         setGoogleSheetsPostgresAvailability(true);
         startServer();
         startGoogleSheetsScheduler();
         startMonthlyLeaderboardScheduler();
         startDatabaseMaintenanceScheduler();
-        if (env.REDIS_URL) {
+        if (bullMqReady) {
             await import("./jobs/scheduler.js");
         }
     }
@@ -218,4 +228,10 @@ async function bootstrap() {
         process.exit(1);
     }
 }
+process.on("unhandledRejection", (reason) => {
+    logger.error({ err: reason instanceof Error ? reason : new Error(String(reason)) }, "Unhandled promise rejection");
+});
+process.on("uncaughtException", (error) => {
+    logger.error({ err: error }, "Uncaught exception");
+});
 bootstrap();

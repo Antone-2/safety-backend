@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildCapaAssignmentNotification,
+  buildCorrectiveActionRequestNotification,
   buildIncidentNotification,
   buildReportAssignmentNotification,
+  sendCapaAssignmentNotifications,
   sendOtpEmail,
   sendReportAssignmentNotifications,
 } from "./email.js";
@@ -120,6 +123,49 @@ describe("email notifications", () => {
     expect(result.message).toMatch(/copied you on report RPT-2003/i);
   });
 
+  it("buildCorrectiveActionRequestNotification includes the corrective action form link", () => {
+    const result = buildCorrectiveActionRequestNotification({
+      to: "supervisor@example.com",
+      recipientName: "Plant Supervisor",
+      reportId: "RPT-3001",
+      reportType: "Unsafe Condition",
+      description: "Spill around the mixing station",
+      dueDate: "2026-07-29",
+      url: "https://ehs.example.com/corrective-action/mock-token",
+    });
+
+    expect(result.recipient).toBe("supervisor@example.com");
+    expect(result.subject).toMatch(/Corrective action form assigned/i);
+    expect(result.message).toMatch(/Plant Supervisor/);
+    expect(result.message).toMatch(/Open corrective action form:/);
+    expect(result.message).toMatch(/mock-token/);
+  });
+
+  it("buildCapaAssignmentNotification includes assignment details and the CAPA link", () => {
+    const result = buildCapaAssignmentNotification({
+      to: "owner@example.com",
+      role: "owner",
+      capaId: "CAPA-2026-1042",
+      title: "Guard rail restoration",
+      source: "Incident",
+      actionPlan: "Restore rail and verify handover controls.",
+      dueDate: "2026-07-29T00:00:00.000Z",
+      site: "Nakuru Plant",
+      department: "Operations",
+      owner: "Plant Supervisor",
+      assignedBy: "ehs.manager@crownpaints.co.ke",
+      status: "Open",
+      updateSummary: "owner email, task rows",
+      url: "https://ehs.example.com/capa?focus=CAPA-2026-1042",
+    });
+
+    expect(result.recipient).toBe("owner@example.com");
+    expect(result.subject).toMatch(/CAPA assignment updated/i);
+    expect(result.message).toMatch(/Guard rail restoration/);
+    expect(result.message).toMatch(/Updated assignment details: owner email, task rows/);
+    expect(result.message).toMatch(/Open CAPA:/);
+  });
+
   it("sendReportAssignmentNotifications delivers to assigner, primary, and secondary recipients through Brevo", async () => {
     const report = {
       id: "RPT-2004",
@@ -170,5 +216,68 @@ describe("email notifications", () => {
     expect(calls.every((call: any) => call.htmlContent.includes("EHS digital notification"))).toBe(
       true,
     );
+  });
+
+  it("sendCapaAssignmentNotifications delivers unique owner and escalation emails through Brevo", async () => {
+    const calls: unknown[] = [];
+
+    process.env.BREVO_API_KEY = "test-brevo-key";
+    process.env.BREVO_SENDER_EMAIL = "safety@crownpaints.co.ke";
+    globalThis.fetch = (async (
+      _url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      calls.push(JSON.parse(String(init?.body)));
+      return new Response("{}", { status: 201 });
+    }) as typeof fetch;
+
+    const results = await sendCapaAssignmentNotifications([
+      {
+        to: "owner@example.com",
+        role: "owner",
+        capaId: "CAPA-2026-1050",
+        title: "Repair damaged ladder",
+        source: "Inspection",
+        actionPlan: "Repair or replace the access ladder and verify condition.",
+        dueDate: "2026-07-28T00:00:00.000Z",
+        site: "Mombasa Factory",
+        department: "Maintenance",
+        owner: "Maintenance Lead",
+      },
+      {
+        to: "escalation@example.com",
+        role: "escalation",
+        capaId: "CAPA-2026-1050",
+        title: "Repair damaged ladder",
+        source: "Inspection",
+        actionPlan: "Repair or replace the access ladder and verify condition.",
+        dueDate: "2026-07-28T00:00:00.000Z",
+        site: "Mombasa Factory",
+        department: "Maintenance",
+        owner: "Maintenance Lead",
+        updateSummary: "due date, escalation contact",
+      },
+      {
+        to: "owner@example.com",
+        role: "owner",
+        capaId: "CAPA-2026-1050",
+        title: "Repair damaged ladder",
+        source: "Inspection",
+        actionPlan: "Repair or replace the access ladder and verify condition.",
+        dueDate: "2026-07-28T00:00:00.000Z",
+        site: "Mombasa Factory",
+        department: "Maintenance",
+        owner: "Maintenance Lead",
+      },
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results.every((result) => result.delivered)).toBe(true);
+    expect(calls.map((call: any) => call.to[0].email)).toEqual([
+      "owner@example.com",
+      "escalation@example.com",
+    ]);
+    expect(calls[0]).toMatchObject({ subject: expect.stringMatching(/CAPA assigned/i) });
+    expect(calls[1]).toMatchObject({ subject: expect.stringMatching(/CAPA assignment updated/i) });
   });
 });

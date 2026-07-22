@@ -1301,6 +1301,20 @@ addMigration("056_security_hardening", `
   CREATE INDEX IF NOT EXISTS idx_retention_resource ON data_retention_policies(resourceType);
   CREATE INDEX IF NOT EXISTS idx_secrets_rotation_due ON secrets_rotation_log(status, nextRotationDueAt);
 `);
+addMigration("057_auditable_report_classification", `
+  ALTER TABLE reports ADD COLUMN isRecordable INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE reports ADD COLUMN isLostTimeInjury INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE reports ADD COLUMN medicalTreatmentCase INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE reports ADD COLUMN lostWorkDays INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE reports ADD COLUMN restrictedWorkDays INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE reports ADD COLUMN classificationSource TEXT;
+  ALTER TABLE reports ADD COLUMN classificationVerifiedBy TEXT;
+  ALTER TABLE reports ADD COLUMN classificationVerifiedAt TEXT;
+  CREATE INDEX IF NOT EXISTS idx_reports_classification
+    ON reports(isRecordable, isLostTimeInjury, classificationVerifiedAt);
+`);
+addMigration("058_reports_source_synced_at", `ALTER TABLE reports ADD COLUMN source_synced_at TEXT;
+   CREATE INDEX IF NOT EXISTS idx_reports_source_synced_at ON reports(source_synced_at);`);
 export async function seedAdminUsers(db) {
     // Idempotent seeding: ensure these admin emails exist without ever violating UNIQUE(email).
     // This prevents startup crashes when the DB is partially seeded.

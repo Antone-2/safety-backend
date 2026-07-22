@@ -29,6 +29,13 @@ export class IncidentsRepository {
     return result.rows as Incident[];
   }
 
+  async findAllReports(): Promise<Record<string, unknown>[]> {
+    const result = await this.pool.query(
+      `SELECT id, type, severity, status, location, department, shift, description, reporter, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at FROM reports ORDER BY created_at DESC`,
+    );
+    return result.rows as Record<string, unknown>[];
+  }
+
   async findById(id: string): Promise<Incident | null> {
     const result = await this.pool.query("SELECT * FROM incidents WHERE id = $1", [id]);
     return (result.rows[0] as Incident) || null;

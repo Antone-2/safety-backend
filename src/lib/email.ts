@@ -27,6 +27,81 @@ export const ReminderSchema = z.object({
 
 export type ReminderInput = z.infer<typeof ReminderSchema>;
 
+export const CapaAssignmentNotificationSchema = z.object({
+  to: z.string().email(),
+  role: z.enum(["owner", "backup", "escalation"]),
+  capaId: z.string().min(1),
+  title: z.string().min(1),
+  source: z.string().min(1),
+  actionPlan: z.string().min(1),
+  dueDate: z.string().min(1),
+  site: z.string().min(1),
+  department: z.string().min(1),
+  owner: z.string().min(1),
+  assignedBy: z.string().optional(),
+  status: z.string().optional(),
+  updateSummary: z.string().optional(),
+  url: z.string().optional(),
+});
+
+export type CapaAssignmentNotificationInput = z.infer<
+  typeof CapaAssignmentNotificationSchema
+>;
+
+export const CorrectiveActionRequestEmailSchema = z.object({
+  to: z.string().email(),
+  recipientName: z.string().optional(),
+  reportId: z.string().min(1),
+  reportType: z.string().min(1),
+  description: z.string().min(1),
+  assigneeNote: z.string().optional(),
+  dueDate: z.string().optional(),
+  url: z.string().min(1),
+});
+
+export type CorrectiveActionRequestEmailInput = z.infer<
+  typeof CorrectiveActionRequestEmailSchema
+>;
+
+export const CorrectiveActionSubmissionNotificationSchema = z.object({
+  to: z.string().email(),
+  reportId: z.string().min(1),
+  recipientName: z.string().optional(),
+  recipientEmail: z.string().email(),
+  dueDate: z.string().optional(),
+  actionPlanDueDate: z.string().optional(),
+  actionPlanSummary: z.string().min(1),
+  url: z.string().min(1).optional(),
+});
+
+export type CorrectiveActionSubmissionNotificationInput = z.infer<
+  typeof CorrectiveActionSubmissionNotificationSchema
+>;
+
+export const CorrectiveActionReminderEmailSchema = z.object({
+  to: z.string().email(),
+  reportId: z.string().min(1),
+  stage: z.enum(["request", "plan", "task"]),
+  dueDate: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  url: z.string().min(1).optional(),
+});
+
+export type CorrectiveActionReminderEmailInput = z.infer<
+  typeof CorrectiveActionReminderEmailSchema
+>;
+
+export interface CapaAssignmentDeliveryResult {
+  recipient: string;
+  role: "owner" | "backup" | "escalation";
+  subject: string;
+  message: string;
+  delivered: boolean;
+  mode: "brevo" | "smtp" | "internal" | "failed";
+  error?: string;
+}
+
 function getSenderEmail() {
   return (
     process.env.BREVO_SENDER_EMAIL ||
@@ -256,10 +331,14 @@ function otpEmailHtml(code: string, expiresMinutes: number) {
 }
 
 function hasBrevoConfig() {
-  return Boolean(process.env.BREVO_API_KEY && getSenderEmail());
+  return Boolean(
+    process.env.BREVO_API_KEY &&
+    getSenderEmail() &&
+    process.env.BREVO_API_KEY.trim().length > 0,
+  );
 }
 
-async function sendBrevoEmail(input: {
+export async function sendBrevoEmail(input: {
   to: string;
   subject: string;
   text: string;
@@ -321,18 +400,28 @@ export async function sendOtpEmail(input: {
   }
 
   if (hasBrevoConfig()) {
-    await sendBrevoEmail({
-      to: input.to,
-      subject,
-      text: message,
-      html,
-    });
-    return {
-      ok: true,
-      delivered: true,
-      mode: "brevo",
-      message: `OTP sent to ${input.to}.`,
-    };
+    try {
+      await sendBrevoEmail({
+        to: input.to,
+        subject,
+        text: message,
+        html,
+      });
+      return {
+        ok: true,
+        delivered: true,
+        mode: "brevo",
+        message: `OTP sent to ${input.to}.`,
+      };
+    } catch (error) {
+      console.error("Brevo OTP delivery failed:", error);
+      return {
+        ok: true,
+        delivered: false,
+        mode: "brevo-fallback",
+        message: "Email delivery failed. OTP generated locally only.",
+      };
+    }
   }
 
   await createTransporter().sendMail({
@@ -609,6 +698,12 @@ function reportAssignmentUrl(reportId: string) {
   ).toString();
 }
 
+function capaAssignmentUrl(capaId: string) {
+  const frontendUrl = process.env.FRONTEND_URL?.split(",")[0]?.trim();
+  if (!frontendUrl) return "";
+  return new URL(`/capa?focus=${encodeURIComponent(capaId)}`, frontendUrl).toString();
+}
+
 export function buildReportAssignmentNotification(
   report: {
     id: string;
@@ -661,6 +756,129 @@ export function buildReportAssignmentNotification(
   return { recipient: recipient.email, role: recipient.role, subject, message };
 }
 
+export function buildCorrectiveActionRequestNotification(
+  input: CorrectiveActionRequestEmailInput,
+) {
+  const subject = `Corrective action form assigned: ${input.reportId}`;
+  const opening = input.recipientName
+    ? `Hello ${input.recipientName}, a corrective action form has been assigned to you for report ${input.reportId}.`
+    : `A corrective action form has been assigned to you for report ${input.reportId}.`;
+  const message = [
+    opening,
+    `Report type: ${input.reportType}`,
+    `Description: ${input.description}`,
+    input.assigneeNote ? `Assignment note: ${input.assigneeNote}` : "",
+    input.dueDate ? `Requested due date: ${input.dueDate}` : "",
+    `Open corrective action form: ${input.url}`,
+    "Complete the form with the unsafe act/condition/incident/accident classification, immediate correction taken, root cause analysis, and detailed action plan.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    recipient: input.to,
+    subject,
+    message,
+  };
+}
+
+export function buildCorrectiveActionSubmissionNotification(
+  input: CorrectiveActionSubmissionNotificationInput,
+) {
+  const parsed = CorrectiveActionSubmissionNotificationSchema.parse(input);
+  const subject = `Corrective action plan submitted: ${parsed.reportId}`;
+  const message = [
+    `${parsed.recipientName || parsed.recipientEmail} has submitted the corrective action plan for report ${parsed.reportId}.`,
+    parsed.dueDate ? `Original assigned due date: ${parsed.dueDate}` : "",
+    parsed.actionPlanDueDate
+      ? `Assignee action-plan due date: ${parsed.actionPlanDueDate}`
+      : "",
+    `Action plan summary: ${parsed.actionPlanSummary}`,
+    parsed.url ? `Open corrective action form: ${parsed.url}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    recipient: parsed.to,
+    subject,
+    message,
+  };
+}
+
+export function buildCorrectiveActionReminderNotification(
+  input: CorrectiveActionReminderEmailInput,
+) {
+  const parsed = CorrectiveActionReminderEmailSchema.parse(input);
+  const stageLabel =
+    parsed.stage === "request"
+      ? "corrective action response"
+      : parsed.stage === "plan"
+        ? "corrective action plan completion"
+        : "corrective action task";
+  const subject = `Reminder: ${parsed.reportId} ${stageLabel} due`;
+  const message = [
+    `This is a reminder that the ${stageLabel} for report ${parsed.reportId} is due on ${parsed.dueDate}.`,
+    `Item: ${parsed.title}`,
+    parsed.description ? `Details: ${parsed.description}` : "",
+    parsed.url ? `Open corrective action form: ${parsed.url}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    recipient: parsed.to,
+    subject,
+    message,
+  };
+}
+
+export function buildCapaAssignmentNotification(
+  input: CapaAssignmentNotificationInput,
+) {
+  const parsed = CapaAssignmentNotificationSchema.parse(input);
+  const assignedBy = parsed.assignedBy || "the Crown Paints EHS team";
+  const roleLabel =
+    parsed.role === "owner"
+      ? "Primary owner"
+      : parsed.role === "backup"
+        ? "Backup assignee"
+        : "Escalation contact";
+  const subject = parsed.updateSummary
+    ? `CAPA assignment updated: ${parsed.capaId}`
+    : `CAPA assigned: ${parsed.capaId}`;
+  const opening = parsed.updateSummary
+    ? `${assignedBy} updated your CAPA assignment for ${parsed.capaId}.`
+    : `${assignedBy} assigned CAPA ${parsed.capaId} to you.`;
+  const action = parsed.role === "escalation"
+    ? "Monitor progress and support escalation if the CAPA becomes overdue."
+    : "Review the CAPA tasks and complete the required follow-up actions by the due date.";
+  const message = [
+    opening,
+    `Role: ${roleLabel}`,
+    `Title: ${parsed.title}`,
+    `Source: ${parsed.source}`,
+    `Site: ${parsed.site}`,
+    `Department: ${parsed.department}`,
+    `Primary owner: ${parsed.owner}`,
+    `Due date: ${parsed.dueDate}`,
+    parsed.status ? `Current status: ${parsed.status}` : "",
+    `Action plan: ${parsed.actionPlan}`,
+    parsed.updateSummary ? `Updated assignment details: ${parsed.updateSummary}` : "",
+    parsed.url ? `Open CAPA: ${parsed.url}` : "",
+    action,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    recipient: parsed.to,
+    role: parsed.role,
+    subject,
+    message,
+  };
+}
+
 export async function sendReportAssignmentNotifications(
   report: {
     id: string;
@@ -694,6 +912,215 @@ export async function sendReportAssignmentNotifications(
       assignedBy,
       primaryRecipient,
     );
+
+    if (!hasBrevoConfig() && !transporter) {
+      results.push({
+        ...notification,
+        delivered: false,
+        mode: "internal",
+        message: `${notification.message}\n\nSMTP is not configured. Notification recorded locally only.`,
+      });
+      continue;
+    }
+
+    try {
+      if (hasBrevoConfig()) {
+        await sendBrevoEmail({
+          to: notification.recipient,
+          subject: notification.subject,
+          text: notification.message,
+          html: htmlFromText(notification.message, notification.subject),
+        });
+        results.push({ ...notification, delivered: true, mode: "brevo" });
+      } else if (transporter) {
+        await transporter.sendMail({
+          from: getSenderEmail(),
+          to: notification.recipient,
+          subject: notification.subject,
+          text: notification.message,
+          html: htmlFromText(notification.message, notification.subject),
+        });
+        results.push({ ...notification, delivered: true, mode: "smtp" });
+      }
+    } catch (error) {
+      results.push({
+        ...notification,
+        delivered: false,
+        mode: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return results;
+}
+
+export async function sendCorrectiveActionRequestEmail(
+  input: CorrectiveActionRequestEmailInput,
+) {
+  const parsed = CorrectiveActionRequestEmailSchema.parse(input);
+  const notification = buildCorrectiveActionRequestNotification(parsed);
+
+  if (!hasBrevoConfig() && !hasSmtpConfig()) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "internal",
+      message: `Corrective action request queued locally for ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  if (hasBrevoConfig()) {
+    await sendBrevoEmail({
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.message,
+      html: htmlFromText(notification.message, notification.subject),
+    });
+    return {
+      ok: true,
+      delivered: true,
+      mode: "brevo",
+      message: `Corrective action request sent to ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  await createTransporter().sendMail({
+    from: getSenderEmail(),
+    to: notification.recipient,
+    subject: notification.subject,
+    text: notification.message,
+    html: htmlFromText(notification.message, notification.subject),
+  });
+
+  return {
+    ok: true,
+    delivered: true,
+    mode: "smtp",
+    message: `Corrective action request sent to ${notification.recipient}.`,
+    recipient: notification.recipient,
+  };
+}
+
+export async function sendCorrectiveActionSubmissionNotification(
+  input: CorrectiveActionSubmissionNotificationInput,
+) {
+  const parsed = CorrectiveActionSubmissionNotificationSchema.parse(input);
+  const notification = buildCorrectiveActionSubmissionNotification(parsed);
+
+  if (!hasBrevoConfig() && !hasSmtpConfig()) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "internal",
+      message: `Corrective action submission queued locally for ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  if (hasBrevoConfig()) {
+    await sendBrevoEmail({
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.message,
+      html: htmlFromText(notification.message, notification.subject),
+    });
+    return {
+      ok: true,
+      delivered: true,
+      mode: "brevo",
+      message: `Corrective action submission sent to ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  await createTransporter().sendMail({
+    from: getSenderEmail(),
+    to: notification.recipient,
+    subject: notification.subject,
+    text: notification.message,
+    html: htmlFromText(notification.message, notification.subject),
+  });
+
+  return {
+    ok: true,
+    delivered: true,
+    mode: "smtp",
+    message: `Corrective action submission sent to ${notification.recipient}.`,
+    recipient: notification.recipient,
+  };
+}
+
+export async function sendCorrectiveActionReminderEmail(
+  input: CorrectiveActionReminderEmailInput,
+) {
+  const parsed = CorrectiveActionReminderEmailSchema.parse(input);
+  const notification = buildCorrectiveActionReminderNotification(parsed);
+
+  if (!hasBrevoConfig() && !hasSmtpConfig()) {
+    return {
+      ok: true,
+      delivered: false,
+      mode: "internal",
+      message: `Corrective action reminder queued locally for ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  if (hasBrevoConfig()) {
+    await sendBrevoEmail({
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.message,
+      html: htmlFromText(notification.message, notification.subject),
+    });
+    return {
+      ok: true,
+      delivered: true,
+      mode: "brevo",
+      message: `Corrective action reminder sent to ${notification.recipient}.`,
+      recipient: notification.recipient,
+    };
+  }
+
+  await createTransporter().sendMail({
+    from: getSenderEmail(),
+    to: notification.recipient,
+    subject: notification.subject,
+    text: notification.message,
+    html: htmlFromText(notification.message, notification.subject),
+  });
+
+  return {
+    ok: true,
+    delivered: true,
+    mode: "smtp",
+    message: `Corrective action reminder sent to ${notification.recipient}.`,
+    recipient: notification.recipient,
+  };
+}
+
+export async function sendCapaAssignmentNotifications(
+  inputs: CapaAssignmentNotificationInput[],
+): Promise<CapaAssignmentDeliveryResult[]> {
+  const uniqueRecipients = new Map<string, CapaAssignmentNotificationInput>();
+  for (const input of inputs) {
+    const email = input.to.trim().toLowerCase();
+    if (!isEmail(email) || uniqueRecipients.has(`${email}:${input.role}`)) continue;
+    uniqueRecipients.set(`${email}:${input.role}`, { ...input, to: email });
+  }
+
+  const transporter =
+    !hasBrevoConfig() && hasSmtpConfig() ? createTransporter() : null;
+  const results: CapaAssignmentDeliveryResult[] = [];
+
+  for (const input of uniqueRecipients.values()) {
+    const notification = buildCapaAssignmentNotification({
+      ...input,
+      url: input.url || capaAssignmentUrl(input.capaId),
+    });
 
     if (!hasBrevoConfig() && !transporter) {
       results.push({

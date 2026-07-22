@@ -34,7 +34,7 @@ export async function uploadToS3(key: string, body: Buffer, contentType: string)
       ContentType: contentType,
     })
   );
-  return `${publicUrl.replace(/\/$/, "")}/${bucket}/${key}`;
+  return `${publicUrl.replace(/\/$/, "")}/${key}`;
 }
 
 export async function getFromS3(key: string): Promise<Buffer> {

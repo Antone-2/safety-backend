@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { getEnv } from "../../config/index.js";
 import { logger } from "../utils/logger.js";
@@ -17,10 +18,26 @@ export interface AuthRequest extends Request {
   };
 }
 
+export function getCookieValue(req: Request, name: string) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return "";
+  const cookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
+}
+
 const JWT_SECRET = getEnv().JWT_SECRET;
 
 function isPgConfigured() {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
+}
+
+function deviceFingerprint(req: Request) {
+  return createHash("sha256")
+    .update(`${req.get("user-agent") || "unknown"}:${req.ip || req.socket.remoteAddress || "unknown"}`)
+    .digest("hex");
 }
 
 export async function authenticateUser(
@@ -30,17 +47,9 @@ export async function authenticateUser(
 ) {
   if (req.user?.id && req.user?.jti) return next();
   const authHeader = req.headers.authorization;
-  const queryToken =
-    typeof req.query.access_token === "string" ? req.query.access_token : "";
-  if (!authHeader?.startsWith("Bearer ") && !queryToken) {
-    return res
-      .status(401)
-      .json({ error: "Missing or invalid authorization header" });
-  }
-
   const token = authHeader?.startsWith("Bearer ")
     ? authHeader.split(" ")[1]
-    : queryToken;
+    : getCookieValue(req, "ehs_access");
   if (!token) {
     return res
       .status(401)
@@ -80,6 +89,27 @@ export async function authenticateUser(
       return res
         .status(401)
         .json({ error: "Session has expired or was revoked" });
+
+    const fingerprint = deviceFingerprint(req);
+    const storedFingerprint = isPgConfigured()
+      ? (
+          await pgPool
+            .query(
+              "SELECT device_fingerprint FROM auth_sessions WHERE id = $1 LIMIT 1",
+              [decoded.jti],
+            )
+            .catch(() => ({ rows: [] }))
+        ).rows[0]?.device_fingerprint
+      : (allRows(
+          await getDb(),
+          "SELECT deviceFingerprint AS deviceFingerprint FROM auth_sessions WHERE id = ?",
+          [decoded.jti],
+        )[0] as { deviceFingerprint?: string } | undefined)?.deviceFingerprint;
+
+    if (storedFingerprint && storedFingerprint !== fingerprint) {
+      return res.status(401).json({ error: "Session device changed. Please sign in again." });
+    }
+
     next();
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });

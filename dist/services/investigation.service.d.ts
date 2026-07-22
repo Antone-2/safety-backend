@@ -17,16 +17,16 @@ export declare const InvestigationEvidenceSchema: z.ZodObject<{
     uploadedAt: string;
     uploadedBy: string;
     type?: string | undefined;
-    url?: string | undefined;
     id?: string | undefined;
+    url?: string | undefined;
     description?: string | undefined;
 }, {
     name: string;
     uploadedAt: string;
     uploadedBy: string;
     type?: string | undefined;
-    url?: string | undefined;
     id?: string | undefined;
+    url?: string | undefined;
     description?: string | undefined;
 }>;
 export declare const InvestigationSchema: z.ZodObject<{
@@ -52,16 +52,16 @@ export declare const InvestigationSchema: z.ZodObject<{
         uploadedAt: string;
         uploadedBy: string;
         type?: string | undefined;
-        url?: string | undefined;
         id?: string | undefined;
+        url?: string | undefined;
         description?: string | undefined;
     }, {
         name: string;
         uploadedAt: string;
         uploadedBy: string;
         type?: string | undefined;
-        url?: string | undefined;
         id?: string | undefined;
+        url?: string | undefined;
         description?: string | undefined;
     }>, "many">>>;
     rootCause: z.ZodOptional<z.ZodString>;
@@ -87,8 +87,8 @@ export declare const InvestigationSchema: z.ZodObject<{
         uploadedAt: string;
         uploadedBy: string;
         type?: string | undefined;
-        url?: string | undefined;
         id?: string | undefined;
+        url?: string | undefined;
         description?: string | undefined;
     }[];
     incidentId: string;
@@ -124,8 +124,8 @@ export declare const InvestigationSchema: z.ZodObject<{
         uploadedAt: string;
         uploadedBy: string;
         type?: string | undefined;
-        url?: string | undefined;
         id?: string | undefined;
+        url?: string | undefined;
         description?: string | undefined;
     }[] | undefined;
     findings?: string | undefined;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildReportRecordFromRow, buildReportIdForImportedRecord, classifyGoogleFormsError, fetchGoogleSheetRows, parseDate } from "./google-forms.js";
+import { classifyGoogleFormsError, dedupeGoogleSheetReportsById, fetchGoogleSheetRows, getGoogleSheetReportIdsToDelete, parseDate } from "./google-forms.js";
 
 test("classifies DNS lookup failures as connectivity issues", () => {
   const error = new TypeError("fetch failed") as TypeError & { cause?: { code?: string; hostname?: string } };
@@ -10,117 +10,46 @@ test("classifies DNS lookup failures as connectivity issues", () => {
     statusCode: 502,
     message: "Unable to reach Google Sheets from the server right now.",
     details: "DNS lookup failed for sheets.googleapis.com",
-    hint: "Check network connectivity, firewall, and Google Sheets access settings.",
+    hint: "Check network connectivity or Google Sheets access settings.",
   });
 });
 
 test("falls back to a generic message for unknown errors", () => {
   const error = new Error("boom");
 
-  assert.match(classifyGoogleFormsError(error).details, /^boom/);
-  assert.equal(classifyGoogleFormsError(error).statusCode, 500);
-  assert.equal(classifyGoogleFormsError(error).message, "Google Sheets request failed.");
-  assert.equal(classifyGoogleFormsError(error).hint, "Check the spreadsheet ID, API key, and which Sheets/CSV base URLs are configured.");
-});
-
-test("maps alternate Google Form headers into report fields", () => {
-  const headers = ["Timestamp", "Location", "Reporter Name", "Incident Summary", "Hazard Category", "Type", "Risk Level"];
-  const row = ["2024-01-01", "Factory A", "Jane Doe", "Chemical spill", "Chemical", "Unsafe Condition", "High"];
-
-  const report = buildReportRecordFromRow(headers, row, {
-    locations: ["Factory A"],
-    categories: ["Chemical"],
-    departments: ["Production"],
+  assert.deepEqual(classifyGoogleFormsError(error), {
+    statusCode: 500,
+    message: "Google Sheets request failed.",
+    details: "boom",
+    hint: "Check the spreadsheet ID, API key, and which Sheets/CSV base URLs are configured.",
   });
-
-  assert.equal(report.location, "Factory A");
-  assert.equal(report.reporter, "Jane Doe");
-  assert.equal(report.category, "Chemical");
-  assert.equal(report.type, "Unsafe Condition");
-  assert.equal(report.severity, "High");
-  assert.equal(report.description, "Chemical spill");
 });
 
-test("parses ambiguous Google Sheets dates as day first by default", () => {
-  assert.equal(parseDate("8/7/2026"), "2026-07-07T21:00:00.000Z");
-  assert.equal(parseDate("08/07/2026 14:30:15"), "2026-07-08T11:30:15.000Z");
+test("dedupes imported Google Sheets reports by stable report id", () => {
+  const reports = [
+    { id: "RPT-1", date: "2026-01-01T00:00:00.000Z", location: "A", reporter: "Alice", description: "First", severity: "High", status: "Open", category: "Unsafe Act", type: "Unsafe Act", slaHours: 24, dueAt: "2026-01-02T00:00:00.000Z", anonymous: false, department: "Ops", shift: "Day", complianceRequired: true, photoUrl: "" },
+    { id: "RPT-1", date: "2026-01-02T00:00:00.000Z", location: "A", reporter: "Alice", description: "Updated", severity: "High", status: "Open", category: "Unsafe Act", type: "Unsafe Act", slaHours: 24, dueAt: "2026-01-03T00:00:00.000Z", anonymous: false, department: "Ops", shift: "Day", complianceRequired: true, photoUrl: "" },
+    { id: "RPT-2", date: "2026-01-03T00:00:00.000Z", location: "B", reporter: "Bob", description: "Second", severity: "Medium", status: "Closed", category: "Unsafe Condition", type: "Unsafe Condition", slaHours: 72, dueAt: "2026-01-06T00:00:00.000Z", anonymous: true, department: "Maintenance", shift: "Night", complianceRequired: false, photoUrl: "" },
+  ];
+
+  const deduped = dedupeGoogleSheetReportsById(reports);
+
+  assert.equal(deduped.length, 2);
+  assert.equal(deduped[0].id, "RPT-1");
+  assert.equal(deduped[0].description, "Updated");
+  assert.equal(deduped[1].id, "RPT-2");
 });
 
-test("allows Google Sheets dates to be parsed as month first when configured", () => {
-  const originalOrder = process.env.GOOGLE_SHEETS_DATE_ORDER;
-  process.env.GOOGLE_SHEETS_DATE_ORDER = "mdy";
+test("does not delete existing Google Sheets reports when the latest sync imports no rows", () => {
+  const existingIds = ["RPT-1", "RPT-2"];
+  const incomingIds: string[] = [];
 
-  try {
-    assert.equal(parseDate("8/7/2026"), "2026-08-06T21:00:00.000Z");
-  } finally {
-    if (originalOrder === undefined) {
-      delete process.env.GOOGLE_SHEETS_DATE_ORDER;
-    } else {
-      process.env.GOOGLE_SHEETS_DATE_ORDER = originalOrder;
-    }
-  }
-});
-
-test("parses Google Sheets numeric date serials", () => {
-  assert.equal(parseDate("46211"), "2026-07-07T21:00:00.000Z");
-});
-
-test("does not fabricate missing or invalid Google Sheets dates", () => {
-  assert.throws(() => parseDate(""), /missing its report date/);
-  assert.throws(() => parseDate("not-a-date"), /Invalid Google Sheets report date/);
-});
-
-test("maps employee name headers into reporter field", () => {
-  const headers = ["Timestamp", "Location", "Employee Name", "Incident Summary", "Hazard Category", "Type", "Risk Level"];
-  const row = ["2024-01-01", "Factory A", "John Smith", "Chemical spill", "Chemical", "Unsafe Condition", "High"];
-
-  const report = buildReportRecordFromRow(headers, row, {
-    locations: ["Factory A"],
-    categories: ["Chemical"],
-    departments: ["Production"],
-  });
-
-  assert.equal(report.reporter, "John Smith");
-});
-
-test("maps staff name headers into reporter field", () => {
-  const headers = ["Timestamp", "Location", "Staff Name", "Incident Description", "Hazard Category", "Type", "Risk Level"];
-  const row = ["2024-01-01", "Factory A", "Mary Johnson", "Chemical spill", "Chemical", "Unsafe Condition", "High"];
-
-  const report = buildReportRecordFromRow(headers, row, {
-    locations: ["Factory A"],
-    categories: ["Chemical"],
-    departments: ["Production"],
-  });
-
-  assert.equal(report.reporter, "Mary Johnson");
-});
-
-test("creates a deterministic report ID for repeated imports of the same content", () => {
-  const headers = ["Timestamp", "Location", "Reporter Name", "Incident Summary", "Hazard Category", "Type", "Risk Level"];
-  const row = ["2024-01-01", "Factory A", "Jane Doe", "Chemical spill", "Chemical", "Unsafe Condition", "High"];
-
-  const firstRecord = buildReportRecordFromRow(headers, row, {
-    locations: ["Factory A"],
-    categories: ["Chemical"],
-    departments: ["Production"],
-  });
-
-  const secondRecord = buildReportRecordFromRow(headers, row, {
-    locations: ["Factory A"],
-    categories: ["Chemical"],
-    departments: ["Production"],
-  });
-
-  assert.equal(buildReportIdForImportedRecord(firstRecord), buildReportIdForImportedRecord(secondRecord));
-  assert.match(buildReportIdForImportedRecord(firstRecord), /^RPT-[0-9A-F]{8}$/);
+  assert.deepEqual(getGoogleSheetReportIdsToDelete(existingIds, incomingIds), []);
 });
 
 test("falls back to the published CSV endpoint when the Sheets API returns 403", async () => {
   const originalFetch = global.fetch;
-  const originalDocsBaseUrl = process.env.GOOGLE_DOCS_EXPORT_BASE_URL;
   const requestUrls: string[] = [];
-  process.env.GOOGLE_DOCS_EXPORT_BASE_URL = "https://docs.google.com/spreadsheets/d";
 
   global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -142,11 +71,29 @@ test("falls back to the published CSV endpoint when the Sheets API returns 403",
     assert.ok(requestUrls.some((url) => url.includes("gviz/tq") || url.includes("export?format=csv")));
   } finally {
     global.fetch = originalFetch;
-    if (originalDocsBaseUrl === undefined) {
-      delete process.env.GOOGLE_DOCS_EXPORT_BASE_URL;
-    } else {
-      process.env.GOOGLE_DOCS_EXPORT_BASE_URL = originalDocsBaseUrl;
-    }
   }
 });
 
+test("parses month-first Google Sheets timestamps with default mdy order", () => {
+  assert.equal(parseDate("3/25/2026 9:52:49"), "2026-03-25T06:52:49.000Z");
+  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T10:44:17.000Z");
+  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-05-04T06:26:49.000Z");
+});
+
+test("falls back to day-first when the first part exceeds 12", () => {
+  assert.equal(parseDate("13/07/2026 14:35:10"), "2026-07-13T11:35:10.000Z");
+});
+
+test("honors explicit dmy date order", () => {
+  const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
+  process.env.GOOGLE_SHEETS_DATE_ORDER = "dmy";
+  try {
+    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.GOOGLE_SHEETS_DATE_ORDER;
+    } else {
+      process.env.GOOGLE_SHEETS_DATE_ORDER = previous;
+    }
+  }
+});

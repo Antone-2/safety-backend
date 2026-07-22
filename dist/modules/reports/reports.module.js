@@ -4,6 +4,7 @@ import { CreateReportSchema, StatusSchema } from "../../lib/types.js";
 import { authenticateUser, requirePermission, } from "../../shared/middleware/auth.middleware.js";
 import { reportsService } from "./reports.service.js";
 const sseClients = new Map();
+const PLACEHOLDER_IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" viewBox="0 0 200 150"><rect width="200" height="150" fill="#f1f5f9"/><text x="100" y="75" text-anchor="middle" dy=".3em" font-family="system-ui, sans-serif" font-size="14" fill="#94a3b8">Photo unavailable</text></svg>`;
 function getPlaceholderPhotoUrl(id, size = 80) {
     const shortId = String(id ?? "").slice(-3) || "N/A";
     return `https://placehold.co/${size}x${size}/1e293b/ffffff?text=${encodeURIComponent(shortId)}`;
@@ -60,7 +61,8 @@ function cleanupClient(clientId) {
     sseClients.delete(clientId);
 }
 function csvEscape(value) {
-    const text = String(value ?? "");
+    const raw = String(value ?? "");
+    const text = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
     return text.includes(",") || text.includes('"') || text.includes("\n")
         ? `"${text.replace(/"/g, '""')}"`
         : text;
@@ -74,11 +76,21 @@ export function createReportsRouter() {
         const days = queryString(req.query.days);
         const search = queryString(req.query.search);
         const category = queryString(req.query.category);
+        const dateFrom = queryString(req.query.dateFrom);
+        const dateTo = queryString(req.query.dateTo);
         const page = Number(String(req.query.page)) || 1;
-        const all = String(req.query.all || "").toLowerCase() === "true";
-        const limit = all ? 0 : Number(String(req.query.limit)) || 50;
+        const limit = Number(String(req.query.limit)) || 50;
         try {
-            const result = await reportsService.list({ status, severity, location, days, search, category, all }, page, limit);
+            const result = await reportsService.list({
+                status,
+                severity,
+                location,
+                days,
+                search,
+                category,
+                dateFrom,
+                dateTo,
+            }, page, limit);
             res.json(result);
         }
         catch (error) {
@@ -120,9 +132,18 @@ export function createReportsRouter() {
             res.status(500).json({ error: "Failed to load stats" });
         }
     });
-    router.get("/summary", authenticateUser, requirePermission("reports:read"), async (_req, res) => {
+    router.get("/summary", authenticateUser, requirePermission("reports:read"), async (req, res) => {
         try {
-            const summary = await reportsService.summary();
+            const summary = await reportsService.summary({
+                status: queryString(req.query.status),
+                severity: queryString(req.query.severity),
+                location: queryString(req.query.location),
+                days: queryString(req.query.days),
+                search: queryString(req.query.search),
+                category: queryString(req.query.category),
+                dateFrom: queryString(req.query.dateFrom),
+                dateTo: queryString(req.query.dateTo),
+            });
             res.json(summary);
         }
         catch (error) {
@@ -181,9 +202,18 @@ export function createReportsRouter() {
             res.status(500).json({ error: "Failed to export selection" });
         }
     });
-    router.get("/generate", authenticateUser, requirePermission("reports:read"), async (_req, res) => {
+    router.get("/generate", authenticateUser, requirePermission("reports:read"), async (req, res) => {
         try {
-            const rows = await reportsService.generateExport();
+            const rows = await reportsService.generateExport({
+                status: queryString(req.query.status),
+                severity: queryString(req.query.severity),
+                location: queryString(req.query.location),
+                days: queryString(req.query.days),
+                search: queryString(req.query.search),
+                category: queryString(req.query.category),
+                dateFrom: queryString(req.query.dateFrom),
+                dateTo: queryString(req.query.dateTo),
+            });
             const headers = [
                 "ID",
                 "Date",
@@ -229,10 +259,55 @@ export function createReportsRouter() {
         const format = String(req.query.format || "webp").toLowerCase();
         try {
             const { photoUrl, found } = await reportsService.getPhotoUrl(id);
-            if (!found)
-                return res.status(404).json({ error: "Not found" });
-            if (!photoUrl)
-                return res.status(404).json({ error: "No photo" });
+            if (!found || !photoUrl) {
+                res.setHeader("Content-Type", "image/svg+xml");
+                res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+                res.setHeader("Cache-Control", "no-store");
+                res.status(200).send(PLACEHOLDER_IMAGE);
+                return;
+            }
+            // Prefer the photo already fetched from Drive and stored in PostgreSQL
+            // during sync. This renders reliably without Drive sign-in/redirect.
+            const { getStoredReportPhoto, storeReportPhotoFromDrive } = await import("./report-photo.service.js");
+            let stored = await getStoredReportPhoto(id);
+            if (!stored && photoUrl) {
+                try {
+                    await storeReportPhotoFromDrive(id, photoUrl);
+                    stored = await getStoredReportPhoto(id);
+                }
+                catch {
+                    stored = null;
+                }
+            }
+            if (stored) {
+                const sharp = (await import("sharp")).default;
+                let processed = stored.data;
+                let outputContentType = stored.contentType;
+                const metadata = await sharp(stored.data).metadata();
+                if (metadata.width && metadata.width > size) {
+                    processed = await sharp(stored.data)
+                        .resize(size, undefined, { withoutEnlargement: true })
+                        .toBuffer();
+                }
+                if (format === "png") {
+                    processed = await sharp(processed).png().toBuffer();
+                    outputContentType = "image/png";
+                }
+                else if (format === "jpeg" || format === "jpg") {
+                    processed = await sharp(processed).jpeg({ quality: 80 }).toBuffer();
+                    outputContentType = "image/jpeg";
+                }
+                else {
+                    processed = await sharp(processed).webp({ quality: 80 }).toBuffer();
+                    outputContentType = "image/webp";
+                }
+                res.setHeader("Content-Type", outputContentType);
+                res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+                res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, immutable");
+                res.setHeader("ETag", `${id}-${size}-${format}`);
+                res.send(processed);
+                return;
+            }
             // Google Drive links need to be converted to direct image URLs.
             const normalizedPhotoUrl = photoUrl
                 .split(",")[0]
@@ -246,13 +321,23 @@ export function createReportsRouter() {
                     redirect: "follow",
                 });
                 if (!fetchRes.ok) {
-                    return res.redirect(302, photoUrl.split(",")[0].trim());
+                    res.setHeader("Content-Type", "image/svg+xml");
+                    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+                    res.setHeader("Cache-Control", "no-store");
+                    res.status(200).send(PLACEHOLDER_IMAGE);
+                    return;
                 }
                 const arrayBuffer = await fetchRes.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
                 const contentType = fetchRes.headers.get("content-type") || "image/jpeg";
+                // Drive returns an HTML sign-in page for private files; don't redirect
+                // the browser to it. A clean 404 lets the UI show a placeholder.
                 if (!contentType.startsWith("image/")) {
-                    return res.redirect(302, photoUrl.split(",")[0].trim());
+                    res.setHeader("Content-Type", "image/svg+xml");
+                    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+                    res.setHeader("Cache-Control", "no-store");
+                    res.status(200).send(PLACEHOLDER_IMAGE);
+                    return;
                 }
                 const sharp = (await import("sharp")).default;
                 let processed = buffer;
@@ -276,6 +361,7 @@ export function createReportsRouter() {
                     outputContentType = "image/webp";
                 }
                 res.setHeader("Content-Type", outputContentType);
+                res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
                 res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, immutable");
                 res.setHeader("ETag", `${id}-${size}-${format}`);
                 res.send(processed);
@@ -305,13 +391,17 @@ export function createReportsRouter() {
                 outputContentType = "image/webp";
             }
             res.setHeader("Content-Type", outputContentType);
+            res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
             res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, immutable");
             res.setHeader("ETag", `${id}-${size}-${format}`);
             res.send(processed);
         }
         catch (error) {
             console.error("Failed to serve photo", error);
-            res.status(500).json({ error: "Failed to process image" });
+            res.setHeader("Content-Type", "image/svg+xml");
+            res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+            res.setHeader("Cache-Control", "no-store");
+            res.status(200).send(PLACEHOLDER_IMAGE);
         }
     });
     router.get("/:id", authenticateUser, requirePermission("reports:read"), async (req, res) => {
@@ -359,9 +449,7 @@ export function createReportsRouter() {
                 .filter((item) => Boolean(item))))
             : [];
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(assignedTo)) {
-            return res
-                .status(400)
-                .json({
+            return res.status(400).json({
                 error: "Primary assignment recipient must be a valid email address",
             });
         }
@@ -370,6 +458,100 @@ export function createReportsRouter() {
             return res.status(404).json({ error: "Not found" });
         broadcastReport(updated);
         res.json(updated);
+    });
+    router.post("/:id/closure-requests", authenticateUser, async (req, res) => {
+        const id = routeParam(req, "id");
+        const submittedBy = String(req.user?.name || req.user?.email || "");
+        const submittedByEmail = String(req.user?.email || "");
+        const resolutionNotes = String(req.body?.resolutionNotes || "").trim();
+        const photos = Array.isArray(req.body?.photos)
+            ? req.body.photos.map((photo) => String(photo)).filter(Boolean)
+            : [];
+        if (!resolutionNotes) {
+            return res.status(400).json({
+                error: "Resolution notes are required to request closure",
+            });
+        }
+        try {
+            const { createClosureRequest } = await import("../../services/report-closure.service.js");
+            const request = await createClosureRequest({
+                reportId: id,
+                submittedBy,
+                submittedByEmail,
+                resolutionNotes,
+                photos,
+            });
+            res.status(201).json(request);
+        }
+        catch (error) {
+            console.error("Failed to create closure request", error);
+            res.status(500).json({ error: "Failed to create closure request" });
+        }
+    });
+    router.post("/:id/closure-requests/:requestId/approve", authenticateUser, requirePermission("reports:approve"), async (req, res) => {
+        const reportId = routeParam(req, "id");
+        const requestId = routeParam(req, "requestId");
+        const reviewedBy = String(req.user?.name || req.user?.email || "");
+        const reviewedByEmail = String(req.user?.email || "");
+        const reviewNotes = String(req.body?.reviewNotes || "").trim();
+        try {
+            const { approveClosureRequest } = await import("../../services/report-closure.service.js");
+            const updated = await approveClosureRequest({
+                requestId,
+                reportId,
+                reviewedBy,
+                reviewedByEmail,
+                reviewNotes,
+            });
+            res.json(updated);
+        }
+        catch (error) {
+            console.error("Failed to approve closure request", error);
+            res.status(400).json({
+                error: error instanceof Error ? error.message : "Failed to approve closure request",
+            });
+        }
+    });
+    router.post("/:id/closure-requests/:requestId/reject", authenticateUser, requirePermission("reports:approve"), async (req, res) => {
+        const reportId = routeParam(req, "id");
+        const requestId = routeParam(req, "requestId");
+        const reviewedBy = String(req.user?.name || req.user?.email || "");
+        const reviewedByEmail = String(req.user?.email || "");
+        const reviewNotes = String(req.body?.reviewNotes || "").trim();
+        if (!reviewNotes) {
+            return res.status(400).json({
+                error: "Review notes are required to reject a closure request",
+            });
+        }
+        try {
+            const { rejectClosureRequest } = await import("../../services/report-closure.service.js");
+            const updated = await rejectClosureRequest({
+                requestId,
+                reportId,
+                reviewedBy,
+                reviewedByEmail,
+                reviewNotes,
+            });
+            res.json(updated);
+        }
+        catch (error) {
+            console.error("Failed to reject closure request", error);
+            res.status(400).json({
+                error: error instanceof Error ? error.message : "Failed to reject closure request",
+            });
+        }
+    });
+    router.get("/:id/closure-requests", authenticateUser, async (req, res) => {
+        const id = routeParam(req, "id");
+        try {
+            const { listClosureRequests } = await import("../../services/report-closure.service.js");
+            const requests = await listClosureRequests(id);
+            res.json(requests);
+        }
+        catch (error) {
+            console.error("Failed to load closure requests", error);
+            res.status(500).json({ error: "Failed to load closure requests" });
+        }
     });
     router.post("/:id/comments", authenticateUser, async (req, res) => {
         const id = routeParam(req, "id");

@@ -14,6 +14,15 @@ router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
+router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
+  try {
+    const stats = await spillService.getStats();
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch spill stats" });
+  }
+});
+
 router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const spill = await spillService.getById(String(req.params.id));
@@ -26,7 +35,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
 
 router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
-    const spill = await spillService.create({ ...req.body, createdBy: req.user?.name || "System" });
+    const spill = await spillService.createSpill({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(spill);
   } catch (error) {
     res.status(500).json({ error: "Failed to create spill record" });
@@ -48,15 +57,6 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
     res.json({ success: result });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete spill record" });
-  }
-});
-
-router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
-  try {
-    const stats = await spillService.getStats();
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch spill stats" });
   }
 });
 

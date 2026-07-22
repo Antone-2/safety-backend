@@ -1,11 +1,11 @@
 import fs from "fs";
 import { Router, type Request, type Response } from "express";
-import { isFirebaseAvailable, getFirebase, sanitizeForFirestore } from "../lib/firebase.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { REPORT_SOURCE_GOOGLE_SHEETS } from "../lib/types.js";
-import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { getDbClient } from "../shared/infrastructure/database/postgres.client.js";
 import { broadcastReport } from "../modules/reports/reports.module.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
+import { storeReportPhotoFromDrive } from "../modules/reports/report-photo.service.js";
 import { logger } from "../shared/utils/logger.js";
 
 const router = Router();
@@ -345,13 +345,20 @@ export function parseDate(dateStr?: string): string {
   );
 
   const spreadsheetSerial = Number(value);
-  if (Number.isFinite(spreadsheetSerial) && spreadsheetSerial > 0) {
-    const excelEpochOffset = 25569;
+  if (
+    Number.isFinite(spreadsheetSerial) &&
+    spreadsheetSerial >= 20000 &&
+    spreadsheetSerial < 100000
+  ) {
+    // Preserve the fractional day so the time-of-day is not truncated away.
+    const excelEpoch = Date.UTC(1899, 11, 30);
     const millisecondsPerDay = 86400000;
-    return new Date(
-      (spreadsheetSerial - excelEpochOffset) * millisecondsPerDay -
-        utcOffsetMinutes * 60_000,
-    ).toISOString();
+    const millis = excelEpoch + spreadsheetSerial * millisecondsPerDay - utcOffsetMinutes * 60_000;
+    const parsed = new Date(millis);
+    if (!Number.isFinite(parsed.getTime())) {
+      throw new Error(`Invalid Google Sheets report date: ${value}`);
+    }
+    return parsed.toISOString();
   }
 
   const dayFirstMatch = value.match(
@@ -363,8 +370,11 @@ export function parseDate(dateStr?: string): string {
     const first = Number(firstRaw);
     const second = Number(secondRaw);
     const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
+    const dateOrder = (process.env.GOOGLE_SHEETS_DATE_ORDER || "mdy").toLowerCase();
     const isDayFirst =
-      process.env.GOOGLE_SHEETS_DATE_ORDER?.toLowerCase() === "mdy" ? false : first > 12 || process.env.GOOGLE_SHEETS_DATE_ORDER?.toLowerCase() === "dmy" || second <= 12;
+      dateOrder === "dmy" ? true :
+      dateOrder === "mdy" ? (first > 12) :
+      first > 12;
     const day = isDayFirst ? first : second;
     const month = isDayFirst ? second : first;
 
@@ -398,6 +408,10 @@ export function parseDate(dateStr?: string): string {
   if (isNaN(d.getTime())) {
     throw new Error(`Invalid Google Sheets report date: ${value}`);
   }
+  // Guard against epoch-ish garbage (e.g. a stray serial like "0" or "1640995200").
+  if (d.getUTCFullYear() < 2000 || d.getUTCFullYear() > 2100) {
+    throw new Error(`Google Sheets report date out of range: ${value}`);
+  }
   return d.toISOString();
 }
 
@@ -426,6 +440,47 @@ function normalizeImportedValue(value: unknown): string {
     .replace(/\s+/g, " ");
 }
 
+function isDuplicateReportIdError(error: unknown, reportId: string): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const detail = typeof error === "object" && error !== null && "detail" in error
+    ? String((error as { detail?: unknown }).detail ?? "")
+    : "";
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+
+  return code === "23505" && (detail.includes(reportId) || message.includes(reportId));
+}
+
+export function dedupeGoogleSheetReportsById<T extends { id: string; date?: string }>(reports: T[]): T[] {
+  const byId = new Map<string, T>();
+
+  for (const report of reports) {
+    if (!report?.id) continue;
+
+    const existing = byId.get(report.id);
+    if (!existing) {
+      byId.set(report.id, report);
+      continue;
+    }
+
+    const existingDate = existing.date ? new Date(existing.date).getTime() : Number.NEGATIVE_INFINITY;
+    const nextDate = report.date ? new Date(report.date).getTime() : Number.NEGATIVE_INFINITY;
+    if (nextDate >= existingDate) {
+      byId.set(report.id, report);
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+export function getGoogleSheetReportIdsToDelete(existingIds: string[], incomingIds: string[]): string[] {
+  if (incomingIds.length === 0) return [];
+
+  const incomingSet = new Set(incomingIds.filter(Boolean));
+  return existingIds.filter((id) => Boolean(id) && !incomingSet.has(id));
+}
+
 export function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
   id: string;
   date: string;
@@ -444,9 +499,19 @@ export function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
   complianceRequired: boolean;
   photoUrl: string;
 }>): void {
-  db.prepare("DELETE FROM reports WHERE source = ?").run([REPORT_SOURCE_GOOGLE_SHEETS]);
+  const uniqueReports = dedupeGoogleSheetReportsById(reports);
+  const incomingIds = uniqueReports
+    .map((report) => String(report.id ?? "").trim())
+    .filter(Boolean);
+  const existingIds = db
+    .prepare("SELECT id FROM reports WHERE source = ? OR source = ?")
+    .all([REPORT_SOURCE_GOOGLE_SHEETS, "google_sheets"])
+    .map((row: { id?: unknown }) => String(row.id ?? ""));
+  const idsToDelete = getGoogleSheetReportIdsToDelete(existingIds, incomingIds);
 
-  for (const report of reports) {
+  if (uniqueReports.length === 0) return;
+
+  for (const report of uniqueReports) {
     // sqlite/better-sqlite3 (or similar) will throw if any bound value is `undefined`.
     // Ensure every column value is always a concrete primitive.
     const sanitized = {
@@ -469,7 +534,7 @@ export function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
     };
 
     db.prepare(
-      `INSERT INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO reports (id, date, location, reporter, description, severity, status, category, type, slaHours, dueAt, isNearMiss, anonymous, department, shift, complianceRequired, photoUrl, source, source_synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run([
       sanitized.id,
       sanitized.date,
@@ -489,7 +554,12 @@ export function replaceGoogleSheetReportsInSqlite(db: any, reports: Array<{
       sanitized.complianceRequired ? 1 : 0,
       sanitized.photoUrl,
       REPORT_SOURCE_GOOGLE_SHEETS,
+      new Date().toISOString(),
     ]);
+  }
+
+  for (const id of idsToDelete) {
+    db.prepare("DELETE FROM reports WHERE id = ? AND (source = ? OR source = ?)").run([id, REPORT_SOURCE_GOOGLE_SHEETS, "google_sheets"]);
   }
 }
 
@@ -523,6 +593,27 @@ export function buildReportIdForImportedRecord(imported: {
   return `RPT-${stableIdHash}`;
 }
 
+// Convert Google Drive / Forms file links into a directly viewable image URL.
+// Google Forms "Add file" questions store links like:
+//   https://drive.google.com/open?id=FILE_ID
+//   https://drive.google.com/file/d/FILE_ID/view?usp=drivesdk
+//   https://lh3.googleusercontent.com/...  (already direct)
+// The public `uc?export=view` form is what the /reports/:id/photo proxy and the
+// dashboard expect so the image actually renders.
+function toDirectImageUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url) return "";
+
+  const driveIdMatch =
+    url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([^/&?]+)/i) ||
+    url.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i) ||
+    url.match(/docs\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i);
+  if (driveIdMatch?.[1]) {
+    return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(driveIdMatch[1])}`;
+  }
+  return url;
+}
+
 function extractPhotoUrl(headers: string[], row: string[]): string {
   const matched = getMatchingCell(headers, row, [
     "photo",
@@ -535,16 +626,23 @@ function extractPhotoUrl(headers: string[], row: string[]): string {
     "attachments",
     "upload photo",
     "upload image",
+    "upload file",
+    "add file",
+    "attach file",
+    "evidence",
+    "attach evidence",
     "hazard photo",
     "incident photo",
+    "add photo",
+    "attach photo",
   ]);
-  if (matched && matched.trim()) return matched.trim();
+  if (matched && matched.trim()) return toDirectImageUrl(matched);
 
   const urlRegex = /https?:\/\/[^\s,]+/g;
   const candidates: string[] = [];
   for (const cell of row) {
     const matches = cell.match(urlRegex);
-    if (matches) candidates.push(...matches);
+    if (matches) candidates.push(...matches.map(toDirectImageUrl));
   }
   return candidates.join(", ");
 }
@@ -613,7 +711,7 @@ export function buildReportRecordFromRow(
   const dateRaw = getMatchingCell(headers, row, ["timestamp", "date", "date submitted", "created at", "submitted at"], 0);
   const date = parseDate(dateRaw);
   const severity = normalizeSeverity(getMatchingCell(headers, row, ["severity", "risk level", "severity level", "priority", "impact"], 7) || "Medium");
-  const status = normalizeStatus(getMatchingCell(headers, row, ["status", "report status", "current status", "ticket status"], 0) || "Open");
+  const status = normalizeStatus(getMatchingCell(headers, row, ["status", "report status", "current status", "ticket status"]) || "Open");
   const anonymous = reporter.toLowerCase() === "anonymous";
   const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
   const dueAt = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
@@ -692,13 +790,18 @@ async function updateSyncState(update: {
 
   const placeholders = columns.map((_, index) => `$${index + 1}`).join(", ");
 
-  await pgPool.query(
-    `INSERT INTO google_sheets_sync_state (${columns.join(", ")}, updated_at)
-     VALUES (${placeholders}, NOW())
-     ON CONFLICT (id) DO UPDATE SET
-       ${sets.join(", ")}`,
-    values,
-  );
+  const client = await getDbClient();
+  try {
+    await client.query(
+      `INSERT INTO google_sheets_sync_state (${columns.join(", ")}, updated_at)
+       VALUES (${placeholders}, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         ${sets.join(", ")}`,
+      values,
+    );
+  } finally {
+    client.release();
+  }
 }
 
 async function replaceGoogleSheetReportsInPostgres(reports: Array<{
@@ -719,62 +822,178 @@ async function replaceGoogleSheetReportsInPostgres(reports: Array<{
   complianceRequired: boolean;
   photoUrl: string;
 }>) {
-  const client = await pgPool.connect();
+  const client = await getDbClient();
+  const uniqueReports = dedupeGoogleSheetReportsById(reports);
+  const incomingIds = uniqueReports
+    .map((report) => String(report.id ?? "").trim())
+    .filter(Boolean);
   try {
     await client.query("BEGIN");
-    await client.query("DELETE FROM reports WHERE source = $1", [REPORT_SOURCE_GOOGLE_SHEETS]);
-    for (const report of reports) {
-      await client.query(
-        `INSERT INTO reports (
-          id,
-          date,
-          location,
-          reporter,
-          description,
-          severity,
-          status,
-          category,
-          type,
-          sla_hours,
-          due_at,
-          is_near_miss,
-          anonymous,
-          department,
-          shift,
-          compliance_required,
-          photo_url,
-          source
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-          $11, FALSE, $12, $13, $14, $15, $16, $17
-        )`,
-        [
-          report.id,
-          report.date,
-          report.location,
-          report.reporter,
-          report.description,
-          report.severity,
-          report.status,
-          report.category,
-          report.type,
-          report.slaHours,
-          report.dueAt,
-          report.anonymous,
-          report.department,
-          report.shift,
-          report.complianceRequired,
-          report.photoUrl,
-          REPORT_SOURCE_GOOGLE_SHEETS,
-        ],
-      );
+    const existingIdsResult = await client.query(
+      "SELECT id FROM reports WHERE source = $1 OR source = $2",
+      [REPORT_SOURCE_GOOGLE_SHEETS, "google_sheets"],
+    );
+    const existingIds = existingIdsResult.rows.map((row: { id?: unknown }) => String(row.id ?? ""));
+    const idsToDelete = getGoogleSheetReportIdsToDelete(existingIds, incomingIds);
+
+    for (const report of uniqueReports) {
+      try {
+        await client.query(
+          `INSERT INTO reports (
+            id,
+            date,
+            location,
+            reporter,
+            description,
+            severity,
+            status,
+            category,
+            type,
+            sla_hours,
+            due_at,
+            is_near_miss,
+            anonymous,
+            department,
+            shift,
+            compliance_required,
+            photo_url,
+            source,
+            source_synced_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            $11, FALSE, $12, $13, $14, $15, $16, $17, $18
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            date = EXCLUDED.date,
+            location = EXCLUDED.location,
+            reporter = EXCLUDED.reporter,
+            description = EXCLUDED.description,
+            severity = EXCLUDED.severity,
+            status = EXCLUDED.status,
+            category = EXCLUDED.category,
+            type = EXCLUDED.type,
+            sla_hours = EXCLUDED.sla_hours,
+            due_at = EXCLUDED.due_at,
+            anonymous = EXCLUDED.anonymous,
+            department = EXCLUDED.department,
+            shift = EXCLUDED.shift,
+            compliance_required = EXCLUDED.compliance_required,
+            photo_url = EXCLUDED.photo_url,
+            source = EXCLUDED.source,
+            source_synced_at = EXCLUDED.source_synced_at`,
+          [
+            report.id,
+            report.date,
+            report.location,
+            report.reporter,
+            report.description,
+            report.severity,
+            report.status,
+            report.category,
+            report.type,
+            report.slaHours,
+            report.dueAt,
+            report.anonymous,
+            report.department,
+            report.shift,
+            report.complianceRequired,
+            report.photoUrl,
+            REPORT_SOURCE_GOOGLE_SHEETS,
+            new Date().toISOString(),
+          ],
+        );
+      } catch (error) {
+        if (isDuplicateReportIdError(error, report.id)) {
+          await client.query(
+            `UPDATE reports SET
+              date = $2,
+              location = $3,
+              reporter = $4,
+              description = $5,
+              severity = $6,
+              status = $7,
+              category = $8,
+              type = $9,
+              sla_hours = $10,
+              due_at = $11,
+              anonymous = $12,
+              department = $13,
+              shift = $14,
+              compliance_required = $15,
+              photo_url = $16,
+              source = $17
+            WHERE id = $1`,
+            [
+              report.id,
+              report.date,
+              report.location,
+              report.reporter,
+              report.description,
+              report.severity,
+              report.status,
+              report.category,
+              report.type,
+              report.slaHours,
+              report.dueAt,
+              report.anonymous,
+              report.department,
+              report.shift,
+              report.complianceRequired,
+              report.photoUrl,
+              REPORT_SOURCE_GOOGLE_SHEETS,
+            ],
+          );
+        } else {
+          throw error;
+        }
+      }
     }
+
+    if (incomingIds.length > 0) {
+      for (const id of idsToDelete) {
+        await client.query(
+          "DELETE FROM reports WHERE id = $1 AND (source = $2 OR source = $3)",
+          [id, REPORT_SOURCE_GOOGLE_SHEETS, "google_sheets"],
+        );
+      }
+    }
+
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
+  }
+
+  // Fetch each report's Drive photo into PostgreSQL so it displays reliably
+  // (and persists) without depending on Drive's sign-in/redirect at request time.
+  await fetchReportPhotosFromDrive(uniqueReports);
+}
+
+async function fetchReportPhotosFromDrive(
+  reports: Array<{ id: string; photoUrl: string }>,
+): Promise<void> {
+  const withPhotos = reports.filter((r) => r.photoUrl && r.photoUrl.trim());
+  if (withPhotos.length === 0) return;
+
+  const CONCURRENCY = 5;
+  let index = 0;
+  let stored = 0;
+  let failed = 0;
+
+  async function worker() {
+    while (index < withPhotos.length) {
+      const report = withPhotos[index++];
+      const ok = await storeReportPhotoFromDrive(report.id, report.photoUrl.trim());
+      if (ok) stored += 1;
+      else failed += 1;
+    }
+  }
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+  if (stored || failed) {
+    logger.info({ stored, failed }, "Google Sheets report photos synced");
   }
 }
 
@@ -819,16 +1038,35 @@ export async function runGoogleSheetsSync(options?: {
       const headers = rows[0];
       const dataRows = rows.slice(1);
       const defaults = getDefaults();
-      const reports = dataRows.map((row, index) => {
+      const reports: Array<{
+        id: string;
+        date: string;
+        location: string;
+        reporter: string;
+        description: string;
+        severity: "Low" | "Medium" | "High" | "Critical";
+        status: "Open" | "In Progress" | "Closed";
+        category: string;
+        type: "Unsafe Act" | "Unsafe Condition";
+        slaHours: number;
+        dueAt: string;
+        anonymous: boolean;
+        department: string;
+        shift: string;
+        complianceRequired: boolean;
+        photoUrl: string;
+      }> = [];
+      for (const [index, row] of dataRows.entries()) {
         let imported: ReturnType<typeof buildReportRecordFromRow>;
         try {
           imported = buildReportRecordFromRow(headers, row, defaults);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          throw new Error(`Google Sheets row ${index + 2}: ${message}`);
+          logger.warn({ row: index + 2, error: message }, "Skipping invalid Google Sheets row");
+          continue;
         }
         const id = buildReportIdForImportedRecord(imported);
-        return {
+        reports.push({
           id,
           date: imported.date,
           location: imported.location,
@@ -845,8 +1083,8 @@ export async function runGoogleSheetsSync(options?: {
           shift: imported.shift,
           complianceRequired: imported.complianceRequired,
           photoUrl: imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80),
-        };
-      });
+        });
+      }
 
       await replaceGoogleSheetReportsInPostgres(reports);
       if (options?.broadcast !== false) {
@@ -1060,38 +1298,6 @@ router.post("/import", async (req: Request, res: Response) => {
     const dataRows = rows.slice(1);
     const defaults = getDefaults();
 
-    if (isFirebaseAvailable()) {
-      const db = getFirebase()!;
-    for (const row of dataRows) {
-      const imported = buildReportRecordFromRow(headers, row, defaults);
-      const id = buildReportIdForImportedRecord(imported);
-      const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
-
-        await db.collection("reports").doc(id).set(sanitizeForFirestore({
-          id,
-          source: REPORT_SOURCE_GOOGLE_SHEETS,
-          date: imported.date,
-          location: imported.location,
-          reporter: imported.reporter,
-          description: imported.description,
-          severity: imported.severity,
-          status: imported.status,
-          category: imported.category,
-          type: imported.type,
-          slaHours: imported.slaHours,
-          dueAt: imported.dueAt,
-          isNearMiss: false,
-          anonymous: imported.anonymous ? 1 : 0,
-          department: imported.department,
-          shift: imported.shift,
-          complianceRequired: imported.complianceRequired ? 1 : 0,
-          photoUrl,
-          comments: [],
-        }));
-      }
-      return res.json({ imported: dataRows.length, skipped: 0, message: `Imported ${dataRows.length} reports` });
-    }
-
     const db = await getDb();
     const importedReports: Array<{
       id: string;
@@ -1161,25 +1367,30 @@ router.get("/status", async (_req: Request, res: Response) => {
 
   const formId = process.env.GOOGLE_FORM_ID;
   const hasCredentials = Boolean(process.env.GOOGLE_API_KEY);
-  const [countResult, stateResult] = await Promise.all([
-    pgPool.query("SELECT COUNT(*)::int AS count FROM reports WHERE source = $1", [REPORT_SOURCE_GOOGLE_SHEETS]),
-    pgPool.query("SELECT * FROM google_sheets_sync_state WHERE id = $1", [SYNC_STATE_ID]),
-  ]);
-  const state = stateResult.rows[0] ?? {};
-  res.json({
-    totalReports: countResult.rows[0]?.count ?? 0,
-    configured: Boolean(formId && hasCredentials),
-    formId,
-    hasCredentials,
-    status: state.status ?? "idle",
-    lastStartedAt: state.last_started_at ?? null,
-    lastFinishedAt: state.last_finished_at ?? null,
-    lastSuccessAt: state.last_success_at ?? null,
-    lastError: state.last_error ?? null,
-    lastSheetName: state.last_sheet_name ?? null,
-    lastRowCount: state.last_row_count ?? 0,
-    lastImportedCount: state.last_imported_count ?? 0,
-  });
+  const client = await getDbClient();
+  try {
+    const [countResult, stateResult] = await Promise.all([
+      client.query("SELECT COUNT(*)::int AS count FROM reports WHERE source = $1", [REPORT_SOURCE_GOOGLE_SHEETS]),
+      client.query("SELECT * FROM google_sheets_sync_state WHERE id = $1", [SYNC_STATE_ID]),
+    ]);
+    const state = stateResult.rows[0] ?? {};
+    res.json({
+      totalReports: countResult.rows[0]?.count ?? 0,
+      configured: Boolean(formId && hasCredentials),
+      formId,
+      hasCredentials,
+      status: state.status ?? "idle",
+      lastStartedAt: state.last_started_at ?? null,
+      lastFinishedAt: state.last_finished_at ?? null,
+      lastSuccessAt: state.last_success_at ?? null,
+      lastError: state.last_error ?? null,
+      lastSheetName: state.last_sheet_name ?? null,
+      lastRowCount: state.last_row_count ?? 0,
+      lastImportedCount: state.last_imported_count ?? 0,
+    });
+  } finally {
+    client.release();
+  }
 });
 
 router.post("/fetch", async (req: Request, res: Response) => {

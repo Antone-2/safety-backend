@@ -195,10 +195,62 @@ export class NotificationCenterService {
        (id,user_id,recipient,cadence,channels,active)
        VALUES ($1,$2,$3,$4,$5::jsonb,TRUE) RETURNING *`, [randomUUID(), input.userId || null, input.recipient, input.cadence || "daily", JSON.stringify(input.channels || ["email", "in-app"])]);
         const row = result.rows[0];
+        return this.mapDigestRow(row);
+    }
+    async listDigests(filters) {
+        const values = [];
+        let where = "WHERE 1=1";
+        if (filters?.userId) {
+            values.push(filters.userId);
+            where += ` AND user_id = $${values.length}`;
+        }
+        if (filters?.recipient) {
+            values.push(filters.recipient);
+            where += ` AND recipient = $${values.length}`;
+        }
+        const result = await pgPool.query(`SELECT * FROM notification_digest_subscriptions ${where} ORDER BY created_at DESC`, values);
+        return result.rows.map(this.mapDigestRow);
+    }
+    async updateDigest(id, input) {
+        const sets = [];
+        const values = [];
+        if (input.cadence !== undefined) {
+            sets.push(`cadence = $${values.length + 1}`);
+            values.push(input.cadence);
+        }
+        if (input.channels !== undefined) {
+            sets.push(`channels = $${values.length + 1}::jsonb`);
+            values.push(JSON.stringify(input.channels));
+        }
+        if (input.active !== undefined) {
+            sets.push(`active = $${values.length + 1}`);
+            values.push(input.active);
+        }
+        sets.push(`updated_at = NOW()`);
+        values.push(id);
+        const result = await pgPool.query(`UPDATE notification_digest_subscriptions SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`, values);
+        const row = result.rows[0];
+        if (!row)
+            throw new Error("Digest subscription not found");
+        return this.mapDigestRow(row);
+    }
+    async deleteDigest(id) {
+        const result = await pgPool.query("DELETE FROM notification_digest_subscriptions WHERE id = $1 RETURNING id", [id]);
+        if (result.rowCount === 0)
+            throw new Error("Digest subscription not found");
+        return { ok: true };
+    }
+    mapDigestRow(row) {
         return {
-            id: row.id, userId: row.user_id, recipient: row.recipient,
-            cadence: row.cadence, channels: row.channels, active: row.active,
-            nextRunAt: row.next_run_at, createdAt: row.created_at, updatedAt: row.updated_at,
+            id: row.id,
+            userId: row.user_id,
+            recipient: row.recipient,
+            cadence: row.cadence,
+            channels: row.channels,
+            active: row.active,
+            nextRunAt: row.next_run_at,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
         };
     }
     async deliver(channel, recipient, subject, body) {

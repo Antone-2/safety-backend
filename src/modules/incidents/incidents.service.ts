@@ -4,11 +4,68 @@ import { BusinessRuleError, NotFoundError } from "../../shared/domain/errors/ind
 
 const now = () => new Date().toISOString();
 
+function mapReportToIncident(row: Record<string, unknown>): Incident {
+  const status = String(row.status ?? "Open");
+  const mappedStatus = status === "In Progress" ? "Investigating" : status;
+  const type = String(row.type ?? "Unsafe Condition");
+  const severity = String(row.severity ?? "Medium");
+  return {
+    id: String(row.id),
+    type: type as Incident["type"],
+    severity: severity as Incident["severity"],
+    status: mappedStatus as Incident["status"],
+    location: String(row.location ?? ""),
+    department: String(row.department ?? ""),
+    shift: String(row.shift ?? ""),
+    description: String(row.description ?? ""),
+    reporter: String(row.reporter ?? ""),
+    reporterEmail: undefined,
+    reporterPhone: undefined,
+    anonymous: Boolean(row.anonymous),
+    isNearMiss: Boolean(row.is_near_miss),
+    photoUrl: String(row.photo_url ?? ""),
+    photos: [],
+    assignedTo: row.assigned_to ? String(row.assigned_to) : undefined,
+    assignedToCopy: Array.isArray(row.assigned_to_copy) ? row.assigned_to_copy.map(String) : undefined,
+    slaHours: Number(row.sla_hours ?? 24),
+    dueAt: row.due_at ? new Date(row.due_at as string).toISOString() : undefined,
+    resolutionDays: row.resolution_days ? Number(row.resolution_days) : undefined,
+    rootCause: undefined,
+    correctiveAction: undefined,
+    preventiveAction: undefined,
+    investigationMethod: undefined,
+    witnessStatement: undefined,
+    regulatoryNotificationRequired: false,
+    regulatoryNotificationDate: undefined,
+    complianceRequired: Boolean(row.compliance_required),
+    complianceDueAt: row.compliance_due_at ? new Date(row.compliance_due_at as string).toISOString() : undefined,
+    source: String(row.source ?? "google-sheets"),
+    auditHistory: undefined,
+    createdAt: row.created_at ? new Date(row.created_at as string).toISOString() : now(),
+    updatedAt: row.updated_at ? new Date(row.updated_at as string).toISOString() : now(),
+  };
+}
+
 export class IncidentsService {
   constructor(private repository: IncidentsRepository) {}
 
   async getAll(filters?: Record<string, unknown>): Promise<Incident[]> {
-    return this.repository.findAll(filters);
+    const [incidents, reports] = await Promise.all([
+      this.repository.findAll(filters),
+      this.repository.findAllReports(),
+    ]);
+
+    const mappedReports = reports.map(mapReportToIncident);
+
+    const combined = [...incidents, ...mappedReports];
+    combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    const seen = new Set<string>();
+    return combined.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
   }
 
   async getById(id: string): Promise<Incident | null> {

@@ -1,3 +1,4 @@
+import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 export async function sendEmail(job) {
     const { to, subject, html } = job.data;
     const { emailTransport } = await import("../../shared/integrations/email/email.sender.js");
@@ -34,4 +35,38 @@ export async function generateReport(job) {
 export async function checkSla(job) {
     const { resourceType, resourceId, deadline, action } = job.data;
     console.log(`SLA check for ${resourceType}/${resourceId}: ${action}`);
+}
+export async function processFollowup(job) {
+    const { reportId, stage } = job.data;
+    const { findReportsNeedingFollowup, enqueueFollowup } = await import("../../services/report-followup.service.js");
+    if (reportId && stage) {
+        const result = await pgPool.query("SELECT id, status, severity, sla_hours, due_at, assigned_to, assigned_to_copy, location, description FROM reports WHERE id = $1", [reportId]);
+        const row = result.rows[0];
+        if (row) {
+            const dueAt = row.due_at instanceof Date ? row.due_at.toISOString() : String(row.due_at);
+            const assignedToCopy = Array.isArray(row.assigned_to_copy) ? row.assigned_to_copy.map((v) => String(v)) : [];
+            await enqueueFollowup({
+                reportId: String(row.id),
+                stage: stage,
+                dueAt,
+                assignedTo: String(row.assigned_to ?? ""),
+                assignedToCopy,
+                location: String(row.location ?? ""),
+                description: String(row.description ?? ""),
+                severity: String(row.severity ?? ""),
+                status: String(row.status ?? ""),
+                slaHours: Number(row.sla_hours ?? 24),
+            });
+        }
+        return;
+    }
+    const reports = await findReportsNeedingFollowup(50);
+    for (const report of reports) {
+        try {
+            await enqueueFollowup(report);
+        }
+        catch (error) {
+            console.error(`Failed to enqueue follow-up for ${report.reportId}:`, error);
+        }
+    }
 }

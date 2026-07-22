@@ -113,7 +113,6 @@ export declare const InterestedPartySchema: z.ZodObject<{
 export type ContextAnalysisInput = z.infer<typeof ContextAnalysisSchema>;
 export type InterestedPartyInput = z.infer<typeof InterestedPartySchema>;
 export declare class ContextService extends BaseService {
-    private contextService;
     private partyService;
     constructor();
     createContext(data: ContextAnalysisInput): Promise<any>;

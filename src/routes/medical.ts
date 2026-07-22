@@ -14,13 +14,12 @@ router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
   try {
-    const record = await medicalService.getById(String(req.params.id));
-    if (!record) return res.status(404).json({ error: "Medical record not found" });
-    res.json(record);
+    const stats = await medicalService.getStats();
+    res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch medical record" });
+    res.status(500).json({ error: "Failed to fetch medical stats" });
   }
 });
 
@@ -33,9 +32,19 @@ router.get("/employee/:employeeId", authenticateUser, async (req: AuthRequest, r
   }
 });
 
+router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
+  try {
+    const record = await medicalService.getById(String(req.params.id));
+    if (!record) return res.status(404).json({ error: "Medical record not found" });
+    res.json(record);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch medical record" });
+  }
+});
+
 router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
-    const record = await medicalService.create({ ...req.body, createdBy: req.user?.name || "System" });
+    const record = await medicalService.createRecord({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);
   } catch (error) {
     res.status(500).json({ error: "Failed to create medical record" });
@@ -57,15 +66,6 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
     res.json({ success: result });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete medical record" });
-  }
-});
-
-router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
-  try {
-    const stats = await medicalService.getStats();
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch medical stats" });
   }
 });
 

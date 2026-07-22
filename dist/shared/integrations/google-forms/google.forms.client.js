@@ -19,15 +19,6 @@ export class GoogleFormsClient {
         }
     }
 }
-export class MockGoogleFormsClient {
-    async submit(params) {
-        console.log(`[Mock Google Forms] Form ${params.formId}:`, params.data);
-        return { success: true };
-    }
-}
 export function getGoogleFormsClient() {
-    if (process.env.GOOGLE_FORMS_API_BASE_URL || process.env.GOOGLE_SHEETS_API_BASE_URL) {
-        return new GoogleFormsClient();
-    }
-    return new MockGoogleFormsClient();
+    return new GoogleFormsClient();
 }

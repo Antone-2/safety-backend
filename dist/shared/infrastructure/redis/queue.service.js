@@ -1,5 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { getEnv } from "../../../config/index.js";
+import { getBullMqRedisVersion } from "./redis.client.js";
 const redisUrl = getEnv().REDIS_URL;
 const bullConnection = redisUrl ? redisConnectionOptions(redisUrl) : undefined;
 function redisConnectionOptions(value) {
@@ -15,28 +16,32 @@ function redisConnectionOptions(value) {
         ...(url.protocol === "rediss:" ? { tls: {} } : {}),
     };
 }
+const queueFactory = {
+    queues: new Map(),
+    create: (name) => {
+        if (!bullConnection)
+            return undefined;
+        if (queueFactory.queues.has(name))
+            return queueFactory.queues.get(name);
+        const queue = new Queue(name, {
+            connection: bullConnection,
+            defaultJobOptions: {
+                attempts: 3,
+                backoff: { type: "exponential", delay: 1000 },
+                removeOnComplete: { count: 1000, age: 24 * 3600 },
+                removeOnFail: { count: 1000, age: 7 * 24 * 3600 },
+            },
+        });
+        queueFactory.queues.set(name, queue);
+        return queue;
+    },
+};
 export function createQueue(name) {
-    if (!bullConnection) {
+    const queue = queueFactory.create(name);
+    if (!queue) {
         throw new Error(`REDIS_URL is required to create the ${name} queue`);
     }
-    return new Queue(name, {
-        connection: bullConnection,
-        defaultJobOptions: {
-            attempts: 3,
-            backoff: {
-                type: "exponential",
-                delay: 1000,
-            },
-            removeOnComplete: {
-                count: 1000,
-                age: 24 * 3600,
-            },
-            removeOnFail: {
-                count: 1000,
-                age: 7 * 24 * 3600,
-            },
-        },
-    });
+    return queue;
 }
 export function createWorker(name, processor, concurrency = 1) {
     if (!bullConnection) {
@@ -54,8 +59,7 @@ export function createWorker(name, processor, concurrency = 1) {
     });
     return worker;
 }
-export const emailQueue = createQueue("email");
-export const smsQueue = createQueue("sms");
-export const fileProcessingQueue = createQueue("file-processing");
-export const reportQueue = createQueue("report-generation");
-export const slaQueue = createQueue("sla");
+export function getBullMqUnavailableMessage() {
+    const version = getBullMqRedisVersion();
+    return `BullMQ is unavailable${version ? ` on Redis ${version}` : ""}. Redis 5.0.0 or newer is required.`;
+}

@@ -39,19 +39,20 @@ export const InterestedPartySchema = z.object({
     createdBy: z.string().min(1).max(200),
 });
 export class ContextService extends BaseService {
-    contextService;
     partyService;
     constructor() {
-        super("placeholder", z.object({}));
-        this.contextService = new BaseService("context_analysis", ContextAnalysisSchema);
+        super("context_analysis", ContextAnalysisSchema);
         this.partyService = new BaseService("interested_parties", InterestedPartySchema);
     }
     async createContext(data) {
-        const record = await this.contextService.create({ ...data, analysisNo: `CTX-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}` });
+        const record = await this.create({
+            ...data,
+            analysisNo: `CTX-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+        });
         return record;
     }
-    async getContexts() { return this.contextService.getAll(); }
-    async getContextById(id) { return this.contextService.getById(id); }
+    async getContexts() { return this.getAll(); }
+    async getContextById(id) { return this.getById(id); }
     async createParty(data) {
         const record = await this.partyService.create({ ...data, partyNo: `IP-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}` });
         return record;

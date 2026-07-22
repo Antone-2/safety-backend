@@ -77,15 +77,6 @@ export const EnvSchema = z.object({
   AI_MODEL: optionalString,
   OPENAI_API_KEY: optionalString,
   AI_API_KEY: optionalString,
-  ENABLE_DEMO_LOGIN: optionalString,
-  DEMO_EMAIL: optionalEmail,
-  DEMO_PASSWORD: z.preprocess(
-    (value) =>
-      typeof value === "string" && value.trim() === "" ? undefined : value,
-    z.string().min(12).optional(),
-  ),
-  DEMO_NAME: optionalString,
-  DEMO_ROLE: optionalString,
 });
 
 export type Env = z.infer<typeof EnvSchema>;

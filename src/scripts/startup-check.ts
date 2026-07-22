@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { checkDatabase } from "../shared/infrastructure/database/postgres.client.js";
-import { checkRedis } from "../shared/infrastructure/redis/redis.client.js";
+import { checkDatabase, pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { checkRedis, redisClient } from "../shared/infrastructure/redis/redis.client.js";
 import { logger } from "../shared/utils/logger.js";
 import { runPostgresMigrations } from "../shared/infrastructure/database/migrations.js";
 
@@ -31,23 +31,30 @@ async function waitFor(name: string, check: () => Promise<{ ok: boolean }>) {
 }
 
 async function main() {
-  if (process.env.DATABASE_URL) {
-    await waitFor("postgres", checkDatabase);
-    if (process.argv.includes("--migrate")) {
-      const applied = await runPostgresMigrations();
-      logger.info({ applied }, "Startup migrations completed");
+  try {
+    if (process.env.DATABASE_URL) {
+      await waitFor("postgres", checkDatabase);
+      if (process.argv.includes("--migrate")) {
+        const applied = await runPostgresMigrations();
+        logger.info({ applied }, "Startup migrations completed");
+      }
+    } else if (process.env.REQUIRE_POSTGRES === "true") {
+      throw new Error("DATABASE_URL is required when REQUIRE_POSTGRES=true");
     }
-  } else if (process.env.REQUIRE_POSTGRES === "true") {
-    throw new Error("DATABASE_URL is required when REQUIRE_POSTGRES=true");
-  }
 
-  if (process.env.REDIS_URL) {
-    await waitFor("redis", checkRedis);
-  } else if (process.env.REQUIRE_REDIS === "true") {
-    throw new Error("REDIS_URL is required when REQUIRE_REDIS=true");
-  }
+    if (process.env.REDIS_URL) {
+      await waitFor("redis", checkRedis);
+    } else if (process.env.REQUIRE_REDIS === "true") {
+      throw new Error("REDIS_URL is required when REQUIRE_REDIS=true");
+    }
 
-  logger.info("Startup checks completed successfully");
+    logger.info("Startup checks completed successfully");
+  } finally {
+    await Promise.allSettled([
+      pgPool.end(),
+      redisClient ? redisClient.quit() : Promise.resolve("redis-not-configured"),
+    ]);
+  }
 }
 
 main().catch((error) => {

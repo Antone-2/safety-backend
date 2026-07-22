@@ -120,12 +120,12 @@ export function createEquipmentRouter() {
   router.get("/", rbacMiddleware("equipment:read"), controller.getAll);
   router.get("/stats", rbacMiddleware("equipment:read"), controller.getStats);
   router.get("/overdue", rbacMiddleware("equipment:read"), controller.getOverdue);
+  router.get("/inspections", rbacMiddleware("equipment:read"), controller.getInspections);
   router.get("/:id", rbacMiddleware("equipment:read"), controller.getById);
   router.post("/", rbacMiddleware("equipment:create"), validate(CreateEquipmentSchema), controller.create);
   router.patch("/:id", rbacMiddleware("equipment:update"), validate(UpdateEquipmentSchema), controller.update);
   router.delete("/:id", rbacMiddleware("equipment:delete"), controller.delete);
 
-  router.get("/inspections", rbacMiddleware("equipment:read"), controller.getInspections);
   router.post("/inspections", rbacMiddleware("equipment:create"), validate(CreateEquipmentInspectionSchema), controller.createInspection);
 
   return router;

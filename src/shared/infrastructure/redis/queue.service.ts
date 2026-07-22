@@ -1,5 +1,6 @@
 import { Queue, Worker, type Job } from "bullmq";
 import { getEnv } from "../../../config/index.js";
+import { getBullMqRedisVersion } from "./redis.client.js";
 
 const redisUrl = getEnv().REDIS_URL;
 const bullConnection = redisUrl ? redisConnectionOptions(redisUrl) : undefined;
@@ -22,28 +23,36 @@ export interface JobData {
   [key: string]: unknown;
 }
 
+type QueueFactory = {
+  create: <T extends JobData = JobData>(name: string) => Queue<T> | undefined;
+  queues: Map<string, Queue<any>>;
+};
+
+const queueFactory: QueueFactory = {
+  queues: new Map(),
+  create: <T extends JobData = JobData>(name: string) => {
+    if (!bullConnection) return undefined;
+    if (queueFactory.queues.has(name)) return queueFactory.queues.get(name) as Queue<T>;
+    const queue = new Queue<T>(name, {
+      connection: bullConnection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 1000 },
+        removeOnComplete: { count: 1000, age: 24 * 3600 },
+        removeOnFail: { count: 1000, age: 7 * 24 * 3600 },
+      },
+    });
+    queueFactory.queues.set(name, queue);
+    return queue;
+  },
+};
+
 export function createQueue<T extends JobData = JobData>(name: string) {
-  if (!bullConnection) {
+  const queue = queueFactory.create<T>(name);
+  if (!queue) {
     throw new Error(`REDIS_URL is required to create the ${name} queue`);
   }
-  return new Queue<T>(name, {
-    connection: bullConnection,
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: {
-        type: "exponential",
-        delay: 1000,
-      },
-      removeOnComplete: {
-        count: 1000,
-        age: 24 * 3600,
-      },
-      removeOnFail: {
-        count: 1000,
-        age: 7 * 24 * 3600,
-      },
-    },
-  });
+  return queue;
 }
 
 export function createWorker<T extends JobData = JobData>(
@@ -70,8 +79,7 @@ export function createWorker<T extends JobData = JobData>(
   return worker;
 }
 
-export const emailQueue = createQueue<{ to: string; subject: string; html: string }>("email");
-export const smsQueue = createQueue<{ to: string; body: string }>("sms");
-export const fileProcessingQueue = createQueue<{ key: string }>("file-processing");
-export const reportQueue = createQueue<{ type: string; params: unknown }>("report-generation");
-export const slaQueue = createQueue<{ resourceType: string; resourceId: string; deadline: string; action: string }>("sla");
+export function getBullMqUnavailableMessage() {
+  const version = getBullMqRedisVersion();
+  return `BullMQ is unavailable${version ? ` on Redis ${version}` : ""}. Redis 5.0.0 or newer is required.`;
+}

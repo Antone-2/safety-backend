@@ -356,13 +356,13 @@ export declare const CreateSpillSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     date: string;
-    time: string;
     severity: "Critical" | "Minor" | "Major";
     location: string;
     createdBy: string;
     quantity: number;
     unit: string;
     chemical: string;
+    time: string;
     cleanupCompleted: boolean;
     reportedToNema: boolean;
     photoUrl?: string | undefined;
@@ -372,13 +372,13 @@ export declare const CreateSpillSchema: z.ZodObject<{
     nemaReportDate?: string | undefined;
 }, {
     date: string;
-    time: string;
     severity: "Critical" | "Minor" | "Major";
     location: string;
     createdBy: string;
     quantity: number;
     unit: string;
     chemical: string;
+    time: string;
     photoUrl?: string | undefined;
     affectedArea?: string | undefined;
     responseActions?: string | undefined;
@@ -405,13 +405,13 @@ export declare const UpdateSpillSchema: z.ZodObject<{
     photoUrl: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     date?: string | undefined;
-    time?: string | undefined;
     severity?: "Critical" | "Minor" | "Major" | undefined;
     location?: string | undefined;
     photoUrl?: string | null | undefined;
     quantity?: number | undefined;
     unit?: string | undefined;
     chemical?: string | undefined;
+    time?: string | undefined;
     affectedArea?: string | null | undefined;
     responseActions?: string | null | undefined;
     cleanupCompleted?: boolean | undefined;
@@ -420,13 +420,13 @@ export declare const UpdateSpillSchema: z.ZodObject<{
     nemaReportDate?: string | null | undefined;
 }, {
     date?: string | undefined;
-    time?: string | undefined;
     severity?: "Critical" | "Minor" | "Major" | undefined;
     location?: string | undefined;
     photoUrl?: string | null | undefined;
     quantity?: number | undefined;
     unit?: string | undefined;
     chemical?: string | undefined;
+    time?: string | undefined;
     affectedArea?: string | null | undefined;
     responseActions?: string | null | undefined;
     cleanupCompleted?: boolean | undefined;

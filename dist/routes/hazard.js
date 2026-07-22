@@ -12,6 +12,15 @@ router.get("/", authenticateUser, async (_req, res) => {
         res.status(500).json({ error: "Failed to fetch hazards" });
     }
 });
+router.get("/stats", authenticateUser, async (_req, res) => {
+    try {
+        const stats = await hazardService.getStats();
+        res.json(stats);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to fetch hazard stats" });
+    }
+});
 router.get("/:id", authenticateUser, async (req, res) => {
     try {
         const hazard = await hazardService.getById(String(req.params.id));
@@ -25,7 +34,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
 });
 router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
-        const hazard = await hazardService.create({ ...req.body, createdBy: req.user?.name || "System" });
+        const hazard = await hazardService.createReport({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(hazard);
     }
     catch (error) {
@@ -48,15 +57,6 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
     }
     catch (error) {
         res.status(500).json({ error: "Failed to delete hazard" });
-    }
-});
-router.get("/stats", authenticateUser, async (_req, res) => {
-    try {
-        const stats = await hazardService.getStats();
-        res.json(stats);
-    }
-    catch (error) {
-        res.status(500).json({ error: "Failed to fetch hazard stats" });
     }
 });
 export default router;

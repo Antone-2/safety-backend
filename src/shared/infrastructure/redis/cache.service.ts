@@ -2,6 +2,7 @@ import { redisClient } from "./redis.client.js";
 
 export class CacheService {
   async get<T>(key: string): Promise<T | null> {
+    if (!redisClient) return null;
     const value = await redisClient.get(key);
     if (!value) return null;
     try {
@@ -12,19 +13,22 @@ export class CacheService {
   }
 
   async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+    if (!redisClient) return;
     const serialized = typeof value === "string" ? value : JSON.stringify(value);
     if (ttlSeconds) {
-      await redisClient.setEx(key, ttlSeconds, serialized);
+      await redisClient.setex(key, ttlSeconds, serialized);
     } else {
       await redisClient.set(key, serialized);
     }
   }
 
   async del(key: string): Promise<void> {
+    if (!redisClient) return;
     await redisClient.del(key);
   }
 
   async invalidate(pattern: string): Promise<void> {
+    if (!redisClient) return;
     const keys = await redisClient.keys(pattern);
     if (keys.length > 0) {
       await redisClient.del(keys);

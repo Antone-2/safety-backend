@@ -45,22 +45,23 @@ export type ContextAnalysisInput = z.infer<typeof ContextAnalysisSchema>;
 export type InterestedPartyInput = z.infer<typeof InterestedPartySchema>;
 
 export class ContextService extends BaseService {
-  private contextService: BaseService;
   private partyService: BaseService;
 
   constructor() {
-    super("placeholder", z.object({}));
-    this.contextService = new BaseService("context_analysis", ContextAnalysisSchema);
+    super("context_analysis", ContextAnalysisSchema);
     this.partyService = new BaseService("interested_parties", InterestedPartySchema);
   }
 
   async createContext(data: ContextAnalysisInput) {
-    const record = await this.contextService.create({ ...data, analysisNo: `CTX-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}` });
+    const record = await this.create({
+      ...data,
+      analysisNo: `CTX-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+    });
     return record;
   }
 
-  async getContexts() { return this.contextService.getAll(); }
-  async getContextById(id: string) { return this.contextService.getById(id); }
+  async getContexts() { return this.getAll(); }
+  async getContextById(id: string) { return this.getById(id); }
 
   async createParty(data: InterestedPartyInput) {
     const record = await this.partyService.create({ ...data, partyNo: `IP-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}` });

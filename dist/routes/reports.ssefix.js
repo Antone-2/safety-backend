@@ -9,7 +9,6 @@ async function findUserByIdentifier(_identifier) {
 async function sendSmsNotification(_report, _phone) {
     return false;
 }
-// import { isFirebaseAvailable, getFirebase } from "../lib/firebase.js";
 const router = Router();
 const sseClients = new Map();
 function getSsePayload(event, data) {
@@ -57,6 +56,7 @@ const mapRow = (row, comments) => ({
     complianceDueAt: row.complianceDueAt ?? undefined,
     assignedTo: row.assignedTo ?? undefined,
     photoUrl: String(row.photoUrl ?? "").trim() || getPlaceholderPhotoUrl(row.id),
+    sourceSyncedAt: row.source_synced_at ?? undefined,
 });
 const fetchComments = (db, reportId) => {
     return allRows(db, "SELECT author, at, text FROM comments WHERE reportId = ? ORDER BY at ASC", [reportId]);

@@ -101,4 +101,36 @@ router.post("/digests", authenticateUser, async (req, res) => {
     });
     res.status(201).json(digest);
 });
+router.get("/digests", authenticateUser, async (req, res) => {
+    const digests = await notificationCenterService.listDigests({ userId: req.user?.id });
+    res.json(digests);
+});
+router.patch("/digests/:id", authenticateUser, async (req, res) => {
+    const id = String(req.params.id);
+    const existing = await pgPool.query("SELECT * FROM notification_digest_subscriptions WHERE id = $1", [id]);
+    const row = existing.rows[0];
+    if (!row)
+        return res.status(404).json({ error: "Digest subscription not found" });
+    if (row.user_id !== req.user?.id && req.user?.role !== "super-admin") {
+        return res.status(403).json({ error: "Forbidden" });
+    }
+    const updated = await notificationCenterService.updateDigest(id, {
+        cadence: req.body.cadence,
+        channels: req.body.channels,
+        active: req.body.active,
+    });
+    res.json(updated);
+});
+router.delete("/digests/:id", authenticateUser, async (req, res) => {
+    const id = String(req.params.id);
+    const existing = await pgPool.query("SELECT * FROM notification_digest_subscriptions WHERE id = $1", [id]);
+    const row = existing.rows[0];
+    if (!row)
+        return res.status(404).json({ error: "Digest subscription not found" });
+    if (row.user_id !== req.user?.id && req.user?.role !== "super-admin") {
+        return res.status(403).json({ error: "Forbidden" });
+    }
+    await notificationCenterService.deleteDigest(id);
+    res.json({ ok: true });
+});
 export default router;

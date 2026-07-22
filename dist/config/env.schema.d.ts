@@ -56,11 +56,6 @@ export declare const EnvSchema: z.ZodObject<{
     AI_MODEL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     OPENAI_API_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     AI_API_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    ENABLE_DEMO_LOGIN: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    DEMO_EMAIL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    DEMO_PASSWORD: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    DEMO_NAME: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    DEMO_ROLE: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
 }, "strip", z.ZodTypeAny, {
     NODE_ENV: "development" | "production" | "test";
     PORT: number;
@@ -118,11 +113,6 @@ export declare const EnvSchema: z.ZodObject<{
     AI_MODEL?: string | undefined;
     OPENAI_API_KEY?: string | undefined;
     AI_API_KEY?: string | undefined;
-    ENABLE_DEMO_LOGIN?: string | undefined;
-    DEMO_EMAIL?: string | undefined;
-    DEMO_PASSWORD?: string | undefined;
-    DEMO_NAME?: string | undefined;
-    DEMO_ROLE?: string | undefined;
 }, {
     JWT_SECRET: string;
     NODE_ENV?: "development" | "production" | "test" | undefined;
@@ -180,10 +170,5 @@ export declare const EnvSchema: z.ZodObject<{
     AI_MODEL?: unknown;
     OPENAI_API_KEY?: unknown;
     AI_API_KEY?: unknown;
-    ENABLE_DEMO_LOGIN?: unknown;
-    DEMO_EMAIL?: unknown;
-    DEMO_PASSWORD?: unknown;
-    DEMO_NAME?: unknown;
-    DEMO_ROLE?: unknown;
 }>;
 export type Env = z.infer<typeof EnvSchema>;

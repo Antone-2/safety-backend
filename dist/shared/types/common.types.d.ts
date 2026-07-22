@@ -114,14 +114,14 @@ export declare const CreateUserSchema: z.ZodObject<{
     name: z.ZodString;
     role: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin"]>;
 }, "strip", z.ZodTypeAny, {
+    name: string;
     password: string;
     role: "super-admin" | "EHS-manager" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm";
-    name: string;
     email: string;
 }, {
+    name: string;
     password: string;
     role: "super-admin" | "EHS-manager" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm";
-    name: string;
     email: string;
 }>;
 export type LoginInput = z.infer<typeof LoginSchema>;

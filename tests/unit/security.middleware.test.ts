@@ -11,6 +11,7 @@ describe("buildSecurityHeaders", () => {
     expect(headers["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
     expect(headers["Permissions-Policy"]).toContain("geolocation=()");
     expect(headers["Content-Security-Policy"]).toContain("default-src 'self'");
+    expect(headers["Content-Security-Policy"]).not.toContain("unsafe-inline");
   });
 });
 

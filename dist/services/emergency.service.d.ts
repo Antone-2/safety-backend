@@ -108,8 +108,8 @@ export declare const EmergencyContactSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    role: string;
     name: string;
+    role: string;
     phone: string;
     createdBy: string;
     site: string;
@@ -121,8 +121,8 @@ export declare const EmergencyContactSchema: z.ZodObject<{
     notes?: string | undefined;
     alternatePhone?: string | undefined;
 }, {
-    role: string;
     name: string;
+    role: string;
     phone: string;
     createdBy: string;
     site: string;

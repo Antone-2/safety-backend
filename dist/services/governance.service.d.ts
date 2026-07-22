@@ -16,28 +16,28 @@ export declare const UserSchema: z.ZodObject<{
     createdAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "Active" | "Inactive" | "Locked";
-    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     name: string;
+    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     email: string;
     id?: string | undefined;
     phone?: string | undefined;
-    passwordHash?: string | undefined;
-    createdAt?: string | undefined;
     department?: string | undefined;
+    createdAt?: string | undefined;
     site?: string | undefined;
+    passwordHash?: string | undefined;
     avatarUrl?: string | undefined;
     lastLogin?: string | undefined;
 }, {
-    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     name: string;
+    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     email: string;
     status?: "Active" | "Inactive" | "Locked" | undefined;
     id?: string | undefined;
     phone?: string | undefined;
-    passwordHash?: string | undefined;
-    createdAt?: string | undefined;
     department?: string | undefined;
+    createdAt?: string | undefined;
     site?: string | undefined;
+    passwordHash?: string | undefined;
     avatarUrl?: string | undefined;
     lastLogin?: string | undefined;
 }>;
