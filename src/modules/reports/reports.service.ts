@@ -71,6 +71,125 @@ function isPgAvailable(): boolean {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
 
+function readPositiveNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function deriveOperationalWorkforceCount(): Promise<{
+  totalWorkforce: number | null;
+  source: "active-users" | "tracked-employees" | "configured-default";
+  activeUsers: number;
+  trackedEmployees: number;
+}> {
+  if (isPgAvailable()) {
+    try {
+      const result = await pgPool.query<{
+        active_users: string | number;
+        tracked_employees: string | number;
+      }>(`
+        SELECT
+          (SELECT COUNT(*) FROM users WHERE active = TRUE) AS active_users,
+          (
+            SELECT COUNT(*)
+            FROM (
+              SELECT DISTINCT employee_name
+              FROM training_records
+              WHERE employee_name IS NOT NULL AND employee_name <> ''
+              UNION
+              SELECT DISTINCT employee_name
+              FROM health_surveillance
+              WHERE employee_name IS NOT NULL AND employee_name <> ''
+            ) employees
+          ) AS tracked_employees
+      `);
+      const row = result.rows[0];
+      const activeUsers = Number(row?.active_users ?? 0);
+      const trackedEmployees = Number(row?.tracked_employees ?? 0);
+      if (trackedEmployees >= activeUsers && trackedEmployees > 0) {
+        return {
+          totalWorkforce: trackedEmployees,
+          source: "tracked-employees",
+          activeUsers,
+          trackedEmployees,
+        };
+      }
+      if (activeUsers > 0) {
+        return {
+          totalWorkforce: activeUsers,
+          source: "active-users",
+          activeUsers,
+          trackedEmployees,
+        };
+      }
+      return {
+        totalWorkforce: null,
+        source: "configured-default",
+        activeUsers,
+        trackedEmployees,
+      };
+    } catch {
+      return {
+        totalWorkforce: null,
+        source: "configured-default",
+        activeUsers: 0,
+        trackedEmployees: 0,
+      };
+    }
+  }
+
+  try {
+    const db = await getDb();
+    const activeUsers = Number(
+      allRows(db, "SELECT COUNT(*) AS count FROM users WHERE active = 1")[0]?.count ?? 0,
+    );
+    const trackedEmployees = Number(
+      allRows(
+        db,
+        `SELECT COUNT(*) AS count
+         FROM (
+           SELECT DISTINCT employee_name
+           FROM training_records
+           WHERE employee_name IS NOT NULL AND employee_name <> ''
+           UNION
+           SELECT DISTINCT employee_name
+           FROM health_surveillance
+           WHERE employee_name IS NOT NULL AND employee_name <> ''
+         ) employees`,
+      )[0]?.count ?? 0,
+    );
+    if (trackedEmployees >= activeUsers && trackedEmployees > 0) {
+      return {
+        totalWorkforce: trackedEmployees,
+        source: "tracked-employees",
+        activeUsers,
+        trackedEmployees,
+      };
+    }
+    if (activeUsers > 0) {
+      return {
+        totalWorkforce: activeUsers,
+        source: "active-users",
+        activeUsers,
+        trackedEmployees,
+      };
+    }
+    return {
+      totalWorkforce: null,
+      source: "configured-default",
+      activeUsers,
+      trackedEmployees,
+    };
+  } catch {
+    return {
+      totalWorkforce: null,
+      source: "configured-default",
+      activeUsers: 0,
+      trackedEmployees: 0,
+    };
+  }
+}
+
 export function buildPgFilter(filters: ReportFilters) {
   const where: string[] = ["1=1"];
   const params: unknown[] = [];
@@ -190,6 +309,12 @@ function toCamelCase(row: ReportRow): ReportRow {
         ? r.compliance_due_at.toISOString()
         : (r.compliance_due_at ?? undefined);
     r.photoUrl = String(r.photo_url ?? "").trim();
+    r.reporterEmail = typeof r.reporter_email === "string" ? r.reporter_email : (r.reporterEmail ?? undefined);
+    r.reporterPhone = typeof r.reporter_phone === "string" ? r.reporter_phone : (r.reporterPhone ?? undefined);
+    r.reporterWhatsApp =
+      typeof r.reporter_whatsapp === "string"
+        ? r.reporter_whatsapp
+        : (r.reporterWhatsApp ?? undefined);
     r.source = r.source;
     r.sourceSyncedAt =
       r.source_synced_at instanceof Date
@@ -248,6 +373,9 @@ function mapReport(
        ? sanitizeIsoDate(mapped.complianceDueAt, mapped.date, mapped.createdAt)
        : undefined,
      photoUrl: String(mapped.photoUrl ?? "").trim(),
+     reporterEmail: mapped.reporterEmail,
+     reporterPhone: mapped.reporterPhone,
+     reporterWhatsApp: mapped.reporterWhatsApp,
      source: mapped.source,
      sourceSyncedAt: mapped.sourceSyncedAt,
      auditHistory: audit.map((entry) => ({
@@ -510,6 +638,9 @@ function normalizeReportInput(input: any): ReportRow {
       (input.complianceRequired ?? input.compliance_required) ? 1 : 0,
     complianceDueAt: sanitizeIsoDate(input.complianceDueAt),
     photoUrl: input.photoUrl ?? input.photo_url ?? "",
+    reporterEmail: input.reporterEmail ?? input.reporter_email ?? "",
+    reporterPhone: input.reporterPhone ?? input.reporter_phone ?? "",
+    reporterWhatsApp: input.reporterWhatsApp ?? input.reporter_whatsapp ?? "",
     source: input.source ?? "manual",
     createdAt: input.createdAt ?? input.created_at ?? new Date().toISOString(),
     updatedAt: input.updatedAt ?? input.updated_at ?? new Date().toISOString(),
@@ -663,12 +794,13 @@ export class ReportsService {
       `INSERT INTO reports (
         id, date, location, reporter, description, severity, status, category, type,
         sla_hours, due_at, is_near_miss, anonymous, department, shift,
-        compliance_required, compliance_due_at, photo_url, source,
+        compliance_required, compliance_due_at, photo_url, reporter_email, reporter_phone,
+        reporter_whatsapp, source,
         is_recordable, is_lost_time_injury, medical_treatment_case,
         lost_work_days, restricted_work_days, classification_source,
         classification_verified_by, classification_verified_at
-      ) VALUES ($1, NOW(), $2, $3, $4, $5, 'Open', $6, $7, $8, $9, FALSE, $10, $11, $12, $13, $14, $15, 'manual',
-        $16, $17, $18, $19, $20, $21, $22, $23)`,
+      ) VALUES ($1, NOW(), $2, $3, $4, $5, 'Open', $6, $7, $8, $9, FALSE, $10, $11, $12, $13, $14, $15, $16, $17, 'manual',
+        $18, $19, $20, $21, $22, $23, $24, $25)`,
       [
         id,
         input.location,
@@ -685,6 +817,9 @@ export class ReportsService {
         complianceRequired,
         complianceDueAt,
         photoUrl,
+        input.reporterEmail?.trim() || null,
+        input.reporterPhone?.trim() || null,
+        input.reporterWhatsApp?.trim() || null,
         Boolean(input.isRecordable),
         Boolean(input.isLostTimeInjury),
         Boolean(input.medicalTreatmentCase),
@@ -753,11 +888,12 @@ export class ReportsService {
       `INSERT INTO reports (
         id, date, location, reporter, description, severity, status, category, type,
         slaHours, dueAt, isNearMiss, anonymous, department, shift,
-        complianceRequired, complianceDueAt, photoUrl, source, createdAt,
+        complianceRequired, complianceDueAt, photoUrl, reporterEmail, reporterPhone,
+        reporterWhatsApp, source, createdAt,
         isRecordable, isLostTimeInjury, medicalTreatmentCase, lostWorkDays,
         restrictedWorkDays, classificationSource, classificationVerifiedBy,
         classificationVerifiedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
         id,
         createdAt,
@@ -775,6 +911,9 @@ export class ReportsService {
         complianceRequired ? 1 : 0,
         complianceDueAt,
         photoUrl,
+        input.reporterEmail?.trim() || null,
+        input.reporterPhone?.trim() || null,
+        input.reporterWhatsApp?.trim() || null,
         "manual",
         createdAt,
         input.isRecordable ? 1 : 0,
@@ -1143,6 +1282,9 @@ export class ReportsService {
       assignedTo: "assigned_to",
       status: "status",
       photoUrl: "photo_url",
+      reporterEmail: "reporter_email",
+      reporterPhone: "reporter_phone",
+      reporterWhatsApp: "reporter_whatsapp",
       isRecordable: "is_recordable",
       isLostTimeInjury: "is_lost_time_injury",
       medicalTreatmentCase: "medical_treatment_case",
@@ -1448,13 +1590,10 @@ export class ReportsService {
     today.setHours(0, 0, 0, 0);
     const weekAgo = new Date(Date.now() - 7 * 86400000);
     const now = new Date();
-
-    function readPositiveNumber(value: unknown, fallback: number) {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-    }
-
-    const totalWorkforce = readPositiveNumber(process.env.TOTAL_WORKFORCE, 250);
+    const operationalWorkforce = await deriveOperationalWorkforceCount();
+    const configuredWorkforce = readPositiveNumber(process.env.TOTAL_WORKFORCE, 250);
+    const totalWorkforce =
+      operationalWorkforce.totalWorkforce ?? configuredWorkforce;
     const dailyWorkHours = readPositiveNumber(process.env.DAILY_WORK_HOURS, 8);
     const workDaysPerMonth = readPositiveNumber(process.env.WORK_DAYS_PER_MONTH, 26);
     const lostDayHours = readPositiveNumber(process.env.LOST_DAY_HOURS, 8);
@@ -1518,6 +1657,12 @@ export class ReportsService {
           Low: row?.severityLow ?? 0,
         },
         totalWorkforce,
+        workforceSource:
+          operationalWorkforce.totalWorkforce != null
+            ? operationalWorkforce.source
+            : "configured-default",
+        activeUsersCount: operationalWorkforce.activeUsers,
+        trackedEmployeesCount: operationalWorkforce.trackedEmployees,
         dailyWorkHours,
         workDaysPerMonth,
         lostDayHours,
@@ -1590,6 +1735,12 @@ export class ReportsService {
       closedCount: num(row?.closedCount),
       daysSinceLastLti,
       totalWorkforce,
+      workforceSource:
+        operationalWorkforce.totalWorkforce != null
+          ? operationalWorkforce.source
+          : "configured-default",
+      activeUsersCount: operationalWorkforce.activeUsers,
+      trackedEmployeesCount: operationalWorkforce.trackedEmployees,
       dailyWorkHours,
       workDaysPerMonth,
       lostDayHours,

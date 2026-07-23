@@ -7,6 +7,10 @@ import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
 const router = Router();
 const KEY = "app_settings";
+const IntegrationTestSchema = z.object({
+  type: z.enum(["slack", "teams", "zapier"]),
+  url: z.string().trim().optional(),
+});
 
 const defaultSchema = z.object({
   sites: z.array(z.string()),
@@ -19,6 +23,60 @@ const defaultSchema = z.object({
     freq: z.string(),
     email: z.string(),
   }),
+  accessMatrix: z.record(z.record(z.boolean())).optional(),
+  importHistory: z
+    .array(
+      z.object({
+        id: z.string(),
+        source: z.string(),
+        imported: z.number(),
+        skipped: z.number(),
+        at: z.string(),
+        message: z.string(),
+      }),
+    )
+    .optional(),
+  notificationLogs: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: z.string(),
+        title: z.string(),
+        message: z.string(),
+        at: z.string(),
+      }),
+    )
+    .optional(),
+  auditLog: z
+    .array(
+      z.object({
+        id: z.string(),
+        at: z.string(),
+        actor: z.string(),
+        action: z.string(),
+      }),
+    )
+    .optional(),
+  integrations: z
+    .object({
+      googleFormId: z.string(),
+      googleApiKey: z.string(),
+      googleSheetName: z.string(),
+      googleDriveFileId: z.string(),
+      slackWebhook: z.string(),
+      teamsWebhook: z.string(),
+      zapierKey: z.string(),
+    })
+    .optional(),
+  notificationContacts: z
+    .object({
+      email: z.string(),
+      phone: z.string(),
+      whatsapp: z.string(),
+      criticalOnly: z.boolean(),
+      frequency: z.string(),
+    })
+    .optional(),
 });
 
 function getDefaults(): SettingsPayload {
@@ -39,15 +97,49 @@ function getDefaults(): SettingsPayload {
       { name: "Critical", slaHours: 24, color: "#ef4444" },
     ],
     schedule: { enabled: true, freq: "weekly", email: process.env.DEFAULT_NOTIFICATION_EMAIL || "" },
+    accessMatrix: {},
+    importHistory: [],
+    notificationLogs: [],
+    auditLog: [],
+    integrations: {
+      googleFormId: "",
+      googleApiKey: "",
+      googleSheetName: "",
+      googleDriveFileId: "",
+      slackWebhook: "",
+      teamsWebhook: "",
+      zapierKey: "",
+    },
+    notificationContacts: {
+      email: process.env.DEFAULT_NOTIFICATION_EMAIL || "",
+      phone: "",
+      whatsapp: "",
+      criticalOnly: true,
+      frequency: "weekly",
+    },
   };
 }
 
-router.get("/", authenticateUser, requirePermission("settings:read"), async (_req: Request, res: Response) => {
+function isAllowedWebhookUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:") return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getStoredSettings() {
   const result = await pgPool.query<{ value: SettingsPayload }>(
     "SELECT value FROM app_settings WHERE key = $1",
     [KEY],
   );
-  return res.json(result.rows[0]?.value ?? getDefaults());
+  return result.rows[0]?.value ?? getDefaults();
+}
+
+router.get("/", authenticateUser, requirePermission("settings:read"), async (_req: Request, res: Response) => {
+  return res.json(await getStoredSettings());
 });
 
 router.put("/", authenticateUser, requirePermission("settings:update"), async (req: Request, res: Response) => {
@@ -72,6 +164,94 @@ router.post(
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors });
     const result = await sendTestEmail(parsed.data);
     res.json(result);
+  },
+);
+
+router.post(
+  "/test-integration",
+  authenticateUser,
+  requirePermission("settings:update"),
+  async (req: Request, res: Response) => {
+    const parsed = IntegrationTestSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors });
+
+    const settings = await getStoredSettings();
+    const integrationType = parsed.data.type;
+    const storedIntegrations = settings.integrations ?? getDefaults().integrations!;
+    const configuredUrl =
+      parsed.data.url ||
+      (integrationType === "slack"
+        ? storedIntegrations.slackWebhook
+        : integrationType === "teams"
+          ? storedIntegrations.teamsWebhook
+          : storedIntegrations.zapierKey);
+
+    if (!configuredUrl) {
+      return res.status(400).json({
+        ok: false,
+        delivered: false,
+        type: integrationType,
+        message: `No ${integrationType} endpoint is configured`,
+      });
+    }
+
+    if (!isAllowedWebhookUrl(configuredUrl)) {
+      return res.status(400).json({
+        ok: false,
+        delivered: false,
+        type: integrationType,
+        message:
+          integrationType === "zapier"
+            ? "Zapier testing requires a valid HTTPS webhook URL"
+            : `The configured ${integrationType} webhook must be a valid HTTPS URL`,
+      });
+    }
+
+    const payload =
+      integrationType === "teams"
+        ? {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            summary: "Crown Paints EHS integration test",
+            themeColor: "0078D7",
+            title: "Crown Paints EHS integration test",
+            text: "This is a live integration test from the admin settings page.",
+          }
+        : {
+            text: `Crown Paints EHS integration test at ${new Date().toISOString()}`,
+            source: "admin-settings",
+          };
+
+    try {
+      const response = await fetch(configuredUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        return res.status(502).json({
+          ok: false,
+          delivered: false,
+          type: integrationType,
+          message: `${integrationType} test failed with HTTP ${response.status}`,
+        });
+      }
+
+      return res.json({
+        ok: true,
+        delivered: true,
+        type: integrationType,
+        message: `${integrationType} integration test delivered successfully`,
+      });
+    } catch (error) {
+      return res.status(502).json({
+        ok: false,
+        delivered: false,
+        type: integrationType,
+        message: error instanceof Error ? error.message : `Failed to reach ${integrationType} endpoint`,
+      });
+    }
   },
 );
 

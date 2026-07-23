@@ -30,25 +30,42 @@ export interface Contractor {
   updatedAt: string;
 }
 
-export const CreateContractorSchema = z.object({
-  companyName: z.string().min(1).max(200),
-  registrationNumber: z.string().min(1).max(100),
-  contactPerson: z.string().min(1).max(200),
-  contactEmail: z.string().email().max(200),
-  contactPhone: z.string().max(20),
-  physicalAddress: z.string().max(500).optional(),
-  services: z.string().max(1000).optional(),
-  certifications: z.string().max(1000).optional(),
-  insuranceExpiry: z.string().optional(),
-  safetyRating: z.number().min(0).max(5).optional(),
-  lastAuditDate: z.string().optional(),
-  status: ContractorStatusSchema.default("Active"),
-  inductionDate: z.string().optional(),
-  inductionExpiry: z.string().optional(),
-  documents: z.array(z.string()).optional().default([]),
-  performanceScore: z.number().min(0).max(100).optional(),
-  createdBy: z.string().min(1).max(200),
-});
+export const CreateContractorSchema = z
+  .object({
+    companyName: z.string().min(1).max(200),
+    registrationNumber: z.string().min(1).max(100),
+    contactPerson: z.string().min(1).max(200),
+    contactEmail: z.string().email().max(200),
+    contactPhone: z.string().max(20),
+    physicalAddress: z.string().max(500).optional(),
+    services: z.string().max(1000).optional(),
+    certifications: z.string().max(1000).optional(),
+    insuranceExpiry: z.string().optional(),
+    safetyRating: z.number().min(0).max(5).optional(),
+    lastAuditDate: z.string().optional(),
+    status: ContractorStatusSchema.default("Active"),
+    inductionDate: z.string().optional(),
+    inductionExpiry: z.string().optional(),
+    documents: z.array(z.string()).optional().default([]),
+    performanceScore: z.number().min(0).max(100).optional(),
+    createdBy: z.string().min(1).max(200),
+  })
+  .refine(
+    (data) => {
+      if (!data.inductionDate || !data.inductionExpiry) return true;
+      const inductionDate = new Date(data.inductionDate);
+      const inductionExpiry = new Date(data.inductionExpiry);
+      return (
+        !Number.isNaN(inductionDate.getTime()) &&
+        !Number.isNaN(inductionExpiry.getTime()) &&
+        inductionExpiry >= inductionDate
+      );
+    },
+    {
+      message: "Induction expiry must be the same as or after the induction date",
+      path: ["inductionExpiry"],
+    },
+  );
 export type CreateContractorInput = z.infer<typeof CreateContractorSchema>;
 
 export const UpdateContractorSchema = z.object({

@@ -88,18 +88,34 @@ export interface FireInspection {
   createdAt: string;
 }
 
-export const CreateFireInspectionSchema = z.object({
-  equipmentId: z.string().min(1).max(100),
-  inspector: z.string().min(1).max(200),
-  inspectionDate: z.string().min(1),
-  findings: z.string().max(2000).optional(),
-  defects: z.string().max(1000).optional(),
-  actionRequired: z.string().max(1000).optional(),
-  passed: z.boolean(),
-  nextInspectionDue: z.string().min(1),
-  photoUrl: z.string().optional(),
-  createdBy: z.string().min(1).max(200),
-});
+export const CreateFireInspectionSchema = z
+  .object({
+    equipmentId: z.string().min(1).max(100),
+    inspector: z.string().min(1).max(200),
+    inspectionDate: z.string().min(1),
+    findings: z.string().max(2000).optional(),
+    defects: z.string().max(1000).optional(),
+    actionRequired: z.string().max(1000).optional(),
+    passed: z.boolean(),
+    nextInspectionDue: z.string().min(1),
+    photoUrl: z.string().optional(),
+    createdBy: z.string().min(1).max(200),
+  })
+  .refine(
+    (data) => {
+      const inspectionDate = new Date(data.inspectionDate);
+      const nextInspectionDue = new Date(data.nextInspectionDue);
+      return (
+        !Number.isNaN(inspectionDate.getTime()) &&
+        !Number.isNaN(nextInspectionDue.getTime()) &&
+        nextInspectionDue >= inspectionDate
+      );
+    },
+    {
+      message: "Next inspection due date must be the same as or after the inspection date",
+      path: ["nextInspectionDue"],
+    },
+  );
 export type CreateFireInspectionInput = z.infer<typeof CreateFireInspectionSchema>;
 
 export interface FireStats {

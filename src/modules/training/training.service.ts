@@ -1,4 +1,12 @@
-import { TrainingCourse, TrainingCourseInput, TrainingRecord, TrainingRecordInput, TrainingMatrix, TrainingMatrixInput } from "./training.types.js";
+import {
+  TrainingCourse,
+  TrainingCourseInput,
+  TrainingRecord,
+  TrainingRecordInput,
+  TrainingMatrix,
+  TrainingMatrixInput,
+  TrainingRecordInputSchema,
+} from "./training.types.js";
 import { TrainingRepository } from "./training.repository.js";
 import { NotFoundError } from "../../shared/domain/errors/index.js";
 
@@ -38,12 +46,29 @@ export class TrainingService {
   }
 
   async createRecord(data: TrainingRecordInput) {
-    return this.repository.createRecord(data);
+    return this.repository.createRecord(TrainingRecordInputSchema.parse(data));
   }
 
   async updateRecord(id: string, data: Partial<TrainingRecordInput>) {
     const existing = await this.repository.findRecordById(id);
     if (!existing) throw new NotFoundError("Training record");
+    TrainingRecordInputSchema.parse({
+      courseId: data.courseId ?? existing.courseId,
+      employeeId: data.employeeId ?? existing.employeeId,
+      employeeName: data.employeeName ?? existing.employeeName,
+      department: data.department ?? existing.department,
+      site: data.site ?? existing.site,
+      status: data.status ?? existing.status,
+      scheduledDate: data.scheduledDate ?? existing.scheduledDate,
+      completedDate: data.completedDate ?? existing.completedDate,
+      trainer: data.trainer ?? existing.trainer,
+      score: data.score ?? existing.score,
+      passed: data.passed ?? existing.passed,
+      certificateUrl: data.certificateUrl ?? existing.certificateUrl,
+      expiryDate: data.expiryDate ?? existing.expiryDate,
+      feedback: data.feedback ?? existing.feedback,
+      createdBy: existing.createdBy,
+    });
     return this.repository.updateRecord(id, data);
   }
 

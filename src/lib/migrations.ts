@@ -29,7 +29,10 @@ const MIGRATIONS: { name: string; sql: string }[] = [
       shift TEXT NOT NULL,
       complianceRequired INTEGER NOT NULL DEFAULT 0,
       complianceDueAt TEXT,
-      photoUrl TEXT NOT NULL
+      photoUrl TEXT NOT NULL,
+      reporterEmail TEXT,
+      reporterPhone TEXT,
+      reporterWhatsApp TEXT
     )`,
   },
   {
@@ -959,6 +962,12 @@ const MIGRATIONS: { name: string; sql: string }[] = [
           CREATE INDEX IF NOT EXISTS idx_ai_documents_category ON ai_documents(category);
           CREATE INDEX IF NOT EXISTS idx_ai_feedback_feature ON ai_feedback(feature);
           CREATE INDEX IF NOT EXISTS idx_ai_knowledge_base_source ON ai_knowledge_base(source_document_id);`,
+  },
+  {
+    name: "048_add_report_contact_fields",
+    sql: `ALTER TABLE reports ADD COLUMN reporterEmail TEXT;
+ALTER TABLE reports ADD COLUMN reporterPhone TEXT;
+ALTER TABLE reports ADD COLUMN reporterWhatsApp TEXT;`,
   },
 ];
 

@@ -43,6 +43,9 @@ export interface Report {
   complianceDueAt?: string;
   photoUrl: string;
   photos?: string[];
+  reporterEmail?: string;
+  reporterPhone?: string;
+  reporterWhatsApp?: string;
 }
 
 export const CreateReportSchema = z.object({
@@ -61,6 +64,9 @@ export const CreateReportSchema = z.object({
   medicalTreatmentCase: z.boolean().optional(),
   lostWorkDays: z.number().int().min(0).max(36500).optional(),
   restrictedWorkDays: z.number().int().min(0).max(36500).optional(),
+  reporterEmail: z.string().trim().email().optional().or(z.literal("")),
+  reporterPhone: z.string().trim().max(30).optional(),
+  reporterWhatsApp: z.string().trim().max(30).optional(),
   photoUrl: z
     .string()
     .trim()
@@ -134,6 +140,44 @@ export interface SettingsPayload {
   hazards: string[];
   severities: { name: string; slaHours: number; color: string }[];
   schedule: { enabled: boolean; freq: string; email: string };
+  accessMatrix?: Record<string, Record<string, boolean>>;
+  importHistory?: Array<{
+    id: string;
+    source: string;
+    imported: number;
+    skipped: number;
+    at: string;
+    message: string;
+  }>;
+  notificationLogs?: Array<{
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    at: string;
+  }>;
+  auditLog?: Array<{
+    id: string;
+    at: string;
+    actor: string;
+    action: string;
+  }>;
+  integrations?: {
+    googleFormId: string;
+    googleApiKey: string;
+    googleSheetName: string;
+    googleDriveFileId: string;
+    slackWebhook: string;
+    teamsWebhook: string;
+    zapierKey: string;
+  };
+  notificationContacts?: {
+    email: string;
+    phone: string;
+    whatsapp: string;
+    criticalOnly: boolean;
+    frequency: string;
+  };
 }
 
 export const UserRoleSchema = z.enum([

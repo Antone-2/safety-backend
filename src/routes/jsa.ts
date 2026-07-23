@@ -14,6 +14,7 @@ router.get("/", authenticateUser, async (req: AuthRequest, res) => {
     const jsas = await jsaService.getJsaList(filters);
     res.json(jsas);
   } catch (error) {
+    console.error("Failed to fetch JSAs:", error);
     res.status(500).json({ error: "Failed to fetch JSAs" });
   }
 });

@@ -36,23 +36,48 @@ export interface WasteRecord {
   updatedAt: string;
 }
 
-export const CreateWasteSchema = z.object({
-  type: WasteTypeSchema,
-  category: z.string().min(1).max(100),
-  description: z.string().min(1).max(500),
-  quantity: z.number().min(0),
-  unit: z.string().min(1).max(20),
-  generatedDate: z.string().min(1),
-  storedLocation: z.string().min(1).max(200),
-  disposedDate: z.string().optional(),
-  disposalMethod: z.string().max(200).optional(),
-  disposalContractor: z.string().max(200).optional(),
-  manifestNumber: z.string().max(100).optional(),
-  status: WasteStatusSchema.default("Stored"),
-  photoUrl: z.string().optional(),
-  notes: z.string().max(500).optional(),
-  createdBy: z.string().min(1).max(200),
-});
+export const CreateWasteSchema = z
+  .object({
+    type: WasteTypeSchema,
+    category: z.string().min(1).max(100),
+    description: z.string().min(1).max(500),
+    quantity: z.number().min(0),
+    unit: z.string().min(1).max(20),
+    generatedDate: z.string().min(1),
+    storedLocation: z.string().min(1).max(200),
+    disposedDate: z.string().optional(),
+    disposalMethod: z.string().max(200).optional(),
+    disposalContractor: z.string().max(200).optional(),
+    manifestNumber: z.string().max(100).optional(),
+    status: WasteStatusSchema.default("Stored"),
+    photoUrl: z.string().optional(),
+    notes: z.string().max(500).optional(),
+    createdBy: z.string().min(1).max(200),
+  })
+  .refine(
+    (data) => {
+      if (!data.disposedDate) return true;
+      const generatedDate = new Date(data.generatedDate);
+      const disposedDate = new Date(data.disposedDate);
+      return (
+        !Number.isNaN(generatedDate.getTime()) &&
+        !Number.isNaN(disposedDate.getTime()) &&
+        disposedDate >= generatedDate
+      );
+    },
+    {
+      message: "Disposed date must be the same as or after the generated date",
+      path: ["disposedDate"],
+    },
+  )
+  .refine(
+    (data) =>
+      !["Disposed", "Recycled"].includes(data.status) || Boolean(data.disposedDate?.trim()),
+    {
+      message: "Disposed date is required when waste status is Disposed or Recycled",
+      path: ["disposedDate"],
+    },
+  );
 export type CreateWasteInput = z.infer<typeof CreateWasteSchema>;
 
 export const UpdateWasteSchema = z.object({

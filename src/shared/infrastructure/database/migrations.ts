@@ -131,6 +131,9 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         date TIMESTAMPTZ NOT NULL DEFAULT NOW() CHECK (EXTRACT(YEAR FROM date) BETWEEN 2000 AND 2100),
         location TEXT NOT NULL,
         reporter TEXT NOT NULL,
+        reporter_email TEXT,
+        reporter_phone TEXT,
+        reporter_whatsapp TEXT,
         description TEXT NOT NULL,
         severity TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'Open',
@@ -1603,6 +1606,18 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
       UPDATE auth_sessions
       SET last_seen_at = COALESCE(last_seen_at, created_at)
       WHERE last_seen_at IS NULL;
+    `,
+  },
+  {
+    id: "048_reports_reporter_contact_fields",
+    description: "Persist reporter contact details on reports",
+    sql: `
+      ALTER TABLE reports
+        ADD COLUMN IF NOT EXISTS reporter_email TEXT;
+      ALTER TABLE reports
+        ADD COLUMN IF NOT EXISTS reporter_phone TEXT;
+      ALTER TABLE reports
+        ADD COLUMN IF NOT EXISTS reporter_whatsapp TEXT;
     `,
   },
 ];

@@ -11,7 +11,7 @@ let bullMqRedisVersion: string | null = null;
 function isLocalhostRedisUrl(url: string): boolean {
   const normalized = url.replace(/^redis(s?):\/\//i, "").split("/")[0]?.split("?")[0]?.split("@").pop()?.trim() || "";
   if (!normalized) return true;
-  const [host] = normalized.split(":");
+  const host = normalized.replace(/^\[|\]$/g, "").split(":")[0]?.trim();
   if (!host) return true;
   return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host.toLowerCase());
 }

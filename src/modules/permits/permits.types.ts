@@ -71,35 +71,47 @@ export interface Permit {
   updatedAt: string;
 }
 
-export const CreatePermitSchema = z.object({
-  type: PermitTypeSchema,
-  location: z.string().min(1).max(200),
-  applicant: z.string().min(1).max(200),
-  applicantContact: z.string().max(50).optional(),
-  supervisor: z.string().max(200).optional(),
-  ehsOfficer: z.string().max(200).optional(),
-  issuer: z.string().max(200).optional(),
-  approver: z.string().max(200).optional(),
-  description: z.string().min(1).max(5000),
-  startDate: z.string().min(1),
-  endDate: z.string().min(1),
-  hazards: z.string().max(2000).optional(),
-  precautions: z.string().max(2000).optional(),
-  ppeRequired: z.array(z.string().max(100)).optional(),
-  isolationRequired: z.boolean().optional().default(false),
-  isolationDetails: z.string().max(2000).optional(),
-  fireWatchRequired: z.boolean().optional().default(false),
-  gasTestRequired: z.boolean().optional().default(false),
-  gasTestResult: z.string().max(200).optional(),
-  gasTestBefore: z.string().optional().nullable(),
-  gasTestAfter: z.string().optional().nullable(),
-  fireWatchAssigned: z.string().optional().nullable(),
-  attachments: z.array(z.any()).optional().default([]),
-  comments: z.array(z.any()).optional().default([]),
-  linkedJsaId: z.string().optional(),
-  linkedIncidentId: z.string().optional(),
-  createdBy: z.string().min(1).max(200),
-});
+export const CreatePermitSchema = z
+  .object({
+    type: PermitTypeSchema,
+    location: z.string().min(1).max(200),
+    applicant: z.string().min(1).max(200),
+    applicantContact: z.string().max(50).optional(),
+    supervisor: z.string().max(200).optional(),
+    ehsOfficer: z.string().max(200).optional(),
+    issuer: z.string().max(200).optional(),
+    approver: z.string().max(200).optional(),
+    description: z.string().min(1).max(5000),
+    startDate: z.string().min(1),
+    endDate: z.string().min(1),
+    hazards: z.string().max(2000).optional(),
+    precautions: z.string().max(2000).optional(),
+    ppeRequired: z.array(z.string().max(100)).optional(),
+    isolationRequired: z.boolean().optional().default(false),
+    isolationDetails: z.string().max(2000).optional(),
+    fireWatchRequired: z.boolean().optional().default(false),
+    gasTestRequired: z.boolean().optional().default(false),
+    gasTestResult: z.string().max(200).optional(),
+    gasTestBefore: z.string().optional().nullable(),
+    gasTestAfter: z.string().optional().nullable(),
+    fireWatchAssigned: z.string().optional().nullable(),
+    attachments: z.array(z.any()).optional().default([]),
+    comments: z.array(z.any()).optional().default([]),
+    linkedJsaId: z.string().optional(),
+    linkedIncidentId: z.string().optional(),
+    createdBy: z.string().min(1).max(200),
+  })
+  .refine(
+    (data) => {
+      const start = new Date(data.startDate);
+      const end = new Date(data.endDate);
+      return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start;
+    },
+    {
+      message: "Permit end date must be the same as or after the start date",
+      path: ["endDate"],
+    },
+  );
 export type CreatePermitInput = z.infer<typeof CreatePermitSchema>;
 
 export const UpdatePermitSchema = z.object({
