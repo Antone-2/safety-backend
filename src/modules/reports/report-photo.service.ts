@@ -1,7 +1,10 @@
 import { randomUUID } from "crypto";
 
 import { getDbClient } from "../../shared/infrastructure/database/postgres.client.js";
-import { uploadToS3 } from "../../shared/infrastructure/storage/s3.service.js";
+import {
+  isS3StorageConfigured,
+  uploadToS3,
+} from "../../shared/infrastructure/storage/s3.service.js";
 import { logger } from "../../shared/utils/logger.js";
 
 const DRIVE_FILE_RE =
@@ -119,11 +122,21 @@ export async function storeReportPhotoFromDrive(
   let storageKey: string | null = null;
   let storageUrl: string | null = null;
   let photoData: Buffer | null = null;
-  try {
-    storageKey = buildReportPhotoStorageKey(reportId, fetched.contentType, originalName);
-    storageUrl = await uploadToS3(storageKey, fetched.data, fetched.contentType);
-  } catch (error) {
-    logger.warn({ err: error as Error, reportId, sourceUrl: rawUrl }, "Failed to upload report photo to object storage");
+  if (isS3StorageConfigured()) {
+    try {
+      storageKey = buildReportPhotoStorageKey(reportId, fetched.contentType, originalName);
+      storageUrl = await uploadToS3(storageKey, fetched.data, fetched.contentType);
+    } catch (error) {
+      logger.warn(
+        { err: error as Error, reportId, sourceUrl: rawUrl },
+        "Failed to upload report photo to object storage",
+      );
+    }
+  } else {
+    logger.debug(
+      { reportId, sourceUrl: rawUrl },
+      "S3 storage not configured; storing report photo in database fallback",
+    );
   }
 
   if (!storageKey || !storageUrl) {

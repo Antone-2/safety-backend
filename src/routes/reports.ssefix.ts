@@ -4,6 +4,7 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { SeveritySchema, StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification, sendAssignmentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
+import { tryParseReportDate } from "../shared/utils/report-date.js";
 // import { authMiddleware } from "./auth.js";
 
 
@@ -134,10 +135,15 @@ function reportDedupeKey(row: any) {
 
 function dedupeReports(rows: any[]) {
   const byKey = new Map<string, any>();
+  const toTime = (value: unknown) => {
+    const parsed = tryParseReportDate(value);
+    return parsed ? new Date(parsed).getTime() : Number.NEGATIVE_INFINITY;
+  };
+
   for (const row of rows) {
     const key = reportDedupeKey(row);
     const existing = byKey.get(key);
-    if (!existing || new Date(row.date).getTime() >= new Date(existing.date).getTime()) {
+    if (!existing || toTime(row.date) >= toTime(existing.date)) {
       byKey.set(key, row);
     }
   }

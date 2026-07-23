@@ -25,6 +25,7 @@ import {
   submitCorrectiveActionRequest,
   updateCorrectiveActionRequestReview,
 } from "../../services/corrective-action-request.service.js";
+import { auditReportTimestamps } from "./report-timestamp-audit.service.js";
 
 const BulkReportStatusSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100),
@@ -335,6 +336,30 @@ export function createReportsRouter() {
           error instanceof Error ? error.message : "Failed to add corrective action comment";
         const status = /not found/i.test(message) ? 404 : 500;
         res.status(status).json({ error: message });
+      }
+    },
+  );
+
+  router.get(
+    "/date-audit",
+    authenticateUser,
+    requirePermission("reports:read"),
+    async (req, res) => {
+      const requestedSampleLimit = Number(String(req.query.sampleLimit ?? "25"));
+      const sampleLimit = Number.isFinite(requestedSampleLimit)
+        ? Math.min(100, Math.max(0, Math.trunc(requestedSampleLimit)))
+        : 25;
+
+      try {
+        const summary = await auditReportTimestamps(sampleLimit);
+        res.json({
+          ...summary,
+          sampleLimit,
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("Failed to audit report timestamps", error);
+        res.status(500).json({ error: "Failed to audit report timestamps" });
       }
     },
   );

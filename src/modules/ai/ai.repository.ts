@@ -4,6 +4,16 @@ import { createHash } from "crypto";
 
 const now = () => new Date().toISOString();
 
+function parseJsonArray(value: unknown, fallback: string[]) {
+  if (!value || typeof value !== "string") return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export class AiRepository {
   async savePrediction(
     feature: string,
@@ -220,8 +230,21 @@ export class AiRepository {
       requireCitations: Boolean(row.requireCitations),
       allowExports: Boolean(row.allowExports),
       maxSourceRecords: Number(row.maxSourceRecords || 50),
-      allowedRoles: JSON.parse(row.allowedRoles || "[]"),
-      ragSources: JSON.parse(row.ragSources || "[]"),
+      allowedRoles: parseJsonArray(row.allowedRoles, [
+        "super-admin",
+        "EHS-manager",
+        "hse-officer",
+        "plant-manager",
+        "factory-manager",
+      ]),
+      ragSources: parseJsonArray(row.ragSources, [
+        "policies",
+        "procedures",
+        "reports",
+        "capa",
+        "audits",
+        "training",
+      ]),
     };
   }
 

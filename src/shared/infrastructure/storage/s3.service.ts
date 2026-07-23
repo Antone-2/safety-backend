@@ -10,6 +10,10 @@ function requireStorageConfig(value: string | undefined, name: string): string {
   return value;
 }
 
+export function isS3StorageConfigured(): boolean {
+  return Boolean(env.S3_BUCKET && env.S3_PUBLIC_URL);
+}
+
 export const s3Client = new S3Client({
   region: env.S3_REGION,
   endpoint: env.S3_ENDPOINT,

@@ -9,6 +9,10 @@ import {
 } from "../../lib/email.js";
 import { awardReporterPoints } from "../../services/leaderboard.service.js";
 import { scheduleFollowupsForReport } from "../../services/report-followup.service.js";
+import {
+  sanitizeReportDate,
+  tryParseReportDateWithFallbacks,
+} from "../../shared/utils/report-date.js";
 
 const PHOTO_COL = "photo_url";
 const DATE_COL = "date";
@@ -33,11 +37,6 @@ const SOURCE_COL = "source";
 const RESOLUTION_COL = "resolution_days";
 const CREATED_COL = "created_at";
 const UPDATED_COL = "updated_at";
-const GOOGLE_SHEETS_UTC_OFFSET_MINUTES = Number(
-  process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180",
-);
-const GOOGLE_SHEETS_DATE_ORDER = (process.env.GOOGLE_SHEETS_DATE_ORDER || "mdy").toLowerCase();
-
 export type ReportFilters = {
   status?: string;
   severity?: string;
@@ -336,55 +335,73 @@ function mapReport(
 ) {
   if (!row || !row.id) return null;
   const mapped = toCamelCase(row);
-   return {
-     id: mapped.id,
-     date: sanitizeIsoDate(mapped.date, mapped.createdAt, mapped.updatedAt),
-     location: mapped.location,
-     reporter: mapped.reporter,
-     description: mapped.description,
-     severity: mapped.severity,
-     status: mapped.status,
-     category: mapped.category,
-     type: mapped.type,
-     resolutionDays: mapped.resolutionDays,
-     slaHours: mapped.slaHours,
-     dueAt: sanitizeIsoDate(mapped.dueAt, mapped.date, mapped.createdAt),
-     assignedTo: mapped.assignedTo,
-     assignedToCopy: parseJsonArray(mapped.assignedToCopy),
-     comments: comments.map((c) => ({
-       author: c.author,
-       at: c.created_at ?? c.at ?? "",
-       text: c.text,
-     })),
-     isNearMiss: mapped.isNearMiss,
-     isRecordable: Boolean(mapped.isRecordable),
-     isLostTimeInjury: Boolean(mapped.isLostTimeInjury),
-     medicalTreatmentCase: Boolean(mapped.medicalTreatmentCase),
-     lostWorkDays: Number(mapped.lostWorkDays ?? 0),
-     restrictedWorkDays: Number(mapped.restrictedWorkDays ?? 0),
-     classificationSource: mapped.classificationSource,
-     classificationVerifiedBy: mapped.classificationVerifiedBy,
-     classificationVerifiedAt: mapped.classificationVerifiedAt,
-     anonymous: mapped.anonymous,
-     department: mapped.department,
-     shift: mapped.shift,
-     complianceRequired: mapped.complianceRequired,
-     complianceDueAt: mapped.complianceDueAt
-       ? sanitizeIsoDate(mapped.complianceDueAt, mapped.date, mapped.createdAt)
-       : undefined,
-     photoUrl: String(mapped.photoUrl ?? "").trim(),
-     reporterEmail: mapped.reporterEmail,
-     reporterPhone: mapped.reporterPhone,
-     reporterWhatsApp: mapped.reporterWhatsApp,
-     source: mapped.source,
-     sourceSyncedAt: mapped.sourceSyncedAt,
-     auditHistory: audit.map((entry) => ({
-       at: entry.created_at ?? entry.timestamp ?? "",
-       actor: entry.actor_email || entry.actor || entry.actor_id || "System",
-       action: entry.action,
-       detail: entry.context?.detail ?? entry.context?.event ?? undefined,
-     })),
-   };
+  const safeDate = tryParseReportDateWithFallbacks(
+    mapped.date,
+    mapped.createdAt,
+    mapped.updatedAt,
+  );
+  if (!safeDate) {
+    console.warn("Skipping report with invalid stored date fields:", mapped.id);
+    return null;
+  }
+  const safeDueAt =
+    tryParseReportDateWithFallbacks(mapped.dueAt, safeDate, mapped.createdAt) ??
+    new Date(safeDate).toISOString();
+  const safeComplianceDueAt = mapped.complianceDueAt
+    ? tryParseReportDateWithFallbacks(
+        mapped.complianceDueAt,
+        safeDate,
+        mapped.createdAt,
+      )
+    : undefined;
+
+  return {
+    id: mapped.id,
+    date: safeDate,
+    location: mapped.location,
+    reporter: mapped.reporter,
+    description: mapped.description,
+    severity: mapped.severity,
+    status: mapped.status,
+    category: mapped.category,
+    type: mapped.type,
+    resolutionDays: mapped.resolutionDays,
+    slaHours: mapped.slaHours,
+    dueAt: safeDueAt,
+    assignedTo: mapped.assignedTo,
+    assignedToCopy: parseJsonArray(mapped.assignedToCopy),
+    comments: comments.map((c) => ({
+      author: c.author,
+      at: c.created_at ?? c.at ?? "",
+      text: c.text,
+    })),
+    isNearMiss: mapped.isNearMiss,
+    isRecordable: Boolean(mapped.isRecordable),
+    isLostTimeInjury: Boolean(mapped.isLostTimeInjury),
+    medicalTreatmentCase: Boolean(mapped.medicalTreatmentCase),
+    lostWorkDays: Number(mapped.lostWorkDays ?? 0),
+    restrictedWorkDays: Number(mapped.restrictedWorkDays ?? 0),
+    classificationSource: mapped.classificationSource,
+    classificationVerifiedBy: mapped.classificationVerifiedBy,
+    classificationVerifiedAt: mapped.classificationVerifiedAt,
+    anonymous: mapped.anonymous,
+    department: mapped.department,
+    shift: mapped.shift,
+    complianceRequired: mapped.complianceRequired,
+    complianceDueAt: safeComplianceDueAt,
+    photoUrl: String(mapped.photoUrl ?? "").trim(),
+    reporterEmail: mapped.reporterEmail,
+    reporterPhone: mapped.reporterPhone,
+    reporterWhatsApp: mapped.reporterWhatsApp,
+    source: mapped.source,
+    sourceSyncedAt: mapped.sourceSyncedAt,
+    auditHistory: audit.map((entry) => ({
+      at: entry.created_at ?? entry.timestamp ?? "",
+      actor: entry.actor_email || entry.actor || entry.actor_id || "System",
+      action: entry.action,
+      detail: entry.context?.detail ?? entry.context?.event ?? undefined,
+    })),
+  };
 }
 
 function parseJsonArray(value: unknown): string[] {
@@ -490,106 +507,7 @@ async function syncReportWorkflowState(input: {
 }
 
 function sanitizeIsoDate(value: unknown, ...fallbacks: string[]): string {
-  const utcOffsetMinutes = Number.isFinite(GOOGLE_SHEETS_UTC_OFFSET_MINUTES)
-    ? GOOGLE_SHEETS_UTC_OFFSET_MINUTES
-    : 180;
-  const fromSheetLocalTime = (
-    year: number,
-    month: number,
-    day: number,
-    hour = 0,
-    minute = 0,
-    second = 0,
-    millisecond = 0,
-  ) =>
-    new Date(
-      Date.UTC(year, month - 1, day, hour, minute, second, millisecond) -
-        utcOffsetMinutes * 60_000,
-    );
-
-  const attempt = (raw: string) => {
-    const trimmed = raw.trim();
-    if (!trimmed) return "";
-
-    const spreadsheetSerial = Number(trimmed);
-    if (
-      Number.isFinite(spreadsheetSerial) &&
-      spreadsheetSerial >= 20000 &&
-      spreadsheetSerial < 100000
-    ) {
-      const excelEpoch = Date.UTC(1899, 11, 30);
-      const parsed = new Date(
-        excelEpoch + spreadsheetSerial * 86400000 - utcOffsetMinutes * 60_000,
-      );
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toISOString();
-      }
-    }
-
-    const localDate = trimmed.match(
-      /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[T,\s]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?\s*(AM|PM)?)?$/i,
-    );
-    if (localDate) {
-      const [, firstRaw, secondRaw, yearRaw, hourRaw, minuteRaw, secondPartRaw, meridiemRaw] =
-        localDate;
-      const first = Number(firstRaw);
-      const second = Number(secondRaw);
-      const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
-      const monthFirst =
-        GOOGLE_SHEETS_DATE_ORDER === "mdy"
-          ? second > 12 || first <= 12
-          : GOOGLE_SHEETS_DATE_ORDER === "dmy"
-            ? false
-            : second > 12 && first <= 12;
-      const day = monthFirst ? second : first;
-      const month = monthFirst ? first : second;
-      let hour = Number(hourRaw || 0);
-      const minute = Number(minuteRaw || 0);
-      const secondPart = Number(secondPartRaw || 0);
-      const meridiem = meridiemRaw?.toUpperCase();
-      if (meridiem === "PM" && hour < 12) hour += 12;
-      if (meridiem === "AM" && hour === 12) hour = 0;
-
-      const parsed = fromSheetLocalTime(year, month, day, hour, minute, secondPart);
-      const localCheck = new Date(parsed.getTime() + utcOffsetMinutes * 60_000);
-      if (
-        localCheck.getUTCFullYear() === year &&
-        localCheck.getUTCMonth() === month - 1 &&
-        localCheck.getUTCDate() === day
-      ) {
-        return parsed.toISOString();
-      }
-    }
-
-    const isoLocal = trimmed.match(
-      /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/,
-    );
-    if (isoLocal) {
-      const [, year, month, day, hour, minute, second = "0"] = isoLocal;
-      return fromSheetLocalTime(+year, +month, +day, +hour, +minute, +second).toISOString();
-    }
-
-    const parsed = new Date(trimmed);
-    if (
-      !Number.isNaN(parsed.getTime()) &&
-      Number.isFinite(parsed.getTime()) &&
-      parsed.getUTCFullYear() >= 2000 &&
-      parsed.getUTCFullYear() <= 2100
-    ) {
-      return parsed.toISOString();
-    }
-    return "";
-  };
-
-  const primary = attempt(typeof value === "string" ? value : String(value ?? ""));
-  if (primary) return primary;
-
-  for (const fallback of fallbacks) {
-    const result = attempt(fallback);
-    if (result) return result;
-  }
-
-  return new Date().toISOString();
+  return sanitizeReportDate(value, ...fallbacks);
 }
 
 function getPlaceholderPhotoUrl(id: unknown, size = 80) {

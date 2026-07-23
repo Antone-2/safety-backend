@@ -7,6 +7,7 @@ import { broadcastReport } from "../modules/reports/reports.module.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 import { storeReportPhotoFromDrive } from "../modules/reports/report-photo.service.js";
 import { logger } from "../shared/utils/logger.js";
+import { parseReportDate } from "../shared/utils/report-date.js";
 
 const router = Router();
 const SYNC_STATE_ID = "google_forms";
@@ -324,95 +325,13 @@ function normalizeStatus(status?: string): "Open" | "In Progress" | "Closed" {
 }
 
 export function parseDate(dateStr?: string): string {
-  if (!dateStr) throw new Error("Google Sheets row is missing its report date");
+  if (!dateStr?.trim()) throw new Error("Google Sheets row is missing its report date");
 
-  const value = dateStr.trim();
-  if (!value) throw new Error("Google Sheets row is missing its report date");
-
-  const configuredOffset = Number(process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180");
-  const utcOffsetMinutes = Number.isFinite(configuredOffset) ? configuredOffset : 180;
-  const fromSheetLocalTime = (
-    year: number,
-    month: number,
-    day: number,
-    hour = 0,
-    minute = 0,
-    second = 0,
-    millisecond = 0,
-  ) => new Date(
-    Date.UTC(year, month - 1, day, hour, minute, second, millisecond) -
-      utcOffsetMinutes * 60_000,
-  );
-
-  const spreadsheetSerial = Number(value);
-  if (
-    Number.isFinite(spreadsheetSerial) &&
-    spreadsheetSerial >= 20000 &&
-    spreadsheetSerial < 100000
-  ) {
-    // Preserve the fractional day so the time-of-day is not truncated away.
-    const excelEpoch = Date.UTC(1899, 11, 30);
-    const millisecondsPerDay = 86400000;
-    const millis = excelEpoch + spreadsheetSerial * millisecondsPerDay - utcOffsetMinutes * 60_000;
-    const parsed = new Date(millis);
-    if (!Number.isFinite(parsed.getTime())) {
-      throw new Error(`Invalid Google Sheets report date: ${value}`);
-    }
-    return parsed.toISOString();
+  try {
+    return parseReportDate(dateStr);
+  } catch {
+    throw new Error(`Invalid Google Sheets report date: ${dateStr.trim()}`);
   }
-
-  const dayFirstMatch = value.match(
-    /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i,
-  );
-
-  if (dayFirstMatch) {
-    const [, firstRaw, secondRaw, yearRaw, hourRaw, minuteRaw, secondPartRaw, meridiemRaw] = dayFirstMatch;
-    const first = Number(firstRaw);
-    const second = Number(secondRaw);
-    const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
-    const dateOrder = (process.env.GOOGLE_SHEETS_DATE_ORDER || "mdy").toLowerCase();
-    const isDayFirst =
-      dateOrder === "dmy" ? true :
-      dateOrder === "mdy" ? (first > 12) :
-      first > 12;
-    const day = isDayFirst ? first : second;
-    const month = isDayFirst ? second : first;
-
-    let hour = hourRaw ? Number(hourRaw) : 0;
-    const minute = minuteRaw ? Number(minuteRaw) : 0;
-    const secondPart = secondPartRaw ? Number(secondPartRaw) : 0;
-    const meridiem = meridiemRaw?.toUpperCase();
-    if (meridiem === "PM" && hour < 12) hour += 12;
-    if (meridiem === "AM" && hour === 12) hour = 0;
-
-    const parsed = fromSheetLocalTime(year, month, day, hour, minute, secondPart);
-    const localCheck = new Date(parsed.getTime() + utcOffsetMinutes * 60_000);
-    if (
-      localCheck.getUTCFullYear() === year &&
-      localCheck.getUTCMonth() === month - 1 &&
-      localCheck.getUTCDate() === day
-    ) {
-      return parsed.toISOString();
-    }
-  }
-
-  const isoLocalMatch = value.match(
-    /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/,
-  );
-  if (isoLocalMatch) {
-    const [, year, month, day, hour, minute, second = "0"] = isoLocalMatch;
-    return fromSheetLocalTime(+year, +month, +day, +hour, +minute, +second).toISOString();
-  }
-
-  const d = new Date(value);
-  if (isNaN(d.getTime())) {
-    throw new Error(`Invalid Google Sheets report date: ${value}`);
-  }
-  // Guard against epoch-ish garbage (e.g. a stray serial like "0" or "1640995200").
-  if (d.getUTCFullYear() < 2000 || d.getUTCFullYear() > 2100) {
-    throw new Error(`Google Sheets report date out of range: ${value}`);
-  }
-  return d.toISOString();
 }
 
 function normalizeHeaderKey(value: string): string {
@@ -454,6 +373,14 @@ function isDuplicateReportIdError(error: unknown, reportId: string): boolean {
 
 export function dedupeGoogleSheetReportsById<T extends { id: string; date?: string }>(reports: T[]): T[] {
   const byId = new Map<string, T>();
+  const toTime = (value?: string) => {
+    try {
+      return value ? new Date(parseDate(value)).getTime() : Number.NEGATIVE_INFINITY;
+    } catch {
+      const fallback = value ? new Date(value).getTime() : Number.NEGATIVE_INFINITY;
+      return Number.isFinite(fallback) ? fallback : Number.NEGATIVE_INFINITY;
+    }
+  };
 
   for (const report of reports) {
     if (!report?.id) continue;
@@ -464,8 +391,8 @@ export function dedupeGoogleSheetReportsById<T extends { id: string; date?: stri
       continue;
     }
 
-    const existingDate = existing.date ? new Date(existing.date).getTime() : Number.NEGATIVE_INFINITY;
-    const nextDate = report.date ? new Date(report.date).getTime() : Number.NEGATIVE_INFINITY;
+    const existingDate = toTime(existing.date);
+    const nextDate = toTime(report.date);
     if (nextDate >= existingDate) {
       byId.set(report.id, report);
     }
