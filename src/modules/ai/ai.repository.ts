@@ -14,6 +14,15 @@ function parseJsonArray(value: unknown, fallback: string[]) {
   }
 }
 
+function parseJson(value: unknown, fallback: any) {
+  if (!value || typeof value !== "string") return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
 export class AiRepository {
   async savePrediction(
     feature: string,
@@ -46,7 +55,7 @@ export class AiRepository {
       .prepare("SELECT * FROM ai_predictions WHERE id = ?")
       .getAsObject([id]) as any;
     return row
-      ? { ...row, output_json: JSON.parse(row.output_json || "{}") }
+      ? { ...row, output_json: parseJson(row.output_json, {}) }
       : null;
   }
 
@@ -74,7 +83,7 @@ export class AiRepository {
     const rows = allRows(db, sql, params) as any[];
     return rows.map((r) => ({
       ...r,
-      output_json: JSON.parse(r.output_json || "{}"),
+      output_json: parseJson(r.output_json, {}),
     }));
   }
 
@@ -341,8 +350,8 @@ export class AiRepository {
     params.push(filters?.limit ?? 100);
     return (allRows(db, sql, params) as any[]).map((row) => ({
       ...row,
-      sources: JSON.parse(row.sources || "[]"),
-      warnings: JSON.parse(row.warnings || "[]"),
+      sources: parseJsonArray(row.sources, []),
+      warnings: parseJsonArray(row.warnings, []),
       denied: Boolean(row.denied),
     }));
   }

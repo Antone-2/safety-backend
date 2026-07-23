@@ -10,6 +10,7 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "db:reset": "tsx src/scripts/reset.ts",
     "db:refresh-reports": "tsx src/scripts/refresh-reports.ts",
+    "db:resync-google-sheet-reports": "tsx src/scripts/resync-google-sheet-reports.ts",
     "db:audit-report-timestamps": "tsx src/scripts/audit-report-timestamps.ts",
     "db:audit-report-timestamps:json": "tsx src/scripts/audit-report-timestamps.ts --json --out report-timestamp-audit.json",
     "db:audit-report-timestamps:csv": "tsx src/scripts/audit-report-timestamps.ts --out report-timestamp-audit.csv",

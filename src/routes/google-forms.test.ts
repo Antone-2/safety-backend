@@ -74,10 +74,10 @@ test("falls back to the published CSV endpoint when the Sheets API returns 403",
   }
 });
 
-test("parses month-first Google Sheets timestamps with default mdy order", () => {
+test("parses ambiguous Google Sheets timestamps with default dmy order", () => {
   assert.equal(parseDate("3/25/2026 9:52:49"), "2026-03-25T06:52:49.000Z");
-  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T10:44:17.000Z");
-  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-05-04T06:26:49.000Z");
+  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
+  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-04-05T06:26:49.000Z");
 });
 
 test("falls back to day-first when the first part exceeds 12", () => {
@@ -87,6 +87,34 @@ test("falls back to day-first when the first part exceeds 12", () => {
 test("honors explicit dmy date order", () => {
   const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
   process.env.GOOGLE_SHEETS_DATE_ORDER = "dmy";
+  try {
+    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.GOOGLE_SHEETS_DATE_ORDER;
+    } else {
+      process.env.GOOGLE_SHEETS_DATE_ORDER = previous;
+    }
+  }
+});
+
+test("honors explicit mdy date order", () => {
+  const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
+  process.env.GOOGLE_SHEETS_DATE_ORDER = "mdy";
+  try {
+    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T10:44:17.000Z");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.GOOGLE_SHEETS_DATE_ORDER;
+    } else {
+      process.env.GOOGLE_SHEETS_DATE_ORDER = previous;
+    }
+  }
+});
+
+test("falls back safely to dmy when the configured date order is invalid", () => {
+  const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
+  process.env.GOOGLE_SHEETS_DATE_ORDER = "invalid-value";
   try {
     assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
   } finally {

@@ -1,7 +1,11 @@
 const GOOGLE_SHEETS_UTC_OFFSET_MINUTES = Number(
   process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180",
 );
-const GOOGLE_SHEETS_DATE_ORDER = (process.env.GOOGLE_SHEETS_DATE_ORDER || "mdy").toLowerCase();
+
+function getDateOrder(): "dmy" | "mdy" {
+  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "dmy").toLowerCase().trim();
+  return configured === "mdy" ? "mdy" : "dmy";
+}
 
 function getUtcOffsetMinutes(): number {
   return Number.isFinite(GOOGLE_SHEETS_UTC_OFFSET_MINUTES)
@@ -52,12 +56,10 @@ function parseLocalSlashDate(value: string): string | undefined {
   const first = Number(firstRaw);
   const second = Number(secondRaw);
   const year = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
-  const monthFirst =
-    GOOGLE_SHEETS_DATE_ORDER === "mdy"
-      ? second > 12 || first <= 12
-      : GOOGLE_SHEETS_DATE_ORDER === "dmy"
-        ? false
-        : second > 12 && first <= 12;
+  const dateOrder = getDateOrder();
+  const isUnambiguouslyDayFirst = first > 12;
+  const isUnambiguouslyMonthFirst = second > 12;
+  const monthFirst = isUnambiguouslyMonthFirst || (!isUnambiguouslyDayFirst && dateOrder === "mdy");
   const day = monthFirst ? second : first;
   const month = monthFirst ? first : second;
   let hour = Number(hourRaw || 0);
