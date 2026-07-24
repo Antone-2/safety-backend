@@ -22,8 +22,8 @@ export declare const ContextAnalysisSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: string;
-    createdBy: string;
     title: string;
+    createdBy: string;
     period: string;
     id?: string | undefined;
     reviewedBy?: string | undefined;
@@ -41,8 +41,8 @@ export declare const ContextAnalysisSchema: z.ZodObject<{
     threats?: string | undefined;
     scopeStatement?: string | undefined;
 }, {
-    createdBy: string;
     title: string;
+    createdBy: string;
     period: string;
     status?: string | undefined;
     id?: string | undefined;

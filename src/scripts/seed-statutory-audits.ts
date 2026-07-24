@@ -1,0 +1,324 @@
+/**
+ * Seed script to populate statutory_audit_records table with data from Excel sheet.
+ * Run: npx tsx src/scripts/seed-statutory-audits.ts
+ */
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+
+type AuditEntry = { type: string; dateDone?: string; remarks?: string; referenceNo?: string };
+type LocationData = { locationCategory: string; locationName: string; sortOrder: number; audits: AuditEntry[] };
+
+const DATA: LocationData[] = [
+  // ===== FACTORIES =====
+  { locationCategory: "FACTORIES", locationName: "FACTORY - MOGADISHU ROAD", sortOrder: 1, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Wednesday, 9 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 24 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/4754" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Wednesday, 16 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Tuesday, 1 October 2024", remarks: "Valid" },
+    { type: "ENERGY AUDIT REPORT", dateDone: "Sunday, 7 August 2022", remarks: "Valid" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "14th February 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", dateDone: "Saturday, 7 June 2025", remarks: "WIP-awaiting permit" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Wednesday, 18 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "PLANNED" },
+  ]},
+  { locationCategory: "FACTORIES", locationName: "FACTORY - KISUMU", sortOrder: 2, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Tuesday, 25 March 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Monday, 28 April 2025", remarks: "Valid", referenceNo: "NEMA/KSM/EA/5/2/0321(2023)" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 29 May 2025", remarks: "VALID" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Tuesday, 1 October 2024", remarks: "VALID" },
+    { type: "ENERGY AUDIT REPORT", dateDone: "Thursday, 7 July 2022", remarks: "Valid" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "14th February 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", dateDone: "Thursday, 7 November 2024", remarks: "VALID" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Tuesday, 17 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "PLANNED" },
+  ]},
+  { locationCategory: "FACTORIES", locationName: "FACTORY- RUFF N TUFF", sortOrder: 3, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 11 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 15 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/4752" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 10 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Tuesday, 21 September 2021", remarks: "Request raised" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "Sunday, 12 January 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "PLANNED" },
+  ]},
+  { locationCategory: "FACTORIES", locationName: "FACTORY - CP ALLIED", sortOrder: 4, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 11 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 15 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/4754" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 10 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Monday, 15 July 2024", remarks: "Valid" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "Friday, 14 February 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "VALID" },
+  ]},
+  { locationCategory: "FACTORIES", locationName: "FACTORY - MOMBASA PLANT", sortOrder: 5, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 25 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Wednesday, 7 May 2025", remarks: "Valid", referenceNo: "NEMA/EA/MSA/5/2/7390" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 7 September 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Friday, 4 November 2022", remarks: "Valid" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Monday, 23 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", dateDone: "22-Aug-24", remarks: "VALID" },
+  ]},
+  { locationCategory: "FACTORIES", locationName: "FACTORY - COLORANT", sortOrder: 6, audits: [
+    { type: "Occupational Safety & Health Audit", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Wednesday, 23 April 2025", remarks: "VALID", referenceNo: "NEMA/NRB/EA/5/2/6486" },
+    { type: "FIRE SAFETY AUDIT", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Tuesday, 17 September 2024", remarks: "VALID" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "3rd January 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", remarks: "Planned Sept25" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  // ===== DEPOTS =====
+  { locationCategory: "DEPOTS", locationName: "EXPORT WAREHOUSE-SINAI", sortOrder: 7, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 11 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 17 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/3581" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 10 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", dateDone: "28-May-22", remarks: "VALID" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT- DAR ROAD", sortOrder: 8, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 11 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 15 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/3582" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Tuesday, 17 May 2022", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "Sunday, 12 January 2025", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Wednesday, 18 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "PLANNED" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT- ELDORET", sortOrder: 9, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Tuesday, 25 March 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 8 May 2025", remarks: "Valid", referenceNo: "NEMA/EA/UGC/5/2/1886" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Sunday, 1 October 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Tuesday, 17 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT - KISUMU (Juakali Godown)", sortOrder: 10, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 25 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 29 April 2025", remarks: "Valid", referenceNo: "NEMA/KSM/EA/5/2/031" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 29 May 2025", remarks: "VALID" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Tuesday, 17 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "SHOWROOM - NEW- KISUMU", sortOrder: 11, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Wednesday, 2 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 29 April 2025", remarks: "Valid", referenceNo: "NEMA/KSM/5/2/0879(2022)" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 29 May 2025", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT, WAREHOUSE & HEADOFFICE- LIKONI", sortOrder: 12, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 11 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 17 April 2025", remarks: "valid", referenceNo: "NEMA/NRB/EA/5/2/4753" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Tuesday, 15 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Tuesday, 1 October 2024", remarks: "Valid" },
+    { type: "ENERGY AUDIT REPORT", dateDone: "Thursday, 1 September 2022", remarks: "Valid" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "Friday, 14 February 2025", remarks: "Valid" },
+    { type: "STACK EMISSION", dateDone: "June", remarks: "VALID" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Wednesday, 18 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT -MERU", sortOrder: 13, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 28 February 2025", remarks: "WIP" },
+    { type: "NEMA/EA AUDIT", dateDone: "Friday, 2 May 2025", remarks: "Valid", referenceNo: "NEMA/EA/MRU/5/2/746" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Friday, 28 February 2025", remarks: "VALID" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT - MOMBASA -MWANGEKA", sortOrder: 14, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 25 April 2025", remarks: "Valid" },
+    { type: "NEMA/EA AUDIT", dateDone: "Wednesday, 7 May 2025", remarks: "Valid", referenceNo: "NEMA/EA/MSA/5/2/1478" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 7 September 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", dateDone: "22-Aug-24", remarks: "VALID" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "SHOWROOM - MOMBASA- TOWN", sortOrder: 15, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Monday, 6 May 2024", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 8 May 2025", remarks: "Valid", referenceNo: "NEMA/EA/MSA/5/2/1657" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Friday, 8 September 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", dateDone: "Friday, 4 November 2022", remarks: "Valid" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT- NYERI", sortOrder: 16, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Wednesday, 9 April 2025", remarks: "Valid" },
+    { type: "NEMA/EA AUDIT", dateDone: "Monday, 5 May 2025", remarks: "Valid", referenceNo: "NEMA/NYR/EA/5/2/705" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 19 May 2022", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Thursday, 19 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT- KENPOLY Godown & Warehouse", sortOrder: 17, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Monday, 7 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Wednesday, 23 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/1943" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 10 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "3rd January 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", dateDone: "27-May-22", remarks: "VALID" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT- WESTLANDS (MUSTEK)", sortOrder: 18, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 4 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 22 April 2025", remarks: "Valid", referenceNo: "NEMA/NRB/EA/5/2/4731" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Tuesday, August 15, 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", dateDone: "3rd January 2025", remarks: "VALID" },
+    { type: "STACK EMISSION", remarks: "Planned Sept25" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Wednesday, 18 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT - NAKURU", sortOrder: 19, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "26-May-25", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", remarks: "" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Sunday, 1 October 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Monday, 16 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "SHOWROOM - LAVINGTON", sortOrder: 20, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Tuesday, 7 May 2024", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Tuesday, 22 April 2025", remarks: "" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Tuesday, 8 August 2023", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "SHOWROOM - NAKURU", sortOrder: 21, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Tuesday 8th February 2023", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "N/A", remarks: "" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Tuesday, 7 June 2022", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "SHOWROOM - NYALI -NEW", sortOrder: 22, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Friday, 25 April 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 8 May 2025", remarks: "" },
+    { type: "FIRE SAFETY AUDIT", remarks: "EXPIRED" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", remarks: "" },
+    { type: "MEDICAL EXAMINATION REPORT", dateDone: "Mar-23", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", remarks: "" },
+  ]},
+  { locationCategory: "DEPOTS", locationName: "DEPOT - MACHAKOS", sortOrder: 23, audits: [
+    { type: "Occupational Safety & Health Audit", dateDone: "Thursday, 23 January 2025", remarks: "VALID" },
+    { type: "NEMA/EA AUDIT", dateDone: "Thursday, 23 January 2025", remarks: "" },
+    { type: "FIRE SAFETY AUDIT", dateDone: "Thursday, 23 January 2025", remarks: "VALID" },
+    { type: "NOISE LEVELS ASSESSMENT", remarks: "" },
+    { type: "ENERGY AUDIT REPORT", remarks: "" },
+    { type: "EFFLUENT DISCHARGE LICENSE", remarks: "" },
+    { type: "STACK EMISSION", remarks: "" },
+    { type: "AIR QUALITY ANALYSIS", dateDone: "Friday, 20 June 2025", remarks: "VALID" },
+    { type: "MEDICAL EXAMINATION REPORT", remarks: "WIP" },
+    { type: "RISK ASSESSMENT REPORT", dateDone: "13-Feb-25", remarks: "VALID" },
+  ]},
+];
+
+async function seed() {
+  const client = await pgPool.connect();
+  try {
+    await client.query("BEGIN");
+    // Clear existing data
+    await client.query("DELETE FROM statutory_audit_records");
+    const now = new Date().toISOString();
+    let count = 0;
+    for (const loc of DATA) {
+      for (const audit of loc.audits) {
+        await client.query(
+          `INSERT INTO statutory_audit_records (location_category, location_name, sort_order, audit_type, date_done, remarks, reference_no, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [loc.locationCategory, loc.locationName, loc.sortOrder, audit.type, audit.dateDone ?? null, audit.remarks ?? null, audit.referenceNo ?? null, now, now],
+        );
+        count++;
+      }
+    }
+    await client.query("COMMIT");
+    console.log(`Seeded ${count} records across ${DATA.length} locations successfully!`);
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Seed failed:", err);
+    process.exit(1);
+  } finally {
+    client.release();
+    await pgPool.end();
+  }
+}
+
+seed();
+</｜｜DSML｜｜parameter>
+</｜｜DSML｜｜invoke>
+</｜｜DSML｜｜tool_calls>

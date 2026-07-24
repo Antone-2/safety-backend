@@ -78,10 +78,10 @@ export declare const InvestigationSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "Completed" | "Closed" | "In Progress" | "Pending";
-    priority: "Critical" | "Low" | "Medium" | "High";
-    description: string;
-    createdBy: string;
     title: string;
+    description: string;
+    priority: "Critical" | "Low" | "Medium" | "High";
+    createdBy: string;
     evidence: {
         name: string;
         uploadedAt: string;
@@ -108,9 +108,9 @@ export declare const InvestigationSchema: z.ZodObject<{
     reviewedAt?: string | undefined;
     incidentForm?: string | undefined;
 }, {
+    title: string;
     description: string;
     createdBy: string;
-    title: string;
     incidentId: string;
     investigator: string;
     status?: "Completed" | "Closed" | "In Progress" | "Pending" | undefined;
@@ -118,7 +118,6 @@ export declare const InvestigationSchema: z.ZodObject<{
     dueDate?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
     rootCause?: string | undefined;
-    completedDate?: string | undefined;
     evidence?: {
         name: string;
         uploadedAt: string;
@@ -128,6 +127,7 @@ export declare const InvestigationSchema: z.ZodObject<{
         url?: string | undefined;
         description?: string | undefined;
     }[] | undefined;
+    completedDate?: string | undefined;
     findings?: string | undefined;
     investigationNo?: string | undefined;
     investigationTeam?: string | undefined;

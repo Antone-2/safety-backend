@@ -15,16 +15,16 @@ export declare const AuditFindingSchema: z.ZodObject<{
     status: z.ZodDefault<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: string;
-    severity: "Observation" | "Minor NC" | "Major NC" | "Critical NC";
     description: string;
+    severity: "Observation" | "Minor NC" | "Major NC" | "Critical NC";
     id?: string | undefined;
     dueDate?: string | undefined;
     correctiveAction?: string | undefined;
     clause?: string | undefined;
     responsible?: string | undefined;
 }, {
-    severity: "Observation" | "Minor NC" | "Major NC" | "Critical NC";
     description: string;
+    severity: "Observation" | "Minor NC" | "Major NC" | "Critical NC";
     status?: string | undefined;
     id?: string | undefined;
     dueDate?: string | undefined;
@@ -57,43 +57,43 @@ export declare const AuditSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "Internal" | "External" | "Regulatory" | "Management Review" | "Surveillance";
     status: "Completed" | "Closed" | "In Progress" | "Planned";
+    title: string;
+    site: string;
     department: string;
     startDate: string;
     endDate: string;
     createdBy: string;
-    title: string;
-    site: string;
     leadAuditor: string;
     reportPublished: boolean;
     id?: string | undefined;
+    summary?: string | undefined;
     createdAt?: string | undefined;
     updatedAt?: string | undefined;
     scope?: string | undefined;
     criteria?: string | undefined;
     findings?: string | undefined;
     reportUrl?: string | undefined;
-    summary?: string | undefined;
     auditNo?: string | undefined;
     auditTeam?: string | undefined;
     auditee?: string | undefined;
 }, {
     type: "Internal" | "External" | "Regulatory" | "Management Review" | "Surveillance";
+    title: string;
+    site: string;
     department: string;
     startDate: string;
     endDate: string;
     createdBy: string;
-    title: string;
-    site: string;
     leadAuditor: string;
     status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
     id?: string | undefined;
+    summary?: string | undefined;
     createdAt?: string | undefined;
     updatedAt?: string | undefined;
     scope?: string | undefined;
     criteria?: string | undefined;
     findings?: string | undefined;
     reportUrl?: string | undefined;
-    summary?: string | undefined;
     auditNo?: string | undefined;
     auditTeam?: string | undefined;
     auditee?: string | undefined;

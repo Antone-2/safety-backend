@@ -7,6 +7,9 @@ function requireStorageConfig(value, name) {
     }
     return value;
 }
+export function isS3StorageConfigured() {
+    return Boolean(env.S3_BUCKET && env.S3_PUBLIC_URL);
+}
 export const s3Client = new S3Client({
     region: env.S3_REGION,
     endpoint: env.S3_ENDPOINT,

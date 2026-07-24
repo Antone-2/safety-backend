@@ -16,8 +16,8 @@ export declare const DashboardSchema: z.ZodObject<{
     createdBy: string;
     role?: string | undefined;
     id?: string | undefined;
-    department?: string | undefined;
     site?: string | undefined;
+    department?: string | undefined;
     layout?: string | undefined;
     widgets?: string | undefined;
     filters?: string | undefined;
@@ -27,8 +27,8 @@ export declare const DashboardSchema: z.ZodObject<{
     createdBy: string;
     role?: string | undefined;
     id?: string | undefined;
-    department?: string | undefined;
     site?: string | undefined;
+    department?: string | undefined;
     layout?: string | undefined;
     widgets?: string | undefined;
     filters?: string | undefined;

@@ -1,8 +1,63 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 import { CreateReportSchema, StatusSchema } from "../../lib/types.js";
 import { authenticateUser, requirePermission, } from "../../shared/middleware/auth.middleware.js";
 import { reportsService } from "./reports.service.js";
+import { isUrlAllowedForFetch, safeFetch } from "../../shared/infrastructure/storage/ssrf.protection.js";
+import { acknowledgeCorrectiveActionSupervisorFollowUp, addCorrectiveActionSupervisorComment, CORRECTIVE_ACTION_EVENT_TYPES, CORRECTIVE_ACTION_ITEM_STATUSES, createCorrectiveActionRequest, getCorrectiveActionRequestByToken, listCorrectiveActionRequestsByReport, resendCorrectiveActionNotifications, sendCorrectiveActionAcknowledgementReminder, sendCorrectiveActionReminders, startCorrectiveActionReminderScheduler, submitCorrectiveActionRequest, updateCorrectiveActionRequestReview, } from "../../services/corrective-action-request.service.js";
+import { auditReportTimestamps } from "./report-timestamp-audit.service.js";
+const BulkReportStatusSchema = z.object({
+    ids: z.array(z.string().min(1)).min(1).max(100),
+    status: StatusSchema,
+});
+const CorrectiveActionRequestCreateSchema = z.object({
+    recipientEmail: z.string().email(),
+    recipientName: z.string().optional(),
+    assignedByEmail: z.string().email().optional(),
+    assignedByName: z.string().optional(),
+    copiedRecipientEmails: z.array(z.string().email()).optional().default([]),
+    assigneeNote: z.string().max(2000).optional(),
+    priority: z.enum(["Low", "Medium", "High", "Critical"]).default("Medium"),
+    dueDate: z.string().optional(),
+});
+const CorrectiveActionRequestSubmitSchema = z.object({
+    unsafeEventType: z.enum(CORRECTIVE_ACTION_EVENT_TYPES),
+    description: z.string().min(1).max(5000),
+    immediateActionTaken: z.string().min(1).max(5000),
+    completedTasks: z.string().min(1).max(5000),
+    rootCauseAnalysis: z.string().min(1).max(5000),
+    actionPlanDueDate: z.string().optional(),
+    actionPlanItems: z
+        .array(z.object({
+        action: z.string().min(1).max(500),
+        byWho: z.string().min(1).max(200),
+        byWhoEmail: z.string().email().optional(),
+        byWhen: z.string().min(1),
+        status: z.enum(CORRECTIVE_ACTION_ITEM_STATUSES),
+    }))
+        .min(1)
+        .max(50),
+});
+const CorrectiveActionRequestReviewSchema = z.object({
+    actionPlanDueDate: z.string().nullable().optional(),
+    actionPlanItems: z
+        .array(z.object({
+        action: z.string().min(1).max(500),
+        byWho: z.string().min(1).max(200),
+        byWhoEmail: z.string().email().optional(),
+        byWhen: z.string().min(1),
+        status: z.enum(CORRECTIVE_ACTION_ITEM_STATUSES),
+    }))
+        .min(1)
+        .max(50),
+});
+const CorrectiveActionRequestCommentSchema = z.object({
+    text: z.string().min(1).max(5000),
+});
+const CorrectiveActionAcknowledgementSchema = z.object({
+    note: z.string().max(5000).optional(),
+});
 const sseClients = new Map();
 const PLACEHOLDER_IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" viewBox="0 0 200 150"><rect width="200" height="150" fill="#f1f5f9"/><text x="100" y="75" text-anchor="middle" dy=".3em" font-family="system-ui, sans-serif" font-size="14" fill="#94a3b8">Photo unavailable</text></svg>`;
 function getPlaceholderPhotoUrl(id, size = 80) {
@@ -69,6 +124,164 @@ function csvEscape(value) {
 }
 export function createReportsRouter() {
     const router = Router();
+    startCorrectiveActionReminderScheduler();
+    router.get("/corrective-action-requests/:token", async (req, res) => {
+        const token = routeParam(req, "token");
+        try {
+            const request = await getCorrectiveActionRequestByToken(token);
+            if (!request)
+                return res.status(404).json({ error: "Corrective action request not found" });
+            res.json(request);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to load corrective action request";
+            const status = /expired/i.test(message) ? 410 : 400;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.post("/corrective-action-requests/:token/submit", async (req, res) => {
+        const token = routeParam(req, "token");
+        const parsed = CorrectiveActionRequestSubmitSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.errors });
+        }
+        try {
+            const submitted = await submitCorrectiveActionRequest({
+                token,
+                ...parsed.data,
+            });
+            res.json(submitted);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to submit corrective action";
+            const status = /not found/i.test(message) ? 404 : 400;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.post("/corrective-action-requests/:token/acknowledge", async (req, res) => {
+        const token = routeParam(req, "token");
+        const parsed = CorrectiveActionAcknowledgementSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.errors });
+        }
+        try {
+            const acknowledged = await acknowledgeCorrectiveActionSupervisorFollowUp({
+                token,
+                note: parsed.data.note,
+            });
+            res.json(acknowledged);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to acknowledge corrective action follow-up";
+            const status = /not found/i.test(message) ? 404 : 400;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.post("/corrective-action-requests/reminders", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
+        const daysBefore = Number(req.body?.daysBefore ?? 3);
+        try {
+            const result = await sendCorrectiveActionReminders(daysBefore);
+            res.json({
+                ...result,
+                message: `Processed ${result.sent} corrective action reminder${result.sent === 1 ? "" : "s"}.`,
+            });
+        }
+        catch (error) {
+            console.error("Failed to process corrective action reminders", error);
+            res.status(500).json({ error: "Failed to process corrective action reminders" });
+        }
+    });
+    router.post("/corrective-action-requests/:requestId/notifications/resend", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
+        const requestId = routeParam(req, "requestId");
+        try {
+            const result = await resendCorrectiveActionNotifications({
+                requestId,
+                actor: req.user,
+            });
+            res.json(result);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to resend corrective action notifications";
+            const status = /not found/i.test(message) ? 404 : 500;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.post("/corrective-action-requests/:requestId/acknowledgement-reminder", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
+        const requestId = routeParam(req, "requestId");
+        try {
+            const result = await sendCorrectiveActionAcknowledgementReminder({
+                requestId,
+                actor: req.user,
+            });
+            res.json(result);
+        }
+        catch (error) {
+            const message = error instanceof Error
+                ? error.message
+                : "Failed to send corrective action acknowledgement reminder";
+            const status = /not found/i.test(message) ? 404 : 400;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.patch("/corrective-action-requests/:requestId/review", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
+        const requestId = routeParam(req, "requestId");
+        const parsed = CorrectiveActionRequestReviewSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.errors });
+        }
+        try {
+            const result = await updateCorrectiveActionRequestReview({
+                requestId,
+                actionPlanDueDate: parsed.data.actionPlanDueDate ?? null,
+                actionPlanItems: parsed.data.actionPlanItems,
+                actor: req.user,
+            });
+            res.json(result);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to update corrective action review";
+            const status = /not found/i.test(message) ? 404 : 500;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.post("/corrective-action-requests/:requestId/comments", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
+        const requestId = routeParam(req, "requestId");
+        const parsed = CorrectiveActionRequestCommentSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.errors });
+        }
+        try {
+            const result = await addCorrectiveActionSupervisorComment({
+                requestId,
+                text: parsed.data.text,
+                actor: req.user,
+            });
+            res.json(result);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to add corrective action comment";
+            const status = /not found/i.test(message) ? 404 : 500;
+            res.status(status).json({ error: message });
+        }
+    });
+    router.get("/date-audit", authenticateUser, requirePermission("reports:read"), async (req, res) => {
+        const requestedSampleLimit = Number(String(req.query.sampleLimit ?? "25"));
+        const sampleLimit = Number.isFinite(requestedSampleLimit)
+            ? Math.min(100, Math.max(0, Math.trunc(requestedSampleLimit)))
+            : 25;
+        try {
+            const summary = await auditReportTimestamps(sampleLimit);
+            res.json({
+                ...summary,
+                sampleLimit,
+                generatedAt: new Date().toISOString(),
+            });
+        }
+        catch (error) {
+            console.error("Failed to audit report timestamps", error);
+            res.status(500).json({ error: "Failed to audit report timestamps" });
+        }
+    });
     router.get("/", authenticateUser, requirePermission("reports:read"), async (req, res) => {
         const status = queryString(req.query.status);
         const severity = queryString(req.query.severity);
@@ -316,9 +529,15 @@ export function createReportsRouter() {
                 .replace(/\/file\/d\/([^/]+)/, "/uc?export=view&id=$1");
             if (normalizedPhotoUrl.startsWith("http://") ||
                 normalizedPhotoUrl.startsWith("https://")) {
-                const fetchRes = await fetch(normalizedPhotoUrl, {
+                if (!isUrlAllowedForFetch(normalizedPhotoUrl)) {
+                    res.setHeader("Content-Type", "image/svg+xml");
+                    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+                    res.setHeader("Cache-Control", "no-store");
+                    res.status(200).send(PLACEHOLDER_IMAGE);
+                    return;
+                }
+                const fetchRes = await safeFetch(normalizedPhotoUrl, {
                     headers: { Accept: "image/avif,image/webp,image/png,image/jpeg,*/*" },
-                    redirect: "follow",
                 });
                 if (!fetchRes.ok) {
                     res.setHeader("Content-Type", "image/svg+xml");
@@ -438,6 +657,15 @@ export function createReportsRouter() {
             return res.status(404).json({ error: "Not found" });
         res.json(updated);
     });
+    router.patch("/bulk-status", authenticateUser, requirePermission("reports:update"), async (req, res) => {
+        const parsed = BulkReportStatusSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.errors });
+        }
+        const { ids, status } = parsed.data;
+        const result = await reportsService.bulkUpdateStatus(ids, status, req);
+        res.json({ ...result, status });
+    });
     router.patch("/:id/assign", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
         const id = routeParam(req, "id");
         const assignedTo = String(req.body?.assignedTo ?? "")
@@ -458,6 +686,57 @@ export function createReportsRouter() {
             return res.status(404).json({ error: "Not found" });
         broadcastReport(updated);
         res.json(updated);
+    });
+    router.post("/:id/corrective-action-requests", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
+        const id = routeParam(req, "id");
+        const parsed = CorrectiveActionRequestCreateSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.errors });
+        }
+        const report = await reportsService.getById(id);
+        if (!report)
+            return res.status(404).json({ error: "Report not found" });
+        try {
+            const created = await createCorrectiveActionRequest({
+                reportId: id,
+                recipientEmail: parsed.data.recipientEmail,
+                recipientName: parsed.data.recipientName,
+                assignedByEmail: parsed.data.assignedByEmail || req.user?.email,
+                assignedByName: parsed.data.assignedByName || req.user?.name || req.user?.email,
+                copiedRecipientEmails: parsed.data.copiedRecipientEmails,
+                reportType: report.type,
+                reportCategory: report.category,
+                reportDescription: report.description,
+                reportLocation: report.location,
+                reportDepartment: report.department,
+                assigneeNote: parsed.data.assigneeNote,
+                priority: parsed.data.priority,
+                dueDate: parsed.data.dueDate,
+            });
+            res.status(201).json(created);
+        }
+        catch (error) {
+            console.error("Failed to create corrective action request", error);
+            res.status(500).json({
+                error: error instanceof Error
+                    ? error.message
+                    : "Failed to create corrective action request",
+            });
+        }
+    });
+    router.get("/:id/corrective-action-requests", authenticateUser, requirePermission("reports:read"), async (req, res) => {
+        const id = routeParam(req, "id");
+        try {
+            const report = await reportsService.getById(id);
+            if (!report)
+                return res.status(404).json({ error: "Report not found" });
+            const requests = await listCorrectiveActionRequestsByReport(id);
+            res.json(requests);
+        }
+        catch (error) {
+            console.error("Failed to load corrective action requests", error);
+            res.status(500).json({ error: "Failed to load corrective action requests" });
+        }
     });
     router.post("/:id/closure-requests", authenticateUser, async (req, res) => {
         const id = routeParam(req, "id");

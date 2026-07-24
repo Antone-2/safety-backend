@@ -41,31 +41,31 @@ export declare const CreateComplianceObligationSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "Compliant" | "Non-Compliant" | "Pending";
-    department: string;
-    createdBy: string;
     title: string;
     site: string;
+    department: string;
+    createdBy: string;
     legislation: string;
     requirement: string;
     frequency: string;
     responsibility: string;
     dueDate?: string | undefined;
-    lastComplianceDate?: string | undefined;
     evidence?: string | undefined;
+    lastComplianceDate?: string | undefined;
     notes?: string | undefined;
 }, {
-    department: string;
-    createdBy: string;
     title: string;
     site: string;
+    department: string;
+    createdBy: string;
     legislation: string;
     requirement: string;
     frequency: string;
     responsibility: string;
     status?: "Compliant" | "Non-Compliant" | "Pending" | undefined;
     dueDate?: string | undefined;
-    lastComplianceDate?: string | undefined;
     evidence?: string | undefined;
+    lastComplianceDate?: string | undefined;
     notes?: string | undefined;
 }>;
 export type CreateComplianceObligationInput = z.infer<typeof CreateComplianceObligationSchema>;
@@ -85,28 +85,28 @@ export declare const UpdateComplianceObligationSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status?: "Compliant" | "Non-Compliant" | "Pending" | undefined;
     dueDate?: string | null | undefined;
-    department?: string | undefined;
     title?: string | undefined;
     site?: string | undefined;
+    department?: string | undefined;
+    evidence?: string | null | undefined;
     legislation?: string | undefined;
     requirement?: string | undefined;
     frequency?: string | undefined;
     responsibility?: string | undefined;
     lastComplianceDate?: string | null | undefined;
-    evidence?: string | null | undefined;
     notes?: string | null | undefined;
 }, {
     status?: "Compliant" | "Non-Compliant" | "Pending" | undefined;
     dueDate?: string | null | undefined;
-    department?: string | undefined;
     title?: string | undefined;
     site?: string | undefined;
+    department?: string | undefined;
+    evidence?: string | null | undefined;
     legislation?: string | undefined;
     requirement?: string | undefined;
     frequency?: string | undefined;
     responsibility?: string | undefined;
     lastComplianceDate?: string | null | undefined;
-    evidence?: string | null | undefined;
     notes?: string | null | undefined;
 }>;
 export type UpdateComplianceObligationInput = z.infer<typeof UpdateComplianceObligationSchema>;
@@ -147,12 +147,12 @@ export declare const CreateComplianceAuditSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "Internal" | "External" | "Regulatory" | "Management Review";
     status: "Completed" | "Closed" | "In Progress" | "Planned";
+    title: string;
+    site: string;
     department: string;
     startDate: string;
     endDate: string;
     createdBy: string;
-    title: string;
-    site: string;
     leadAuditor: string;
     teamMembers: string[];
     findings: unknown[];
@@ -161,12 +161,12 @@ export declare const CreateComplianceAuditSchema: z.ZodObject<{
     reportUrl?: string | undefined;
 }, {
     type: "Internal" | "External" | "Regulatory" | "Management Review";
+    title: string;
+    site: string;
     department: string;
     startDate: string;
     endDate: string;
     createdBy: string;
-    title: string;
-    site: string;
     leadAuditor: string;
     status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
     teamMembers?: string[] | undefined;
@@ -193,11 +193,11 @@ export declare const UpdateComplianceAuditSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type?: "Internal" | "External" | "Regulatory" | "Management Review" | undefined;
     status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
+    title?: string | undefined;
+    site?: string | undefined;
     department?: string | undefined;
     startDate?: string | undefined;
     endDate?: string | undefined;
-    title?: string | undefined;
-    site?: string | undefined;
     leadAuditor?: string | undefined;
     teamMembers?: string[] | null | undefined;
     scope?: string | null | undefined;
@@ -207,11 +207,11 @@ export declare const UpdateComplianceAuditSchema: z.ZodObject<{
 }, {
     type?: "Internal" | "External" | "Regulatory" | "Management Review" | undefined;
     status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
+    title?: string | undefined;
+    site?: string | undefined;
     department?: string | undefined;
     startDate?: string | undefined;
     endDate?: string | undefined;
-    title?: string | undefined;
-    site?: string | undefined;
     leadAuditor?: string | undefined;
     teamMembers?: string[] | null | undefined;
     scope?: string | null | undefined;
@@ -252,28 +252,28 @@ export declare const CreateLegalUpdateSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented";
-    createdBy: string;
     title: string;
+    summary: string;
+    createdBy: string;
     legislation: string;
     jurisdiction: string;
     effectiveDate: string;
-    summary: string;
     dueDate?: string | undefined;
-    assignedTo?: string | undefined;
     source?: string | undefined;
+    assignedTo?: string | undefined;
     impactAssessment?: string | undefined;
     actionRequired?: string | undefined;
 }, {
-    createdBy: string;
     title: string;
+    summary: string;
+    createdBy: string;
     legislation: string;
     jurisdiction: string;
     effectiveDate: string;
-    summary: string;
     status?: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented" | undefined;
     dueDate?: string | undefined;
-    assignedTo?: string | undefined;
     source?: string | undefined;
+    assignedTo?: string | undefined;
     impactAssessment?: string | undefined;
     actionRequired?: string | undefined;
 }>;
@@ -293,25 +293,25 @@ export declare const UpdateLegalUpdateSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status?: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented" | undefined;
     dueDate?: string | null | undefined;
-    assignedTo?: string | null | undefined;
-    source?: string | null | undefined;
     title?: string | undefined;
+    source?: string | null | undefined;
+    summary?: string | undefined;
+    assignedTo?: string | null | undefined;
     legislation?: string | undefined;
     jurisdiction?: string | undefined;
     effectiveDate?: string | undefined;
-    summary?: string | undefined;
     impactAssessment?: string | null | undefined;
     actionRequired?: string | null | undefined;
 }, {
     status?: "Closed" | "New" | "Under Review" | "Action Required" | "Implemented" | undefined;
     dueDate?: string | null | undefined;
-    assignedTo?: string | null | undefined;
-    source?: string | null | undefined;
     title?: string | undefined;
+    source?: string | null | undefined;
+    summary?: string | undefined;
+    assignedTo?: string | null | undefined;
     legislation?: string | undefined;
     jurisdiction?: string | undefined;
     effectiveDate?: string | undefined;
-    summary?: string | undefined;
     impactAssessment?: string | null | undefined;
     actionRequired?: string | null | undefined;
 }>;

@@ -1620,6 +1620,26 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
         ADD COLUMN IF NOT EXISTS reporter_whatsapp TEXT;
     `,
   },
+  {
+    id: "049_statutory_audit_records",
+    description: "Create statutory audit records table for the audit status matrix",
+    sql: `
+      CREATE TABLE IF NOT EXISTS statutory_audit_records (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        location_category TEXT NOT NULL,
+        location_name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        audit_type TEXT NOT NULL,
+        date_done TEXT,
+        remarks TEXT,
+        reference_no TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_statutory_audit_category ON statutory_audit_records(location_category, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(audit_type);
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {

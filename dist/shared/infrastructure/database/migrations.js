@@ -120,9 +120,12 @@ export const POSTGRES_MIGRATIONS = [
         sql: `
       CREATE TABLE IF NOT EXISTS reports (
         id TEXT PRIMARY KEY,
-        date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        date TIMESTAMPTZ NOT NULL DEFAULT NOW() CHECK (EXTRACT(YEAR FROM date) BETWEEN 2000 AND 2100),
         location TEXT NOT NULL,
         reporter TEXT NOT NULL,
+        reporter_email TEXT,
+        reporter_phone TEXT,
+        reporter_whatsapp TEXT,
         description TEXT NOT NULL,
         severity TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'Open',
@@ -130,7 +133,7 @@ export const POSTGRES_MIGRATIONS = [
         type TEXT NOT NULL,
         resolution_days INTEGER,
         sla_hours INTEGER NOT NULL,
-        due_at TIMESTAMPTZ NOT NULL,
+        due_at TIMESTAMPTZ NOT NULL CHECK (EXTRACT(YEAR FROM due_at) BETWEEN 2000 AND 2100),
         assigned_to TEXT,
         assigned_to_copy JSONB NOT NULL DEFAULT '[]'::jsonb,
         is_near_miss BOOLEAN NOT NULL DEFAULT FALSE,
@@ -138,7 +141,7 @@ export const POSTGRES_MIGRATIONS = [
         department TEXT NOT NULL,
         shift TEXT NOT NULL,
         compliance_required BOOLEAN NOT NULL DEFAULT FALSE,
-        compliance_due_at TIMESTAMPTZ,
+        compliance_due_at TIMESTAMPTZ CHECK (EXTRACT(YEAR FROM compliance_due_at) BETWEEN 2000 AND 2100),
         photo_url TEXT,
         source TEXT NOT NULL DEFAULT 'manual',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1470,6 +1473,128 @@ export const POSTGRES_MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_closure_requests_report ON report_closure_requests(report_id);
       CREATE INDEX IF NOT EXISTS idx_closure_requests_status ON report_closure_requests(status);
+    `,
+    },
+    {
+        id: "040_corrective_action_requests",
+        description: "Add tokenized corrective action request workflow for assigned report follow-up",
+        sql: `
+      CREATE TABLE IF NOT EXISTS corrective_action_requests (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        access_token TEXT NOT NULL UNIQUE,
+        recipient_email TEXT NOT NULL,
+        recipient_name TEXT,
+        assigned_by_email TEXT,
+        assigned_by_name TEXT,
+        report_type TEXT NOT NULL,
+        report_category TEXT,
+        report_description TEXT NOT NULL,
+        report_location TEXT,
+        report_department TEXT,
+        assignee_note TEXT,
+        priority TEXT NOT NULL DEFAULT 'Medium',
+        due_date TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'pending',
+        unsafe_event_type TEXT,
+        immediate_action_taken TEXT,
+        completed_tasks TEXT,
+        root_cause_analysis TEXT,
+        action_plan_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        capa_id UUID REFERENCES capa(id) ON DELETE SET NULL,
+        submitted_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_report
+        ON corrective_action_requests(report_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_recipient
+        ON corrective_action_requests(recipient_email, status);
+      CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_token
+        ON corrective_action_requests(access_token);
+    `,
+    },
+    {
+        id: "041_corrective_action_request_note",
+        description: "Add assignee note to corrective action requests",
+        sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS assignee_note TEXT;
+    `,
+    },
+    {
+        id: "042_capa_assignment_fields",
+        description: "Add assignment contacts, reminder controls, and structured task rows to CAPA",
+        sql: `
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS owner_email TEXT;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS backup_owner TEXT;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS escalation_owner TEXT;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS reminder_days INTEGER;
+      ALTER TABLE capa ADD COLUMN IF NOT EXISTS action_items JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `,
+    },
+    {
+        id: "043_corrective_action_followup_fields",
+        description: "Add copied recipients and assignee action-plan due date to corrective action requests",
+        sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS copied_recipient_emails JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS action_plan_due_date TIMESTAMPTZ;
+    `,
+    },
+    {
+        id: "044_corrective_action_supervisor_comments",
+        description: "Add stored supervisor review comments to corrective action requests",
+        sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_comments JSONB NOT NULL DEFAULT '[]'::jsonb;
+    `,
+    },
+    {
+        id: "045_corrective_action_acknowledgement_fields",
+        description: "Add assignee acknowledgement tracking to corrective action requests",
+        sql: `
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_acknowledged_at TIMESTAMPTZ;
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_acknowledged_by TEXT;
+      ALTER TABLE corrective_action_requests
+        ADD COLUMN IF NOT EXISTS supervisor_acknowledgement_note TEXT;
+    `,
+    },
+    {
+        id: "046_mfa_totp_drift_tracking",
+        description: "Track TOTP clock drift for MFA enrollment and login",
+        sql: `
+      ALTER TABLE user_mfa
+        ADD COLUMN IF NOT EXISTS drift_steps INTEGER NOT NULL DEFAULT 0;
+    `,
+    },
+    {
+        id: "047_auth_session_mfa_trust",
+        description: "Track MFA trust windows and activity timestamps on auth sessions",
+        sql: `
+      ALTER TABLE auth_sessions
+        ADD COLUMN IF NOT EXISTS mfa_verified_at TIMESTAMPTZ;
+      ALTER TABLE auth_sessions
+        ADD COLUMN IF NOT EXISTS mfa_trusted_until TIMESTAMPTZ;
+      UPDATE auth_sessions
+      SET last_seen_at = COALESCE(last_seen_at, created_at)
+      WHERE last_seen_at IS NULL;
+    `,
+    },
+    {
+        id: "048_reports_reporter_contact_fields",
+        description: "Persist reporter contact details on reports",
+        sql: `
+      ALTER TABLE reports
+        ADD COLUMN IF NOT EXISTS reporter_email TEXT;
+      ALTER TABLE reports
+        ADD COLUMN IF NOT EXISTS reporter_phone TEXT;
+      ALTER TABLE reports
+        ADD COLUMN IF NOT EXISTS reporter_whatsapp TEXT;
     `,
     },
 ];

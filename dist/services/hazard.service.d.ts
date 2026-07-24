@@ -24,29 +24,29 @@ export declare const HazardReportSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: string;
-    severity: "Critical" | "Low" | "Medium" | "High";
-    location: string;
     department: string;
     description: string;
+    severity: "Critical" | "Low" | "Medium" | "High";
+    location: string;
     createdBy: string;
     category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
     reportedBy: string;
     id?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
+    immediateActionTaken?: string | undefined;
     riskLevel?: string | undefined;
     reportNo?: string | undefined;
     existingControls?: string | undefined;
     recommendedActions?: string | undefined;
-    immediateActionTaken?: string | undefined;
     reportedAt?: string | undefined;
     resolvedAt?: string | undefined;
     resolution?: string | undefined;
 }, {
-    severity: "Critical" | "Low" | "Medium" | "High";
-    location: string;
     department: string;
     description: string;
+    severity: "Critical" | "Low" | "Medium" | "High";
+    location: string;
     createdBy: string;
     category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
     reportedBy: string;
@@ -54,11 +54,11 @@ export declare const HazardReportSchema: z.ZodObject<{
     id?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
+    immediateActionTaken?: string | undefined;
     riskLevel?: string | undefined;
     reportNo?: string | undefined;
     existingControls?: string | undefined;
     recommendedActions?: string | undefined;
-    immediateActionTaken?: string | undefined;
     reportedAt?: string | undefined;
     resolvedAt?: string | undefined;
     resolution?: string | undefined;

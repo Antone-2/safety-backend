@@ -1,5 +1,5 @@
 import { z } from "zod";
-export declare const EmergencyPlanSchema: z.ZodObject<{
+export declare const EmergencyPlanSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     title: z.ZodString;
     scenario: z.ZodString;
@@ -15,10 +15,10 @@ export declare const EmergencyPlanSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: string;
-    department: string;
-    createdBy: string;
     title: string;
     site: string;
+    department: string;
+    createdBy: string;
     procedures: string;
     scenario: string;
     emergencyContacts: string;
@@ -28,10 +28,38 @@ export declare const EmergencyPlanSchema: z.ZodObject<{
     lastReviewed?: string | undefined;
     nextReview?: string | undefined;
 }, {
-    department: string;
-    createdBy: string;
     title: string;
     site: string;
+    department: string;
+    createdBy: string;
+    procedures: string;
+    scenario: string;
+    emergencyContacts: string;
+    status?: string | undefined;
+    id?: string | undefined;
+    assemblyPoints?: string | undefined;
+    specialInstructions?: string | undefined;
+    lastReviewed?: string | undefined;
+    nextReview?: string | undefined;
+}>, {
+    status: string;
+    title: string;
+    site: string;
+    department: string;
+    createdBy: string;
+    procedures: string;
+    scenario: string;
+    emergencyContacts: string;
+    id?: string | undefined;
+    assemblyPoints?: string | undefined;
+    specialInstructions?: string | undefined;
+    lastReviewed?: string | undefined;
+    nextReview?: string | undefined;
+}, {
+    title: string;
+    site: string;
+    department: string;
+    createdBy: string;
     procedures: string;
     scenario: string;
     emergencyContacts: string;
@@ -42,7 +70,7 @@ export declare const EmergencyPlanSchema: z.ZodObject<{
     lastReviewed?: string | undefined;
     nextReview?: string | undefined;
 }>;
-export declare const DrillSchema: z.ZodObject<{
+export declare const DrillSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     title: z.ZodString;
     type: z.ZodEnum<["Fire", "Evacuation", "Spill", "Earthquake", "Medical", "Other"]>;
@@ -62,10 +90,10 @@ export declare const DrillSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "Other" | "Fire" | "Evacuation" | "Spill" | "Earthquake" | "Medical";
     status: "Completed" | "Cancelled" | "Scheduled";
-    department: string;
-    createdBy: string;
     title: string;
     site: string;
+    department: string;
+    createdBy: string;
     scheduledDate: string;
     coordinator: string;
     id?: string | undefined;
@@ -78,10 +106,44 @@ export declare const DrillSchema: z.ZodObject<{
     improvements?: string | undefined;
 }, {
     type: "Other" | "Fire" | "Evacuation" | "Spill" | "Earthquake" | "Medical";
-    department: string;
-    createdBy: string;
     title: string;
     site: string;
+    department: string;
+    createdBy: string;
+    scheduledDate: string;
+    coordinator: string;
+    status?: "Completed" | "Cancelled" | "Scheduled" | undefined;
+    id?: string | undefined;
+    findings?: string | undefined;
+    duration?: number | undefined;
+    scenario?: string | undefined;
+    actualDate?: string | undefined;
+    participants?: number | undefined;
+    observations?: string | undefined;
+    improvements?: string | undefined;
+}>, {
+    type: "Other" | "Fire" | "Evacuation" | "Spill" | "Earthquake" | "Medical";
+    status: "Completed" | "Cancelled" | "Scheduled";
+    title: string;
+    site: string;
+    department: string;
+    createdBy: string;
+    scheduledDate: string;
+    coordinator: string;
+    id?: string | undefined;
+    findings?: string | undefined;
+    duration?: number | undefined;
+    scenario?: string | undefined;
+    actualDate?: string | undefined;
+    participants?: number | undefined;
+    observations?: string | undefined;
+    improvements?: string | undefined;
+}, {
+    type: "Other" | "Fire" | "Evacuation" | "Spill" | "Earthquake" | "Medical";
+    title: string;
+    site: string;
+    department: string;
+    createdBy: string;
     scheduledDate: string;
     coordinator: string;
     status?: "Completed" | "Cancelled" | "Scheduled" | undefined;
@@ -111,24 +173,24 @@ export declare const EmergencyContactSchema: z.ZodObject<{
     name: string;
     role: string;
     phone: string;
-    createdBy: string;
     site: string;
+    createdBy: string;
     isPrimary: boolean;
     isERT: boolean;
     id?: string | undefined;
-    email?: string | undefined;
     department?: string | undefined;
+    email?: string | undefined;
     notes?: string | undefined;
     alternatePhone?: string | undefined;
 }, {
     name: string;
     role: string;
     phone: string;
-    createdBy: string;
     site: string;
+    createdBy: string;
     id?: string | undefined;
-    email?: string | undefined;
     department?: string | undefined;
+    email?: string | undefined;
     notes?: string | undefined;
     alternatePhone?: string | undefined;
     isPrimary?: boolean | undefined;

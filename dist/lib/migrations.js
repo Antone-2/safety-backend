@@ -27,7 +27,10 @@ const MIGRATIONS = [
       shift TEXT NOT NULL,
       complianceRequired INTEGER NOT NULL DEFAULT 0,
       complianceDueAt TEXT,
-      photoUrl TEXT NOT NULL
+      photoUrl TEXT NOT NULL,
+      reporterEmail TEXT,
+      reporterPhone TEXT,
+      reporterWhatsApp TEXT
     )`,
     },
     {
@@ -958,6 +961,12 @@ const MIGRATIONS = [
           CREATE INDEX IF NOT EXISTS idx_ai_feedback_feature ON ai_feedback(feature);
           CREATE INDEX IF NOT EXISTS idx_ai_knowledge_base_source ON ai_knowledge_base(source_document_id);`,
     },
+    {
+        name: "048_add_report_contact_fields",
+        sql: `ALTER TABLE reports ADD COLUMN reporterEmail TEXT;
+ALTER TABLE reports ADD COLUMN reporterPhone TEXT;
+ALTER TABLE reports ADD COLUMN reporterWhatsApp TEXT;`,
+    },
 ];
 addMigration("045_add_user_phone", `ALTER TABLE users ADD COLUMN phone TEXT`);
 addMigration("046_auth_security", `
@@ -1315,6 +1324,53 @@ addMigration("057_auditable_report_classification", `
 `);
 addMigration("058_reports_source_synced_at", `ALTER TABLE reports ADD COLUMN source_synced_at TEXT;
    CREATE INDEX IF NOT EXISTS idx_reports_source_synced_at ON reports(source_synced_at);`);
+addMigration("059_corrective_action_requests", `
+  CREATE TABLE IF NOT EXISTS corrective_action_requests (
+    id TEXT PRIMARY KEY,
+    reportId TEXT NOT NULL,
+    accessToken TEXT NOT NULL UNIQUE,
+    recipientEmail TEXT NOT NULL,
+    recipientName TEXT,
+    assignedByEmail TEXT,
+    assignedByName TEXT,
+    reportType TEXT NOT NULL,
+    reportCategory TEXT,
+    reportDescription TEXT NOT NULL,
+    reportLocation TEXT,
+    reportDepartment TEXT,
+    assigneeNote TEXT,
+    priority TEXT NOT NULL DEFAULT 'Medium',
+    dueDate TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    unsafeEventType TEXT,
+    immediateActionTaken TEXT,
+    completedTasks TEXT,
+    rootCauseAnalysis TEXT,
+    actionPlanItems TEXT NOT NULL DEFAULT '[]',
+    capaId TEXT,
+    submittedAt TEXT,
+    expiresAt TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_report
+    ON corrective_action_requests(reportId, createdAt);
+  CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_recipient
+    ON corrective_action_requests(recipientEmail, status);
+  CREATE INDEX IF NOT EXISTS idx_corrective_action_requests_token
+    ON corrective_action_requests(accessToken);
+`);
+addMigration("060_corrective_action_request_note", `ALTER TABLE corrective_action_requests ADD COLUMN assigneeNote TEXT`);
+addMigration("061_corrective_action_followup_fields", `
+  ALTER TABLE corrective_action_requests ADD COLUMN copiedRecipientEmails TEXT DEFAULT '[]';
+  ALTER TABLE corrective_action_requests ADD COLUMN actionPlanDueDate TEXT;
+`);
+addMigration("062_corrective_action_supervisor_comments", `ALTER TABLE corrective_action_requests ADD COLUMN supervisorComments TEXT DEFAULT '[]';`);
+addMigration("063_corrective_action_acknowledgement_fields", `
+  ALTER TABLE corrective_action_requests ADD COLUMN supervisorAcknowledgedAt TEXT;
+  ALTER TABLE corrective_action_requests ADD COLUMN supervisorAcknowledgedBy TEXT;
+  ALTER TABLE corrective_action_requests ADD COLUMN supervisorAcknowledgementNote TEXT;
+`);
 export async function seedAdminUsers(db) {
     // Idempotent seeding: ensure these admin emails exist without ever violating UNIQUE(email).
     // This prevents startup crashes when the DB is partially seeded.

@@ -45,9 +45,9 @@ export declare const CreatePpeSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other";
     status: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost";
+    site: string;
     description: string;
     createdBy: string;
-    site: string;
     department?: string | undefined;
     assignedTo?: string | undefined;
     notes?: string | undefined;
@@ -60,9 +60,9 @@ export declare const CreatePpeSchema: z.ZodObject<{
     inspectionDueDate?: string | undefined;
 }, {
     type: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other";
+    site: string;
     description: string;
     createdBy: string;
-    site: string;
     status?: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost" | undefined;
     department?: string | undefined;
     assignedTo?: string | undefined;
@@ -94,10 +94,10 @@ export declare const UpdatePpeSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type?: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other" | undefined;
     status?: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost" | undefined;
+    site?: string | undefined;
     department?: string | null | undefined;
     description?: string | undefined;
     assignedTo?: string | null | undefined;
-    site?: string | undefined;
     notes?: string | null | undefined;
     certificateUrl?: string | null | undefined;
     expiryDate?: string | null | undefined;
@@ -109,10 +109,10 @@ export declare const UpdatePpeSchema: z.ZodObject<{
 }, {
     type?: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other" | undefined;
     status?: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost" | undefined;
+    site?: string | undefined;
     department?: string | null | undefined;
     description?: string | undefined;
     assignedTo?: string | null | undefined;
-    site?: string | undefined;
     notes?: string | null | undefined;
     certificateUrl?: string | null | undefined;
     expiryDate?: string | null | undefined;

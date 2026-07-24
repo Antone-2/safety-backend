@@ -14,16 +14,16 @@ export declare const InvestigationInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     description: string;
     type?: string | undefined;
-    location?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     evidence?: string[] | undefined;
     incidentId?: string | undefined;
     witnessStatements?: string[] | undefined;
 }, {
     description: string;
     type?: string | undefined;
-    location?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     evidence?: string[] | undefined;
     incidentId?: string | undefined;
     witnessStatements?: string[] | undefined;
@@ -56,15 +56,15 @@ export declare const HazardDetectionInputSchema: z.ZodObject<{
     department: z.ZodOptional<z.ZodString>;
     context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, "strip", z.ZodTypeAny, {
+    department?: string | undefined;
     text?: string | undefined;
     location?: string | undefined;
-    department?: string | undefined;
     imageUrl?: string | undefined;
     context?: Record<string, any> | undefined;
 }, {
+    department?: string | undefined;
     text?: string | undefined;
     location?: string | undefined;
-    department?: string | undefined;
     imageUrl?: string | undefined;
     context?: Record<string, any> | undefined;
 }>;
@@ -79,13 +79,13 @@ export declare const RiskPredictionInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     includeComponents: boolean;
     horizonDays: number;
-    location?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     siteId?: string | undefined;
     activity?: string | undefined;
 }, {
-    location?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     siteId?: string | undefined;
     activity?: string | undefined;
     includeComponents?: boolean | undefined;
@@ -122,17 +122,17 @@ export declare const AiQueryInputSchema: z.ZodObject<{
         category: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         status?: string | undefined;
+        department?: string | undefined;
         severity?: string | undefined;
         location?: string | undefined;
-        department?: string | undefined;
         category?: string | undefined;
         dateFrom?: string | undefined;
         dateTo?: string | undefined;
     }, {
         status?: string | undefined;
+        department?: string | undefined;
         severity?: string | undefined;
         location?: string | undefined;
-        department?: string | undefined;
         category?: string | undefined;
         dateFrom?: string | undefined;
         dateTo?: string | undefined;
@@ -145,9 +145,9 @@ export declare const AiQueryInputSchema: z.ZodObject<{
     exportFormat: "html" | "json";
     filters?: {
         status?: string | undefined;
+        department?: string | undefined;
         severity?: string | undefined;
         location?: string | undefined;
-        department?: string | undefined;
         category?: string | undefined;
         dateFrom?: string | undefined;
         dateTo?: string | undefined;
@@ -157,9 +157,9 @@ export declare const AiQueryInputSchema: z.ZodObject<{
     query: string;
     filters?: {
         status?: string | undefined;
+        department?: string | undefined;
         severity?: string | undefined;
         location?: string | undefined;
-        department?: string | undefined;
         category?: string | undefined;
         dateFrom?: string | undefined;
         dateTo?: string | undefined;
@@ -222,16 +222,16 @@ export declare const PermitInputSchema: z.ZodObject<{
     endDate: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     type?: string | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     startDate?: string | undefined;
     endDate?: string | undefined;
     permitId?: string | undefined;
 }, {
     type?: string | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     startDate?: string | undefined;
     endDate?: string | undefined;
@@ -246,14 +246,14 @@ export declare const InspectionInputSchema: z.ZodObject<{
     equipmentId: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     type?: string | undefined;
-    location?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     equipmentId?: string | undefined;
     siteId?: string | undefined;
 }, {
     type?: string | undefined;
-    location?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     equipmentId?: string | undefined;
     siteId?: string | undefined;
 }>;
@@ -388,14 +388,14 @@ export declare const SafetyAlertInputSchema: z.ZodObject<{
     severity: z.ZodOptional<z.ZodEnum<["notice", "warning", "critical"]>>;
     channels: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    severity?: "notice" | "warning" | "critical" | undefined;
     department?: string | undefined;
+    severity?: "notice" | "warning" | "critical" | undefined;
     siteId?: string | undefined;
     triggerEvent?: string | undefined;
     channels?: string[] | undefined;
 }, {
-    severity?: "notice" | "warning" | "critical" | undefined;
     department?: string | undefined;
+    severity?: "notice" | "warning" | "critical" | undefined;
     siteId?: string | undefined;
     triggerEvent?: string | undefined;
     channels?: string[] | undefined;
@@ -448,16 +448,16 @@ export declare const ExecutiveReportInputSchema: z.ZodObject<{
     includeBenchmark: z.ZodDefault<z.ZodBoolean>;
     format: z.ZodDefault<z.ZodEnum<["json", "markdown", "pdf"]>>;
 }, "strip", z.ZodTypeAny, {
-    format: "pdf" | "json" | "markdown";
     reportType: "monthly" | "quarterly" | "annual" | "adhoc";
+    format: "pdf" | "json" | "markdown";
     includeBenchmark: boolean;
     department?: string | undefined;
     siteId?: string | undefined;
 }, {
     department?: string | undefined;
+    reportType?: "monthly" | "quarterly" | "annual" | "adhoc" | undefined;
     format?: "pdf" | "json" | "markdown" | undefined;
     siteId?: string | undefined;
-    reportType?: "monthly" | "quarterly" | "annual" | "adhoc" | undefined;
     includeBenchmark?: boolean | undefined;
 }>;
 export type ExecutiveReportInput = z.infer<typeof ExecutiveReportInputSchema>;
@@ -475,29 +475,29 @@ export declare const AiResponseSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         feature: string;
         confidence?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
     }, {
         feature: string;
         confidence?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
     metadata: {
         feature: string;
         confidence?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
     };
     success: boolean;
     data?: any;
@@ -505,11 +505,11 @@ export declare const AiResponseSchema: z.ZodObject<{
     metadata: {
         feature: string;
         confidence?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
     };
     success: boolean;
     data?: any;
@@ -763,8 +763,8 @@ export declare const ComplianceGapSchema: z.ZodObject<{
     status: "Compliant" | "Non-compliant" | "Partially Compliant";
     requirement: string;
     dueDate?: string | undefined;
-    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
     owner?: string | undefined;
+    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
     evidence?: string[] | undefined;
     obligationId?: string | undefined;
     gapDescription?: string | undefined;
@@ -772,8 +772,8 @@ export declare const ComplianceGapSchema: z.ZodObject<{
     status: "Compliant" | "Non-compliant" | "Partially Compliant";
     requirement: string;
     dueDate?: string | undefined;
-    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
     owner?: string | undefined;
+    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
     evidence?: string[] | undefined;
     obligationId?: string | undefined;
     gapDescription?: string | undefined;
@@ -787,17 +787,17 @@ export declare const TrainingRecommendationSchema: z.ZodObject<{
     estimatedDurationHours: z.ZodOptional<z.ZodNumber>;
     modality: z.ZodOptional<z.ZodEnum<["classroom", "e-learning", "vr", "on-the-job"]>>;
 }, "strip", z.ZodTypeAny, {
+    title: string;
     priority: "Critical" | "Low" | "Medium" | "High";
     reason: string;
-    title: string;
     courseId?: string | undefined;
     estimatedCost?: number | undefined;
     estimatedDurationHours?: number | undefined;
     modality?: "classroom" | "e-learning" | "vr" | "on-the-job" | undefined;
 }, {
+    title: string;
     priority: "Critical" | "Low" | "Medium" | "High";
     reason: string;
-    title: string;
     courseId?: string | undefined;
     estimatedCost?: number | undefined;
     estimatedDurationHours?: number | undefined;

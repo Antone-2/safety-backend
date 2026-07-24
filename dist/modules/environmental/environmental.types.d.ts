@@ -29,7 +29,7 @@ export interface WasteRecord {
     createdAt: string;
     updatedAt: string;
 }
-export declare const CreateWasteSchema: z.ZodObject<{
+export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     type: z.ZodEnum<["Hazardous", "Non-Hazardous", "Recyclable", "Organic", "E-Waste", "Chemical"]>;
     category: z.ZodString;
     description: z.ZodString;
@@ -46,6 +46,70 @@ export declare const CreateWasteSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    type: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical";
+    status: "Pending" | "Stored" | "Disposed" | "Recycled";
+    description: string;
+    createdBy: string;
+    category: string;
+    quantity: number;
+    unit: string;
+    generatedDate: string;
+    storedLocation: string;
+    photoUrl?: string | undefined;
+    notes?: string | undefined;
+    disposedDate?: string | undefined;
+    disposalMethod?: string | undefined;
+    disposalContractor?: string | undefined;
+    manifestNumber?: string | undefined;
+}, {
+    type: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical";
+    description: string;
+    createdBy: string;
+    category: string;
+    quantity: number;
+    unit: string;
+    generatedDate: string;
+    storedLocation: string;
+    status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
+    photoUrl?: string | undefined;
+    notes?: string | undefined;
+    disposedDate?: string | undefined;
+    disposalMethod?: string | undefined;
+    disposalContractor?: string | undefined;
+    manifestNumber?: string | undefined;
+}>, {
+    type: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical";
+    status: "Pending" | "Stored" | "Disposed" | "Recycled";
+    description: string;
+    createdBy: string;
+    category: string;
+    quantity: number;
+    unit: string;
+    generatedDate: string;
+    storedLocation: string;
+    photoUrl?: string | undefined;
+    notes?: string | undefined;
+    disposedDate?: string | undefined;
+    disposalMethod?: string | undefined;
+    disposalContractor?: string | undefined;
+    manifestNumber?: string | undefined;
+}, {
+    type: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical";
+    description: string;
+    createdBy: string;
+    category: string;
+    quantity: number;
+    unit: string;
+    generatedDate: string;
+    storedLocation: string;
+    status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
+    photoUrl?: string | undefined;
+    notes?: string | undefined;
+    disposedDate?: string | undefined;
+    disposalMethod?: string | undefined;
+    disposalContractor?: string | undefined;
+    manifestNumber?: string | undefined;
+}>, {
     type: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical";
     status: "Pending" | "Stored" | "Disposed" | "Recycled";
     description: string;

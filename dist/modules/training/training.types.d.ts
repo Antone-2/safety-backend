@@ -15,8 +15,8 @@ export declare const TrainingCourseSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     code: string;
-    createdBy: string;
     title: string;
+    createdBy: string;
     frequency: string;
     category: string;
     duration: number;
@@ -27,8 +27,8 @@ export declare const TrainingCourseSchema: z.ZodObject<{
     competencyRequired?: string | undefined;
 }, {
     code: string;
-    createdBy: string;
     title: string;
+    createdBy: string;
     frequency: string;
     category: string;
     duration: number;
@@ -57,8 +57,8 @@ export declare const TrainingCourseInputSchema: z.ZodObject<Omit<{
     createdBy: z.ZodString;
 }, "id">, "strip", z.ZodTypeAny, {
     code: string;
-    createdBy: string;
     title: string;
+    createdBy: string;
     frequency: string;
     category: string;
     duration: number;
@@ -68,8 +68,8 @@ export declare const TrainingCourseInputSchema: z.ZodObject<Omit<{
     competencyRequired?: string | undefined;
 }, {
     code: string;
-    createdBy: string;
     title: string;
+    createdBy: string;
     frequency: string;
     category: string;
     duration: number;
@@ -79,7 +79,7 @@ export declare const TrainingCourseInputSchema: z.ZodObject<Omit<{
     passingScore?: number | undefined;
 }>;
 export type TrainingCourseInput = z.infer<typeof TrainingCourseInputSchema>;
-export declare const TrainingRecordSchema: z.ZodObject<{
+export declare const TrainingRecordSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     recordNo: z.ZodOptional<z.ZodString>;
     courseId: z.ZodString;
@@ -99,9 +99,9 @@ export declare const TrainingRecordSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "Completed" | "In Progress" | "Cancelled" | "Scheduled" | "Expired";
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     courseId: string;
     employeeId: string;
     employeeName: string;
@@ -116,9 +116,9 @@ export declare const TrainingRecordSchema: z.ZodObject<{
     expiryDate?: string | undefined;
     feedback?: string | undefined;
 }, {
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     courseId: string;
     employeeId: string;
     employeeName: string;
@@ -133,13 +133,13 @@ export declare const TrainingRecordSchema: z.ZodObject<{
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
     feedback?: string | undefined;
-}>;
+}>, any, any>, any, any>, any, any>;
 export type TrainingRecord = z.infer<typeof TrainingRecordSchema> & {
     id: string;
     createdAt: string;
     updatedAt: string;
 };
-export declare const TrainingRecordInputSchema: z.ZodObject<Omit<{
+export declare const TrainingRecordInputSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodOptional<z.ZodString>;
     recordNo: z.ZodOptional<z.ZodString>;
     courseId: z.ZodString;
@@ -159,9 +159,9 @@ export declare const TrainingRecordInputSchema: z.ZodObject<Omit<{
     createdBy: z.ZodString;
 }, "id" | "recordNo">, "strip", z.ZodTypeAny, {
     status: "Completed" | "In Progress" | "Cancelled" | "Scheduled" | "Expired";
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     courseId: string;
     employeeId: string;
     employeeName: string;
@@ -174,9 +174,9 @@ export declare const TrainingRecordInputSchema: z.ZodObject<Omit<{
     expiryDate?: string | undefined;
     feedback?: string | undefined;
 }, {
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     courseId: string;
     employeeId: string;
     employeeName: string;
@@ -189,7 +189,7 @@ export declare const TrainingRecordInputSchema: z.ZodObject<Omit<{
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
     feedback?: string | undefined;
-}>;
+}>, any, any>, any, any>, any, any>;
 export type TrainingRecordInput = z.infer<typeof TrainingRecordInputSchema>;
 export declare const TrainingMatrixSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;

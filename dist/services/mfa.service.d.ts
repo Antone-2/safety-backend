@@ -9,7 +9,7 @@ export type MFARecoveryCode = {
 export declare class MFAService {
     private pool;
     constructor(pool?: Pool);
-    generateSecret(email: string): MFASetupChallenge;
+    generateSecret(email: string): Promise<MFASetupChallenge>;
     generateRecoveryCodes(count?: number): MFARecoveryCode[];
     createMFAEnrollment(userId: string, secret: string, recoveryCodesRaw: string[]): Promise<void>;
     verifyMFAEnrollment(userId: string, token: string): Promise<boolean>;

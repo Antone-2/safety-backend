@@ -16,6 +16,7 @@ router.get("/", authenticateUser, async (req, res) => {
         res.json(jsas);
     }
     catch (error) {
+        console.error("Failed to fetch JSAs:", error);
         res.status(500).json({ error: "Failed to fetch JSAs" });
     }
 });

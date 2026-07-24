@@ -59,10 +59,10 @@ export declare const CreateEquipmentSchema: z.ZodObject<{
     type: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector" | "PPE" | "SafetyEquipment" | "Monitoring";
     status: "Operational" | "Under Maintenance" | "Retired" | "Defective";
     name: string;
-    location: string;
-    department: string;
-    createdBy: string;
     site: string;
+    department: string;
+    location: string;
+    createdBy: string;
     category: string;
     assetTag: string;
     photoUrl?: string | undefined;
@@ -81,10 +81,10 @@ export declare const CreateEquipmentSchema: z.ZodObject<{
 }, {
     type: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector" | "PPE" | "SafetyEquipment" | "Monitoring";
     name: string;
-    location: string;
-    department: string;
-    createdBy: string;
     site: string;
+    department: string;
+    location: string;
+    createdBy: string;
     category: string;
     assetTag: string;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
@@ -129,11 +129,11 @@ export declare const UpdateEquipmentSchema: z.ZodObject<{
     type?: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector" | "PPE" | "SafetyEquipment" | "Monitoring" | undefined;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
     name?: string | undefined;
-    location?: string | undefined;
+    site?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     photoUrl?: string | null | undefined;
     assignedTo?: string | null | undefined;
-    site?: string | undefined;
     notes?: string | null | undefined;
     category?: string | undefined;
     assetTag?: string | undefined;
@@ -151,11 +151,11 @@ export declare const UpdateEquipmentSchema: z.ZodObject<{
     type?: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector" | "PPE" | "SafetyEquipment" | "Monitoring" | undefined;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
     name?: string | undefined;
-    location?: string | undefined;
+    site?: string | undefined;
     department?: string | undefined;
+    location?: string | undefined;
     photoUrl?: string | null | undefined;
     assignedTo?: string | null | undefined;
-    site?: string | undefined;
     notes?: string | null | undefined;
     category?: string | undefined;
     assetTag?: string | undefined;

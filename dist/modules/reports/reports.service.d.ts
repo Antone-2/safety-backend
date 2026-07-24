@@ -22,7 +22,7 @@ export declare class ReportsService {
     list(filters?: ReportFilters, page?: number, limit?: number): Promise<{
         data: {
             id: any;
-            date: any;
+            date: string;
             location: any;
             reporter: any;
             description: any;
@@ -32,7 +32,7 @@ export declare class ReportsService {
             type: any;
             resolutionDays: any;
             slaHours: any;
-            dueAt: any;
+            dueAt: string;
             assignedTo: any;
             assignedToCopy: string[];
             comments: {
@@ -53,8 +53,11 @@ export declare class ReportsService {
             department: any;
             shift: any;
             complianceRequired: any;
-            complianceDueAt: any;
+            complianceDueAt: string | undefined;
             photoUrl: string;
+            reporterEmail: any;
+            reporterPhone: any;
+            reporterWhatsApp: any;
             source: any;
             sourceSyncedAt: any;
             auditHistory: {
@@ -72,7 +75,7 @@ export declare class ReportsService {
     private listSqlite;
     getById(id: string): Promise<{
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -82,7 +85,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -103,8 +106,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -118,7 +124,7 @@ export declare class ReportsService {
     private getByIdSqlite;
     create(input: any, request?: any): Promise<{
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -128,7 +134,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -149,8 +155,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -164,7 +173,7 @@ export declare class ReportsService {
     private createSqlite;
     updateStatus(id: string, status: string, request?: any): Promise<{
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -174,7 +183,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -195,8 +204,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -211,7 +223,7 @@ export declare class ReportsService {
     updateAssignment(id: string, assignedTo: string, assignedToCopy: string[], request?: any): Promise<{
         assignmentNotifications: AssignmentDeliveryResult[];
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -221,7 +233,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -242,8 +254,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -258,7 +273,7 @@ export declare class ReportsService {
     private updateAssignmentSqlite;
     addComment(id: string, author: string, text: string, request?: any): Promise<{
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -268,7 +283,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -289,8 +304,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -304,7 +322,7 @@ export declare class ReportsService {
     private addCommentSqlite;
     update(id: string, fields: Record<string, any>, request?: any): Promise<{
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -314,7 +332,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -335,8 +353,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -364,7 +385,7 @@ export declare class ReportsService {
     selectionExport(ids: string[]): Promise<any[]>;
     generateExport(filters?: ReportFilters): Promise<{
         id: any;
-        date: any;
+        date: string;
         location: any;
         reporter: any;
         description: any;
@@ -374,7 +395,7 @@ export declare class ReportsService {
         type: any;
         resolutionDays: any;
         slaHours: any;
-        dueAt: any;
+        dueAt: string;
         assignedTo: any;
         assignedToCopy: string[];
         comments: {
@@ -395,8 +416,11 @@ export declare class ReportsService {
         department: any;
         shift: any;
         complianceRequired: any;
-        complianceDueAt: any;
+        complianceDueAt: string | undefined;
         photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
         source: any;
         sourceSyncedAt: any;
         auditHistory: {
@@ -406,5 +430,11 @@ export declare class ReportsService {
             detail: any;
         }[];
     }[]>;
+    bulkUpdateStatus(ids: string[], status: string, request?: any): Promise<{
+        updated: number;
+        ids: any[];
+    }>;
+    private bulkUpdateStatusPg;
+    private bulkUpdateStatusSqlite;
 }
 export declare const reportsService: ReportsService;

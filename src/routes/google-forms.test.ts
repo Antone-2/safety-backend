@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyGoogleFormsError, dedupeGoogleSheetReportsById, fetchGoogleSheetRows, getGoogleSheetReportIdsToDelete, parseDate } from "./google-forms.js";
+import {
+  classifyGoogleFormsError,
+  dedupeGoogleSheetReportsById,
+  fetchGoogleSheetRows,
+  finalizeSuccessfulGoogleSheetsSync,
+  getGoogleSheetReportIdsToDelete,
+  parseDate,
+} from "./google-forms.js";
 
 test("classifies DNS lookup failures as connectivity issues", () => {
   const error = new TypeError("fetch failed") as TypeError & { cause?: { code?: string; hostname?: string } };
@@ -74,10 +81,71 @@ test("falls back to the published CSV endpoint when the Sheets API returns 403",
   }
 });
 
-test("parses ambiguous Google Sheets timestamps with default dmy order", () => {
+test("requests unformatted serial values from the Sheets API", async () => {
+  const originalFetch = global.fetch;
+  const requestUrls: string[] = [];
+
+  global.fetch = (async (input: RequestInfo | URL) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    requestUrls.push(requestUrl);
+
+    return new Response(JSON.stringify({ values: [["Timestamp"], [45631.52361111111]] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await fetchGoogleSheetRows("spreadsheet-id", "api-key", "Sheet1");
+    assert.deepEqual(result.rows, [["Timestamp"], [45631.52361111111 as unknown as string]]);
+    assert.ok(
+      requestUrls.some((url) =>
+        url.includes("valueRenderOption=UNFORMATTED_VALUE") &&
+        url.includes("dateTimeRenderOption=SERIAL_NUMBER"),
+      ),
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("finalizes sync state before starting background photo sync", async () => {
+  const events: string[] = [];
+  let updateFinished = false;
+  const reports = [{ id: "RPT-1", photoUrl: "https://drive.google.com/uc?export=view&id=file123" }];
+
+  const result = await finalizeSuccessfulGoogleSheetsSync({
+    startedAt: "2026-07-24T08:33:15.188Z",
+    sheetName: "Unsafe Acts/ Conditions (Responses)",
+    rowCount: 2,
+    reports,
+    updateState: async () => {
+      events.push("update:start");
+      await Promise.resolve();
+      updateFinished = true;
+      events.push("update:end");
+    },
+    startPhotoSync: (receivedReports) => {
+      events.push(`photo:${updateFinished ? "after" : "before"}`);
+      assert.deepEqual(receivedReports, reports);
+    },
+  });
+
+  assert.deepEqual(events, ["update:start", "update:end", "photo:after"]);
+  assert.equal(result.imported, 1);
+  assert.equal(result.rows, 2);
+  assert.equal(result.sheetName, "Unsafe Acts/ Conditions (Responses)");
+  assert.equal(result.startedAt, "2026-07-24T08:33:15.188Z");
+});
+
+test("parses ambiguous Google Sheets timestamps with the default month/day/year order", () => {
   assert.equal(parseDate("3/25/2026 9:52:49"), "2026-03-25T06:52:49.000Z");
-  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
-  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-04-05T06:26:49.000Z");
+  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T10:44:17.000Z");
+  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-05-04T06:26:49.000Z");
+});
+
+test("rejects yearless month-name timestamps that come from display formatting", () => {
+  assert.throws(() => parseDate("Dec 5, 12:34"), /Invalid Google Sheets report date/);
 });
 
 test("falls back to day-first when the first part exceeds 12", () => {

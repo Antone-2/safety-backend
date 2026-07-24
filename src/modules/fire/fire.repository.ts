@@ -213,7 +213,7 @@ export class FireRepository {
   async getStats(): Promise<FireStats> {
     const equipmentResult = await this.pool.query("SELECT status, COUNT(*) as count FROM fire_equipment GROUP BY status");
     const equipment = equipmentResult.rows;
-    const totalEquipment = equipment.reduce((sum, row) => sum + parseInt(row.count as unknown as string, 10), 0);
+    const totalEquipment = equipment.length > 0 ? equipment.reduce((sum, row) => sum + parseInt(row.count as unknown as string, 10), 0) : 0;
     const operational = equipment.find((row) => row.status === "Operational")
       ? parseInt(equipment.find((row) => row.status === "Operational")!.count as unknown as string, 10)
       : 0;

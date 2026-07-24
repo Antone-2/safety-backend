@@ -65,6 +65,7 @@ import medicalRouter from "./routes/medical.js";
 import objectivesRouter from "./routes/objectives.js";
 import riskRouter from "./routes/risk.js";
 import spillRouter from "./routes/spill.js";
+import { createStatutoryAuditRouter } from "./modules/statutory-audits/statutory-audits.controller.js";
 
 // The frontend calls `/api/...` while the backend historically used `/api/v1/...`.
 // Mount every router under both prefixes so both clients keep working.
@@ -187,6 +188,7 @@ mountAll(API_PREFIXES, "/ppe", createPpeRouter());
 mountAll(API_PREFIXES, "/equipment", createEquipmentRouter());
 mountAll(API_PREFIXES, "/contractors", createContractorsRouter());
 mountAll(API_PREFIXES, "/compliance", createComplianceRouter());
+mountAll(API_PREFIXES, "/statutory-audits", createStatutoryAuditRouter());
 mountAll(API_PREFIXES, "/environmental", createEnvironmentalRouter());
 mountAll(API_PREFIXES, "/health", createHealthRouter());
 mountAll(API_PREFIXES, "/sds", createSdsRouter());

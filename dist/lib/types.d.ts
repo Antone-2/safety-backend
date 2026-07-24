@@ -42,6 +42,9 @@ export interface Report {
     complianceDueAt?: string;
     photoUrl: string;
     photos?: string[];
+    reporterEmail?: string;
+    reporterPhone?: string;
+    reporterWhatsApp?: string;
 }
 export declare const CreateReportSchema: z.ZodObject<{
     location: z.ZodString;
@@ -59,34 +62,42 @@ export declare const CreateReportSchema: z.ZodObject<{
     medicalTreatmentCase: z.ZodOptional<z.ZodBoolean>;
     lostWorkDays: z.ZodOptional<z.ZodNumber>;
     restrictedWorkDays: z.ZodOptional<z.ZodNumber>;
+    reporterEmail: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    reporterPhone: z.ZodOptional<z.ZodString>;
+    reporterWhatsApp: z.ZodOptional<z.ZodString>;
     photoUrl: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
 }, "strip", z.ZodTypeAny, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition";
+    department: string;
+    description: string;
     anonymous: boolean;
     reporter: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    department: string;
-    description: string;
     complianceRequired: boolean;
     category: string;
+    reporterEmail?: string | undefined;
+    reporterPhone?: string | undefined;
     photoUrl?: string | undefined;
     isRecordable?: boolean | undefined;
     isLostTimeInjury?: boolean | undefined;
     medicalTreatmentCase?: boolean | undefined;
     lostWorkDays?: number | undefined;
     restrictedWorkDays?: number | undefined;
+    reporterWhatsApp?: string | undefined;
 }, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition";
+    department: string;
+    description: string;
     reporter: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    department: string;
-    description: string;
     category: string;
     anonymous?: boolean | undefined;
+    reporterEmail?: string | undefined;
+    reporterPhone?: string | undefined;
     photoUrl?: string | undefined;
     complianceRequired?: boolean | undefined;
     isRecordable?: boolean | undefined;
@@ -94,6 +105,7 @@ export declare const CreateReportSchema: z.ZodObject<{
     medicalTreatmentCase?: boolean | undefined;
     lostWorkDays?: number | undefined;
     restrictedWorkDays?: number | undefined;
+    reporterWhatsApp?: string | undefined;
 }>;
 export type CreateReportInput = z.infer<typeof CreateReportSchema>;
 export declare const CapaStatusSchema: z.ZodEnum<["Pending", "In Progress", "Completed", "Verified", "Closed"]>;
@@ -140,10 +152,10 @@ export declare const CreateCapaSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     action: string;
     dueDate: string;
+    owner: string;
+    title: string;
     priority: "Critical" | "Low" | "Medium" | "High";
     rootCause: string;
-    title: string;
-    owner: string;
     incidentId: string;
     capaType: "Corrective" | "Preventive";
     rootCauseMethod?: string | undefined;
@@ -151,9 +163,9 @@ export declare const CreateCapaSchema: z.ZodObject<{
 }, {
     action: string;
     dueDate: string;
-    rootCause: string;
-    title: string;
     owner: string;
+    title: string;
+    rootCause: string;
     incidentId: string;
     capaType: "Corrective" | "Preventive";
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
@@ -173,6 +185,44 @@ export interface SettingsPayload {
         enabled: boolean;
         freq: string;
         email: string;
+    };
+    accessMatrix?: Record<string, Record<string, boolean>>;
+    importHistory?: Array<{
+        id: string;
+        source: string;
+        imported: number;
+        skipped: number;
+        at: string;
+        message: string;
+    }>;
+    notificationLogs?: Array<{
+        id: string;
+        type: string;
+        title: string;
+        message: string;
+        at: string;
+    }>;
+    auditLog?: Array<{
+        id: string;
+        at: string;
+        actor: string;
+        action: string;
+    }>;
+    integrations?: {
+        googleFormId: string;
+        googleApiKey: string;
+        googleSheetName: string;
+        googleDriveFileId: string;
+        slackWebhook: string;
+        teamsWebhook: string;
+        zapierKey: string;
+    };
+    notificationContacts?: {
+        email: string;
+        phone: string;
+        whatsapp: string;
+        criticalOnly: boolean;
+        frequency: string;
     };
 }
 export declare const UserRoleSchema: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin"]>;
@@ -258,15 +308,15 @@ export declare const CreateInvestigationSchema: z.ZodObject<{
     priority: z.ZodDefault<z.ZodOptional<z.ZodEnum<["Low", "Medium", "High", "Critical"]>>>;
     dueDate: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    priority: "Critical" | "Low" | "Medium" | "High";
-    description: string;
     title: string;
+    description: string;
+    priority: "Critical" | "Low" | "Medium" | "High";
     incidentId: string;
     investigator: string;
     dueDate?: string | undefined;
 }, {
-    description: string;
     title: string;
+    description: string;
     incidentId: string;
     investigator: string;
     dueDate?: string | undefined;
@@ -339,8 +389,8 @@ export declare const CreatePermitSchema: z.ZodObject<{
     gasTestRequired: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 }, "strip", z.ZodTypeAny, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
-    location: string;
     description: string;
+    location: string;
     applicant: string;
     startDate: string;
     endDate: string;
@@ -358,8 +408,8 @@ export declare const CreatePermitSchema: z.ZodObject<{
     EHSOfficer?: string | undefined;
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
-    location: string;
     description: string;
+    location: string;
     applicant: string;
     startDate: string;
     endDate: string;
@@ -401,8 +451,8 @@ export declare const UpdatePermitSchema: z.ZodObject<{
     type?: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     applicantContact?: string | null | undefined;
     approver?: string | null | undefined;
@@ -421,8 +471,8 @@ export declare const UpdatePermitSchema: z.ZodObject<{
     type?: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     applicantContact?: string | null | undefined;
     approver?: string | null | undefined;
@@ -503,16 +553,16 @@ export declare const CreateJsaSchema: z.ZodObject<{
     department: z.ZodString;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    location: string;
-    department: string;
-    createdBy: string;
     title: string;
+    department: string;
+    location: string;
+    createdBy: string;
     description?: string | undefined;
 }, {
-    location: string;
-    department: string;
-    createdBy: string;
     title: string;
+    department: string;
+    location: string;
+    createdBy: string;
     description?: string | undefined;
 }>;
 export type CreateJsaInput = z.infer<typeof CreateJsaSchema>;
@@ -548,10 +598,10 @@ export declare const UpdateJsaSchema: z.ZodObject<{
     reviewedAt: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
-    location?: string | undefined;
+    title?: string | undefined;
     department?: string | undefined;
     description?: string | null | undefined;
-    title?: string | undefined;
+    location?: string | undefined;
     reviewedBy?: string | null | undefined;
     reviewedAt?: string | null | undefined;
     steps?: {
@@ -564,10 +614,10 @@ export declare const UpdateJsaSchema: z.ZodObject<{
     }[] | undefined;
 }, {
     status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
-    location?: string | undefined;
+    title?: string | undefined;
     department?: string | undefined;
     description?: string | null | undefined;
-    title?: string | undefined;
+    location?: string | undefined;
     reviewedBy?: string | null | undefined;
     reviewedAt?: string | null | undefined;
     steps?: {

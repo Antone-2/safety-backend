@@ -26,7 +26,7 @@ export interface Contractor {
     createdAt: string;
     updatedAt: string;
 }
-export declare const CreateContractorSchema: z.ZodObject<{
+export declare const CreateContractorSchema: z.ZodEffects<z.ZodObject<{
     companyName: z.ZodString;
     registrationNumber: z.ZodString;
     contactPerson: z.ZodString;
@@ -45,6 +45,42 @@ export declare const CreateContractorSchema: z.ZodObject<{
     performanceScore: z.ZodOptional<z.ZodNumber>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    status: "Expired" | "Active" | "Suspended" | "Blacklisted";
+    createdBy: string;
+    companyName: string;
+    registrationNumber: string;
+    contactPerson: string;
+    contactEmail: string;
+    contactPhone: string;
+    documents: string[];
+    physicalAddress?: string | undefined;
+    services?: string | undefined;
+    certifications?: string | undefined;
+    insuranceExpiry?: string | undefined;
+    safetyRating?: number | undefined;
+    lastAuditDate?: string | undefined;
+    inductionDate?: string | undefined;
+    inductionExpiry?: string | undefined;
+    performanceScore?: number | undefined;
+}, {
+    createdBy: string;
+    companyName: string;
+    registrationNumber: string;
+    contactPerson: string;
+    contactEmail: string;
+    contactPhone: string;
+    status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    physicalAddress?: string | undefined;
+    services?: string | undefined;
+    certifications?: string | undefined;
+    insuranceExpiry?: string | undefined;
+    safetyRating?: number | undefined;
+    lastAuditDate?: string | undefined;
+    inductionDate?: string | undefined;
+    inductionExpiry?: string | undefined;
+    documents?: string[] | undefined;
+    performanceScore?: number | undefined;
+}>, {
     status: "Expired" | "Active" | "Suspended" | "Blacklisted";
     createdBy: string;
     companyName: string;
@@ -163,9 +199,9 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     date: string;
+    description: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    description: string;
     createdBy: string;
     contractorId: string;
     incidentType: string;
@@ -173,9 +209,9 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
     actionTaken?: string | undefined;
 }, {
     date: string;
+    description: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    description: string;
     createdBy: string;
     contractorId: string;
     incidentType: string;

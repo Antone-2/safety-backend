@@ -150,7 +150,7 @@ export interface FireInspection {
     createdBy: string;
     createdAt: string;
 }
-export declare const CreateFireInspectionSchema: z.ZodObject<{
+export declare const CreateFireInspectionSchema: z.ZodEffects<z.ZodObject<{
     equipmentId: z.ZodString;
     inspector: z.ZodString;
     inspectionDate: z.ZodString;
@@ -162,6 +162,28 @@ export declare const CreateFireInspectionSchema: z.ZodObject<{
     photoUrl: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    createdBy: string;
+    passed: boolean;
+    equipmentId: string;
+    inspector: string;
+    inspectionDate: string;
+    nextInspectionDue: string;
+    photoUrl?: string | undefined;
+    findings?: string | undefined;
+    actionRequired?: string | undefined;
+    defects?: string | undefined;
+}, {
+    createdBy: string;
+    passed: boolean;
+    equipmentId: string;
+    inspector: string;
+    inspectionDate: string;
+    nextInspectionDue: string;
+    photoUrl?: string | undefined;
+    findings?: string | undefined;
+    actionRequired?: string | undefined;
+    defects?: string | undefined;
+}>, {
     createdBy: string;
     passed: boolean;
     equipmentId: string;

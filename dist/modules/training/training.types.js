@@ -14,7 +14,7 @@ export const TrainingCourseSchema = z.object({
     createdBy: z.string().min(1).max(200),
 });
 export const TrainingCourseInputSchema = TrainingCourseSchema.omit({ id: true });
-export const TrainingRecordSchema = z.object({
+const TrainingRecordSchemaBase = z.object({
     id: z.string().optional(),
     recordNo: z.string().optional(),
     courseId: z.string().min(1).max(100),
@@ -33,7 +33,39 @@ export const TrainingRecordSchema = z.object({
     feedback: z.string().max(2000).optional(),
     createdBy: z.string().min(1).max(200),
 });
-export const TrainingRecordInputSchema = TrainingRecordSchema.omit({ id: true, recordNo: true });
+function refineTrainingRecordSchema(schema) {
+    return schema
+        .refine((data) => {
+        if (!data.completedDate)
+            return true;
+        const scheduledDate = new Date(data.scheduledDate);
+        const completedDate = new Date(data.completedDate);
+        return (!Number.isNaN(scheduledDate.getTime()) &&
+            !Number.isNaN(completedDate.getTime()) &&
+            completedDate >= scheduledDate);
+    }, {
+        message: "Completed date must be the same as or after the scheduled date",
+        path: ["completedDate"],
+    })
+        .refine((data) => {
+        if (!data.expiryDate || !data.completedDate)
+            return true;
+        const completedDate = new Date(data.completedDate);
+        const expiryDate = new Date(data.expiryDate);
+        return (!Number.isNaN(completedDate.getTime()) &&
+            !Number.isNaN(expiryDate.getTime()) &&
+            expiryDate >= completedDate);
+    }, {
+        message: "Expiry date must be the same as or after the completed date",
+        path: ["expiryDate"],
+    })
+        .refine((data) => !data.expiryDate || Boolean(data.completedDate?.trim()), {
+        message: "Completed date is required when an expiry date is provided",
+        path: ["completedDate"],
+    });
+}
+export const TrainingRecordSchema = refineTrainingRecordSchema(TrainingRecordSchemaBase);
+export const TrainingRecordInputSchema = refineTrainingRecordSchema(TrainingRecordSchemaBase.omit({ id: true, recordNo: true }));
 export const TrainingMatrixSchema = z.object({
     id: z.string().optional(),
     role: z.string().min(1).max(100),

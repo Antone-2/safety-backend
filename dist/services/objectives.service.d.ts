@@ -29,13 +29,13 @@ export declare const HseObjectiveSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     status: "In Progress" | "Cancelled" | "Not Started" | "On Track" | "At Risk" | "Off Track" | "Achieved";
+    owner: string;
+    title: string;
+    site: string;
     department: string;
     startDate: string;
     endDate: string;
     createdBy: string;
-    title: string;
-    owner: string;
-    site: string;
     category: string;
     progress: number;
     linkedRisks: string;
@@ -53,13 +53,13 @@ export declare const HseObjectiveSchema: z.ZodObject<{
     currentValue?: number | undefined;
     baseline?: string | undefined;
 }, {
+    owner: string;
+    title: string;
+    site: string;
     department: string;
     startDate: string;
     endDate: string;
     createdBy: string;
-    title: string;
-    owner: string;
-    site: string;
     category: string;
     status?: "In Progress" | "Cancelled" | "Not Started" | "On Track" | "At Risk" | "Off Track" | "Achieved" | undefined;
     id?: string | undefined;

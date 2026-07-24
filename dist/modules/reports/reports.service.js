@@ -5,6 +5,7 @@ import { randomBytes } from "crypto";
 import { sendReportAssignmentNotifications, } from "../../lib/email.js";
 import { awardReporterPoints } from "../../services/leaderboard.service.js";
 import { scheduleFollowupsForReport } from "../../services/report-followup.service.js";
+import { sanitizeReportDate, tryParseReportDateWithFallbacks, } from "../../shared/utils/report-date.js";
 const PHOTO_COL = "photo_url";
 const DATE_COL = "date";
 const LOCATION_COL = "location";
@@ -30,6 +31,109 @@ const CREATED_COL = "created_at";
 const UPDATED_COL = "updated_at";
 function isPgAvailable() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
+}
+function readPositiveNumber(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+async function deriveOperationalWorkforceCount() {
+    if (isPgAvailable()) {
+        try {
+            const result = await pgPool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM users WHERE active = TRUE) AS active_users,
+          (
+            SELECT COUNT(*)
+            FROM (
+              SELECT DISTINCT employee_name
+              FROM training_records
+              WHERE employee_name IS NOT NULL AND employee_name <> ''
+              UNION
+              SELECT DISTINCT employee_name
+              FROM health_surveillance
+              WHERE employee_name IS NOT NULL AND employee_name <> ''
+            ) employees
+          ) AS tracked_employees
+      `);
+            const row = result.rows[0];
+            const activeUsers = Number(row?.active_users ?? 0);
+            const trackedEmployees = Number(row?.tracked_employees ?? 0);
+            if (trackedEmployees >= activeUsers && trackedEmployees > 0) {
+                return {
+                    totalWorkforce: trackedEmployees,
+                    source: "tracked-employees",
+                    activeUsers,
+                    trackedEmployees,
+                };
+            }
+            if (activeUsers > 0) {
+                return {
+                    totalWorkforce: activeUsers,
+                    source: "active-users",
+                    activeUsers,
+                    trackedEmployees,
+                };
+            }
+            return {
+                totalWorkforce: null,
+                source: "configured-default",
+                activeUsers,
+                trackedEmployees,
+            };
+        }
+        catch {
+            return {
+                totalWorkforce: null,
+                source: "configured-default",
+                activeUsers: 0,
+                trackedEmployees: 0,
+            };
+        }
+    }
+    try {
+        const db = await getDb();
+        const activeUsers = Number(allRows(db, "SELECT COUNT(*) AS count FROM users WHERE active = 1")[0]?.count ?? 0);
+        const trackedEmployees = Number(allRows(db, `SELECT COUNT(*) AS count
+         FROM (
+           SELECT DISTINCT employee_name
+           FROM training_records
+           WHERE employee_name IS NOT NULL AND employee_name <> ''
+           UNION
+           SELECT DISTINCT employee_name
+           FROM health_surveillance
+           WHERE employee_name IS NOT NULL AND employee_name <> ''
+         ) employees`)[0]?.count ?? 0);
+        if (trackedEmployees >= activeUsers && trackedEmployees > 0) {
+            return {
+                totalWorkforce: trackedEmployees,
+                source: "tracked-employees",
+                activeUsers,
+                trackedEmployees,
+            };
+        }
+        if (activeUsers > 0) {
+            return {
+                totalWorkforce: activeUsers,
+                source: "active-users",
+                activeUsers,
+                trackedEmployees,
+            };
+        }
+        return {
+            totalWorkforce: null,
+            source: "configured-default",
+            activeUsers,
+            trackedEmployees,
+        };
+    }
+    catch {
+        return {
+            totalWorkforce: null,
+            source: "configured-default",
+            activeUsers: 0,
+            trackedEmployees: 0,
+        };
+    }
 }
 export function buildPgFilter(filters) {
     const where = ["1=1"];
@@ -135,6 +239,12 @@ function toCamelCase(row) {
                 ? r.compliance_due_at.toISOString()
                 : (r.compliance_due_at ?? undefined);
         r.photoUrl = String(r.photo_url ?? "").trim();
+        r.reporterEmail = typeof r.reporter_email === "string" ? r.reporter_email : (r.reporterEmail ?? undefined);
+        r.reporterPhone = typeof r.reporter_phone === "string" ? r.reporter_phone : (r.reporterPhone ?? undefined);
+        r.reporterWhatsApp =
+            typeof r.reporter_whatsapp === "string"
+                ? r.reporter_whatsapp
+                : (r.reporterWhatsApp ?? undefined);
         r.source = r.source;
         r.sourceSyncedAt =
             r.source_synced_at instanceof Date
@@ -152,9 +262,19 @@ function mapReport(row, comments = [], audit = []) {
     if (!row || !row.id)
         return null;
     const mapped = toCamelCase(row);
+    const safeDate = tryParseReportDateWithFallbacks(mapped.date, mapped.createdAt, mapped.updatedAt);
+    if (!safeDate) {
+        console.warn("Skipping report with invalid stored date fields:", mapped.id);
+        return null;
+    }
+    const safeDueAt = tryParseReportDateWithFallbacks(mapped.dueAt, safeDate, mapped.createdAt) ??
+        new Date(safeDate).toISOString();
+    const safeComplianceDueAt = mapped.complianceDueAt
+        ? tryParseReportDateWithFallbacks(mapped.complianceDueAt, safeDate, mapped.createdAt)
+        : undefined;
     return {
         id: mapped.id,
-        date: mapped.date,
+        date: safeDate,
         location: mapped.location,
         reporter: mapped.reporter,
         description: mapped.description,
@@ -164,7 +284,7 @@ function mapReport(row, comments = [], audit = []) {
         type: mapped.type,
         resolutionDays: mapped.resolutionDays,
         slaHours: mapped.slaHours,
-        dueAt: mapped.dueAt,
+        dueAt: safeDueAt,
         assignedTo: mapped.assignedTo,
         assignedToCopy: parseJsonArray(mapped.assignedToCopy),
         comments: comments.map((c) => ({
@@ -185,8 +305,11 @@ function mapReport(row, comments = [], audit = []) {
         department: mapped.department,
         shift: mapped.shift,
         complianceRequired: mapped.complianceRequired,
-        complianceDueAt: mapped.complianceDueAt,
+        complianceDueAt: safeComplianceDueAt,
         photoUrl: String(mapped.photoUrl ?? "").trim(),
+        reporterEmail: mapped.reporterEmail,
+        reporterPhone: mapped.reporterPhone,
+        reporterWhatsApp: mapped.reporterWhatsApp,
         source: mapped.source,
         sourceSyncedAt: mapped.sourceSyncedAt,
         auditHistory: audit.map((entry) => ({
@@ -276,6 +399,9 @@ async function syncReportWorkflowState(input) {
         console.warn("Workflow state sync skipped:", error instanceof Error ? error.message : String(error));
     }
 }
+function sanitizeIsoDate(value, ...fallbacks) {
+    return sanitizeReportDate(value, ...fallbacks);
+}
 function getPlaceholderPhotoUrl(id, size = 80) {
     const shortId = String(id ?? "").slice(-3) || "N/A";
     return `https://placehold.co/${size}x${size}/1e293b/ffffff?text=${encodeURIComponent(shortId)}`;
@@ -283,7 +409,7 @@ function getPlaceholderPhotoUrl(id, size = 80) {
 function normalizeReportInput(input) {
     return {
         id: input.id,
-        date: input.date instanceof Date ? input.date.toISOString() : input.date,
+        date: sanitizeIsoDate(input.date),
         location: input.location,
         reporter: input.reporter,
         description: input.description,
@@ -293,9 +419,7 @@ function normalizeReportInput(input) {
         type: input.type,
         resolutionDays: input.resolutionDays ?? input.resolution_days,
         slaHours: input.slaHours ?? input.sla_hours,
-        dueAt: input.dueAt instanceof Date
-            ? input.dueAt.toISOString()
-            : (input.dueAt ?? input.due_at),
+        dueAt: sanitizeIsoDate(input.dueAt),
         assignedTo: input.assignedTo ?? input.assigned_to,
         assignedToCopy: JSON.stringify(Array.isArray(input.assignedToCopy) ? input.assignedToCopy : []),
         isNearMiss: (input.isNearMiss ?? input.is_near_miss) ? 1 : 0,
@@ -311,10 +435,11 @@ function normalizeReportInput(input) {
         department: input.department,
         shift: input.shift,
         complianceRequired: (input.complianceRequired ?? input.compliance_required) ? 1 : 0,
-        complianceDueAt: input.complianceDueAt instanceof Date
-            ? input.complianceDueAt.toISOString()
-            : (input.complianceDueAt ?? input.compliance_due_at),
+        complianceDueAt: sanitizeIsoDate(input.complianceDueAt),
         photoUrl: input.photoUrl ?? input.photo_url ?? "",
+        reporterEmail: input.reporterEmail ?? input.reporter_email ?? "",
+        reporterPhone: input.reporterPhone ?? input.reporter_phone ?? "",
+        reporterWhatsApp: input.reporterWhatsApp ?? input.reporter_whatsapp ?? "",
         source: input.source ?? "manual",
         createdAt: input.createdAt ?? input.created_at ?? new Date().toISOString(),
         updatedAt: input.updatedAt ?? input.updated_at ?? new Date().toISOString(),
@@ -408,12 +533,13 @@ export class ReportsService {
         await pgPool.query(`INSERT INTO reports (
         id, date, location, reporter, description, severity, status, category, type,
         sla_hours, due_at, is_near_miss, anonymous, department, shift,
-        compliance_required, compliance_due_at, photo_url, source,
+        compliance_required, compliance_due_at, photo_url, reporter_email, reporter_phone,
+        reporter_whatsapp, source,
         is_recordable, is_lost_time_injury, medical_treatment_case,
         lost_work_days, restricted_work_days, classification_source,
         classification_verified_by, classification_verified_at
-      ) VALUES ($1, NOW(), $2, $3, $4, $5, 'Open', $6, $7, $8, $9, FALSE, $10, $11, $12, $13, $14, $15, 'manual',
-        $16, $17, $18, $19, $20, $21, $22, $23)`, [
+      ) VALUES ($1, NOW(), $2, $3, $4, $5, 'Open', $6, $7, $8, $9, FALSE, $10, $11, $12, $13, $14, $15, $16, $17, 'manual',
+        $18, $19, $20, $21, $22, $23, $24, $25)`, [
             id,
             input.location,
             input.reporter,
@@ -429,6 +555,9 @@ export class ReportsService {
             complianceRequired,
             complianceDueAt,
             photoUrl,
+            input.reporterEmail?.trim() || null,
+            input.reporterPhone?.trim() || null,
+            input.reporterWhatsApp?.trim() || null,
             Boolean(input.isRecordable),
             Boolean(input.isLostTimeInjury),
             Boolean(input.medicalTreatmentCase),
@@ -486,11 +615,12 @@ export class ReportsService {
         db.run(`INSERT INTO reports (
         id, date, location, reporter, description, severity, status, category, type,
         slaHours, dueAt, isNearMiss, anonymous, department, shift,
-        complianceRequired, complianceDueAt, photoUrl, source, createdAt,
+        complianceRequired, complianceDueAt, photoUrl, reporterEmail, reporterPhone,
+        reporterWhatsApp, source, createdAt,
         isRecordable, isLostTimeInjury, medicalTreatmentCase, lostWorkDays,
         restrictedWorkDays, classificationSource, classificationVerifiedBy,
         classificationVerifiedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      ) VALUES (?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             id,
             createdAt,
             input.location,
@@ -507,6 +637,9 @@ export class ReportsService {
             complianceRequired ? 1 : 0,
             complianceDueAt,
             photoUrl,
+            input.reporterEmail?.trim() || null,
+            input.reporterPhone?.trim() || null,
+            input.reporterWhatsApp?.trim() || null,
             "manual",
             createdAt,
             input.isRecordable ? 1 : 0,
@@ -769,6 +902,9 @@ export class ReportsService {
             assignedTo: "assigned_to",
             status: "status",
             photoUrl: "photo_url",
+            reporterEmail: "reporter_email",
+            reporterPhone: "reporter_phone",
+            reporterWhatsApp: "reporter_whatsapp",
             isRecordable: "is_recordable",
             isLostTimeInjury: "is_lost_time_injury",
             medicalTreatmentCase: "medical_treatment_case",
@@ -1001,11 +1137,9 @@ export class ReportsService {
         today.setHours(0, 0, 0, 0);
         const weekAgo = new Date(Date.now() - 7 * 86400000);
         const now = new Date();
-        function readPositiveNumber(value, fallback) {
-            const parsed = Number(value);
-            return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-        }
-        const totalWorkforce = readPositiveNumber(process.env.TOTAL_WORKFORCE, 250);
+        const operationalWorkforce = await deriveOperationalWorkforceCount();
+        const configuredWorkforce = readPositiveNumber(process.env.TOTAL_WORKFORCE, 250);
+        const totalWorkforce = operationalWorkforce.totalWorkforce ?? configuredWorkforce;
         const dailyWorkHours = readPositiveNumber(process.env.DAILY_WORK_HOURS, 8);
         const workDaysPerMonth = readPositiveNumber(process.env.WORK_DAYS_PER_MONTH, 26);
         const lostDayHours = readPositiveNumber(process.env.LOST_DAY_HOURS, 8);
@@ -1061,6 +1195,11 @@ export class ReportsService {
                     Low: row?.severityLow ?? 0,
                 },
                 totalWorkforce,
+                workforceSource: operationalWorkforce.totalWorkforce != null
+                    ? operationalWorkforce.source
+                    : "configured-default",
+                activeUsersCount: operationalWorkforce.activeUsers,
+                trackedEmployeesCount: operationalWorkforce.trackedEmployees,
                 dailyWorkHours,
                 workDaysPerMonth,
                 lostDayHours,
@@ -1127,6 +1266,11 @@ export class ReportsService {
             closedCount: num(row?.closedCount),
             daysSinceLastLti,
             totalWorkforce,
+            workforceSource: operationalWorkforce.totalWorkforce != null
+                ? operationalWorkforce.source
+                : "configured-default",
+            activeUsersCount: operationalWorkforce.activeUsers,
+            trackedEmployeesCount: operationalWorkforce.trackedEmployees,
             dailyWorkHours,
             workDaysPerMonth,
             lostDayHours,
@@ -1197,6 +1341,66 @@ export class ReportsService {
     async generateExport(filters = {}) {
         const result = await this.list({ ...filters, all: true }, 1, 1);
         return result.data;
+    }
+    async bulkUpdateStatus(ids, status, request) {
+        const cleanIds = ids.filter((id) => typeof id === "string" && id.trim().length > 0);
+        if (cleanIds.length === 0)
+            return { updated: 0, ids: [] };
+        if (isPgAvailable()) {
+            return this.bulkUpdateStatusPg(cleanIds, status, request);
+        }
+        return this.bulkUpdateStatusSqlite(cleanIds, status, request);
+    }
+    async bulkUpdateStatusPg(ids, status, request) {
+        const beforeStatuses = new Map();
+        for (const id of ids) {
+            const existing = await this.getById(id);
+            if (existing)
+                beforeStatuses.set(id, existing.status);
+        }
+        const result = await pgPool.query("UPDATE reports SET status = $1, updated_at = NOW() WHERE id = ANY($2::text[]) RETURNING id", [status, ids]);
+        if (request) {
+            await writeAuditLogBestEffort({
+                action: "report.status.bulk_updated",
+                resourceType: "report",
+                resourceId: ids.join(","),
+                context: {
+                    detail: `Bulk updated ${result.rowCount} reports to ${status}`,
+                    count: result.rowCount,
+                },
+                actor: request.user,
+                request,
+            });
+        }
+        for (const id of ids) {
+            await syncReportWorkflowState({
+                reportId: id,
+                state: status,
+                context: { source: "report.status.bulk_updated" },
+            });
+        }
+        return { updated: result.rowCount ?? 0, ids: result.rows.map((r) => r.id) };
+    }
+    async bulkUpdateStatusSqlite(ids, status, request) {
+        const db = await getDb();
+        const placeholders = ids.map(() => "?").join(",");
+        const now = new Date().toISOString();
+        const rows = allRows(db, `UPDATE reports SET status = ?, updatedAt = ? WHERE id IN (${placeholders}) RETURNING id`, [status, now, ...ids]);
+        if (request) {
+            await writeAuditLogBestEffort({
+                action: "report.status.bulk_updated",
+                resourceType: "report",
+                resourceId: ids.join(","),
+                context: {
+                    detail: `Bulk updated ${rows.length} reports to ${status}`,
+                    count: rows.length,
+                },
+                actor: request.user,
+                request,
+            });
+        }
+        await saveDb(db);
+        return { updated: rows.length, ids: rows.map((r) => r.id) };
     }
 }
 export const reportsService = new ReportsService();

@@ -20,6 +20,9 @@ export const CreateReportSchema = z.object({
     medicalTreatmentCase: z.boolean().optional(),
     lostWorkDays: z.number().int().min(0).max(36500).optional(),
     restrictedWorkDays: z.number().int().min(0).max(36500).optional(),
+    reporterEmail: z.string().trim().email().optional().or(z.literal("")),
+    reporterPhone: z.string().trim().max(30).optional(),
+    reporterWhatsApp: z.string().trim().max(30).optional(),
     photoUrl: z
         .string()
         .trim()
@@ -59,11 +62,11 @@ export const UserRoleSchema = z.enum([
 ]);
 export const LoginSchema = z.object({
     email: z.string().email(),
-    password: z.string().min(1),
+    password: z.string().min(12),
 });
 export const CreateUserSchema = z.object({
     email: z.string().email(),
-    password: z.string().min(8),
+    password: z.string().min(12),
     name: z.string().min(1),
     role: UserRoleSchema,
     phone: z.string().max(30).optional(),

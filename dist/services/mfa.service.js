@@ -1,8 +1,12 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, createHmac, randomBytes } from "crypto";
+import * as QRCode from "qrcode";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 // TOTP implementation using HMAC-SHA1 and base32
 // Based on RFC 6238 (TOTP) and RFC 4648 (Base32)
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const MFA_TOTP_TIME_STEP_SECONDS = 30;
+const MFA_TOTP_ALLOWED_WINDOW = 2;
+const MFA_TOTP_ENROLLMENT_WINDOW = 6;
 function base32Encode(bytes) {
     let result = "";
     let bits = 0;
@@ -44,40 +48,46 @@ function base32Decode(str) {
 function generateHOTP(secret, counter) {
     const buf = Buffer.alloc(8);
     buf.writeBigUInt64BE(BigInt(counter));
-    const hash = createHash("sha1")
-        .update(Buffer.concat([secret, buf]))
-        .digest();
-    const offset = hash[hash.length - 1] & 0xf;
-    const code = ((hash[offset] & 0x7f) << 24) |
-        ((hash[offset + 1] & 0xff) << 16) |
-        ((hash[offset + 2] & 0xff) << 8) |
-        (hash[offset + 3] & 0xff);
+    const hmac = createHmac("sha1", secret).update(buf).digest();
+    const offset = hmac[hmac.length - 1] & 0xf;
+    const code = ((hmac[offset] & 0x7f) << 24) |
+        ((hmac[offset + 1] & 0xff) << 16) |
+        ((hmac[offset + 2] & 0xff) << 8) |
+        (hmac[offset + 3] & 0xff);
     return code % 1000000;
 }
 function generateTOTP(secret, timeStep = 30, time = Date.now()) {
     const counter = Math.floor(time / 1000 / timeStep);
     return generateHOTP(secret, counter);
 }
-function verifyTOTP(secret, token, timeStep = 30, window = 1, time = Date.now()) {
-    const tokenNum = parseInt(token, 10);
-    if (isNaN(tokenNum) || token.length !== 6)
-        return false;
+function findTOTPMatchOffset(secret, token, timeStep = MFA_TOTP_TIME_STEP_SECONDS, window = MFA_TOTP_ALLOWED_WINDOW, time = Date.now(), driftSteps = 0) {
+    const normalizedToken = token.replace(/\s+/g, "").trim();
+    const tokenNum = parseInt(normalizedToken, 10);
+    if (isNaN(tokenNum) || normalizedToken.length !== 6)
+        return null;
     const counter = Math.floor(time / 1000 / timeStep);
     for (let i = -window; i <= window; i++) {
-        if (generateHOTP(secret, counter + i) === tokenNum)
-            return true;
+        const offset = driftSteps + i;
+        if (generateHOTP(secret, counter + offset) === tokenNum) {
+            return offset;
+        }
     }
-    return false;
+    return null;
 }
 export class MFAService {
     pool;
     constructor(pool = pgPool) {
         this.pool = pool;
     }
-    generateSecret(email) {
+    async generateSecret(email) {
         const secret = randomBytes(20);
         const base32Secret = base32Encode(secret);
-        const qrCode = `otpauth://totp/Crown%20Safety%20(${encodeURIComponent(email)})?secret=${base32Secret}&issuer=Crown%20Safety`;
+        const otpauthUrl = `otpauth://totp/Crown%20Safety%20(${encodeURIComponent(email)})?secret=${base32Secret}&issuer=Crown%20Safety`;
+        const qrCode = await QRCode.toDataURL(otpauthUrl, {
+            width: 200,
+            margin: 2,
+            errorCorrectionLevel: "M",
+        });
         return { secret: base32Secret, qrCode };
     }
     generateRecoveryCodes(count = 10) {
@@ -111,10 +121,16 @@ export class MFAService {
                 return false;
             const storedSecret = result.rows[0].secret;
             const secretBinary = base32Decode(storedSecret);
-            const isValid = verifyTOTP(secretBinary, token, 30, 1);
+            const driftOffset = findTOTPMatchOffset(secretBinary, token, MFA_TOTP_TIME_STEP_SECONDS, MFA_TOTP_ENROLLMENT_WINDOW);
+            const isValid = driftOffset !== null;
             if (isValid) {
-                await this.pool.query(`UPDATE user_mfa SET verified = TRUE, enabled = TRUE, verified_at = NOW()
-           WHERE user_id = $1`, [userId]);
+                await this.pool.query(`UPDATE user_mfa
+           SET verified = TRUE,
+               enabled = TRUE,
+               verified_at = NOW(),
+               drift_steps = $2,
+               updated_at = NOW()
+           WHERE user_id = $1`, [userId, driftOffset]);
             }
             return isValid;
         }
@@ -124,12 +140,26 @@ export class MFAService {
     }
     async verifyTOTPToken(userId, token) {
         try {
-            const result = await this.pool.query("SELECT secret FROM user_mfa WHERE user_id = $1 AND enabled = TRUE", [userId]);
+            const result = await this.pool.query("SELECT secret, drift_steps FROM user_mfa WHERE user_id = $1 AND enabled = TRUE", [userId]);
             if (!result.rows[0])
                 return false;
             const storedSecret = result.rows[0].secret;
+            const storedDrift = Number(result.rows[0].drift_steps ?? 0);
             const secretBinary = base32Decode(storedSecret);
-            return verifyTOTP(secretBinary, token, 30, 1);
+            let driftOffset = findTOTPMatchOffset(secretBinary, token, MFA_TOTP_TIME_STEP_SECONDS, MFA_TOTP_ALLOWED_WINDOW, Date.now(), storedDrift);
+            if (driftOffset === null) {
+                driftOffset = findTOTPMatchOffset(secretBinary, token, MFA_TOTP_TIME_STEP_SECONDS, MFA_TOTP_ENROLLMENT_WINDOW);
+            }
+            if (driftOffset === null) {
+                return false;
+            }
+            if (driftOffset !== storedDrift) {
+                await this.pool.query(`UPDATE user_mfa
+           SET drift_steps = $2,
+               updated_at = NOW()
+           WHERE user_id = $1`, [userId, driftOffset]);
+            }
+            return true;
         }
         catch {
             return false;

@@ -4,7 +4,8 @@ export const WasteStatusSchema = z.enum(["Stored", "Disposed", "Recycled", "Pend
 export const EmissionTypeSchema = z.enum(["Air", "Water", "Noise", "Vibration"]);
 export const EmissionStatusSchema = z.enum(["Within Limit", "Exceedance", "Under Investigation"]);
 export const SpillSeveritySchema = z.enum(["Minor", "Major", "Critical"]);
-export const CreateWasteSchema = z.object({
+export const CreateWasteSchema = z
+    .object({
     type: WasteTypeSchema,
     category: z.string().min(1).max(100),
     description: z.string().min(1).max(500),
@@ -20,6 +21,22 @@ export const CreateWasteSchema = z.object({
     photoUrl: z.string().optional(),
     notes: z.string().max(500).optional(),
     createdBy: z.string().min(1).max(200),
+})
+    .refine((data) => {
+    if (!data.disposedDate)
+        return true;
+    const generatedDate = new Date(data.generatedDate);
+    const disposedDate = new Date(data.disposedDate);
+    return (!Number.isNaN(generatedDate.getTime()) &&
+        !Number.isNaN(disposedDate.getTime()) &&
+        disposedDate >= generatedDate);
+}, {
+    message: "Disposed date must be the same as or after the generated date",
+    path: ["disposedDate"],
+})
+    .refine((data) => !["Disposed", "Recycled"].includes(data.status) || Boolean(data.disposedDate?.trim()), {
+    message: "Disposed date is required when waste status is Disposed or Recycled",
+    path: ["disposedDate"],
 });
 export const UpdateWasteSchema = z.object({
     type: WasteTypeSchema.optional(),

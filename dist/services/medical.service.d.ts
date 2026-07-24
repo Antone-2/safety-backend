@@ -24,9 +24,9 @@ export declare const MedicalRecordSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     frequency: string;
     employeeId: string;
     employeeName: string;
@@ -45,9 +45,9 @@ export declare const MedicalRecordSchema: z.ZodObject<{
     doctorRegistration?: string | undefined;
     clinicName?: string | undefined;
 }, {
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     frequency: string;
     employeeId: string;
     employeeName: string;

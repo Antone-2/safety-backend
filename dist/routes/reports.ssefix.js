@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { allRows, getDb, saveDb } from "../lib/database.js";
 import { StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification, sendAssignmentNotification } from "../lib/email.js";
+import { tryParseReportDate } from "../shared/utils/report-date.js";
 async function findUserByIdentifier(_identifier) {
     return null;
 }
@@ -93,10 +94,14 @@ function reportDedupeKey(row) {
 }
 function dedupeReports(rows) {
     const byKey = new Map();
+    const toTime = (value) => {
+        const parsed = tryParseReportDate(value);
+        return parsed ? new Date(parsed).getTime() : Number.NEGATIVE_INFINITY;
+    };
     for (const row of rows) {
         const key = reportDedupeKey(row);
         const existing = byKey.get(key);
-        if (!existing || new Date(row.date).getTime() >= new Date(existing.date).getTime()) {
+        if (!existing || toTime(row.date) >= toTime(existing.date)) {
             byKey.set(key, row);
         }
     }

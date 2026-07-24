@@ -47,7 +47,7 @@ export interface Permit {
     createdAt: string;
     updatedAt: string;
 }
-export declare const CreatePermitSchema: z.ZodObject<{
+export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
     type: z.ZodEnum<["Hot Work", "Cold Work", "Confined Space", "Electrical", "Excavation", "Height Work", "General"]>;
     location: z.ZodString;
     applicant: z.ZodString;
@@ -77,9 +77,9 @@ export declare const CreatePermitSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
+    description: string;
     attachments: any[];
     location: string;
-    description: string;
     applicant: string;
     startDate: string;
     endDate: string;
@@ -105,8 +105,64 @@ export declare const CreatePermitSchema: z.ZodObject<{
     linkedIncidentId?: string | undefined;
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
-    location: string;
     description: string;
+    location: string;
+    applicant: string;
+    startDate: string;
+    endDate: string;
+    createdBy: string;
+    supervisor?: string | undefined;
+    issuer?: string | undefined;
+    attachments?: any[] | undefined;
+    applicantContact?: string | undefined;
+    ehsOfficer?: string | undefined;
+    approver?: string | undefined;
+    hazards?: string | undefined;
+    precautions?: string | undefined;
+    ppeRequired?: string[] | undefined;
+    isolationRequired?: boolean | undefined;
+    isolationDetails?: string | undefined;
+    fireWatchRequired?: boolean | undefined;
+    gasTestRequired?: boolean | undefined;
+    gasTestResult?: string | undefined;
+    gasTestBefore?: string | null | undefined;
+    gasTestAfter?: string | null | undefined;
+    fireWatchAssigned?: string | null | undefined;
+    comments?: any[] | undefined;
+    linkedJsaId?: string | undefined;
+    linkedIncidentId?: string | undefined;
+}>, {
+    type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
+    description: string;
+    attachments: any[];
+    location: string;
+    applicant: string;
+    startDate: string;
+    endDate: string;
+    isolationRequired: boolean;
+    fireWatchRequired: boolean;
+    gasTestRequired: boolean;
+    comments: any[];
+    createdBy: string;
+    supervisor?: string | undefined;
+    issuer?: string | undefined;
+    applicantContact?: string | undefined;
+    ehsOfficer?: string | undefined;
+    approver?: string | undefined;
+    hazards?: string | undefined;
+    precautions?: string | undefined;
+    ppeRequired?: string[] | undefined;
+    isolationDetails?: string | undefined;
+    gasTestResult?: string | undefined;
+    gasTestBefore?: string | null | undefined;
+    gasTestAfter?: string | null | undefined;
+    fireWatchAssigned?: string | null | undefined;
+    linkedJsaId?: string | undefined;
+    linkedIncidentId?: string | undefined;
+}, {
+    type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
+    description: string;
+    location: string;
     applicant: string;
     startDate: string;
     endDate: string;
@@ -162,8 +218,8 @@ export declare const UpdatePermitSchema: z.ZodObject<{
     status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     applicantContact?: string | null | undefined;
     ehsOfficer?: string | null | undefined;
@@ -186,8 +242,8 @@ export declare const UpdatePermitSchema: z.ZodObject<{
     status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     applicantContact?: string | null | undefined;
     ehsOfficer?: string | null | undefined;
@@ -215,7 +271,7 @@ export declare const AdvancePermitStatusSchema: z.ZodObject<{
     status: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired";
 }>;
 export type AdvancePermitStatusInput = z.infer<typeof AdvancePermitStatusSchema>;
-export declare const CreatePermitInputSchema: z.ZodObject<{
+export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
     type: z.ZodEnum<["Hot Work", "Cold Work", "Confined Space", "Electrical", "Excavation", "Height Work", "General"]>;
     location: z.ZodString;
     applicant: z.ZodString;
@@ -245,9 +301,9 @@ export declare const CreatePermitInputSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
+    description: string;
     attachments: any[];
     location: string;
-    description: string;
     applicant: string;
     startDate: string;
     endDate: string;
@@ -273,8 +329,64 @@ export declare const CreatePermitInputSchema: z.ZodObject<{
     linkedIncidentId?: string | undefined;
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
-    location: string;
     description: string;
+    location: string;
+    applicant: string;
+    startDate: string;
+    endDate: string;
+    createdBy: string;
+    supervisor?: string | undefined;
+    issuer?: string | undefined;
+    attachments?: any[] | undefined;
+    applicantContact?: string | undefined;
+    ehsOfficer?: string | undefined;
+    approver?: string | undefined;
+    hazards?: string | undefined;
+    precautions?: string | undefined;
+    ppeRequired?: string[] | undefined;
+    isolationRequired?: boolean | undefined;
+    isolationDetails?: string | undefined;
+    fireWatchRequired?: boolean | undefined;
+    gasTestRequired?: boolean | undefined;
+    gasTestResult?: string | undefined;
+    gasTestBefore?: string | null | undefined;
+    gasTestAfter?: string | null | undefined;
+    fireWatchAssigned?: string | null | undefined;
+    comments?: any[] | undefined;
+    linkedJsaId?: string | undefined;
+    linkedIncidentId?: string | undefined;
+}>, {
+    type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
+    description: string;
+    attachments: any[];
+    location: string;
+    applicant: string;
+    startDate: string;
+    endDate: string;
+    isolationRequired: boolean;
+    fireWatchRequired: boolean;
+    gasTestRequired: boolean;
+    comments: any[];
+    createdBy: string;
+    supervisor?: string | undefined;
+    issuer?: string | undefined;
+    applicantContact?: string | undefined;
+    ehsOfficer?: string | undefined;
+    approver?: string | undefined;
+    hazards?: string | undefined;
+    precautions?: string | undefined;
+    ppeRequired?: string[] | undefined;
+    isolationDetails?: string | undefined;
+    gasTestResult?: string | undefined;
+    gasTestBefore?: string | null | undefined;
+    gasTestAfter?: string | null | undefined;
+    fireWatchAssigned?: string | null | undefined;
+    linkedJsaId?: string | undefined;
+    linkedIncidentId?: string | undefined;
+}, {
+    type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
+    description: string;
+    location: string;
     applicant: string;
     startDate: string;
     endDate: string;
@@ -329,8 +441,8 @@ export declare const UpdatePermitInputSchema: z.ZodObject<{
     status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     applicantContact?: string | null | undefined;
     ehsOfficer?: string | null | undefined;
@@ -353,8 +465,8 @@ export declare const UpdatePermitInputSchema: z.ZodObject<{
     status?: "supervisor" | "issuer" | "active" | "closed" | "draft" | "applicant" | "ehs" | "approval" | "expired" | undefined;
     supervisor?: string | null | undefined;
     issuer?: string | null | undefined;
-    location?: string | undefined;
     description?: string | undefined;
+    location?: string | undefined;
     applicant?: string | undefined;
     applicantContact?: string | null | undefined;
     ehsOfficer?: string | null | undefined;

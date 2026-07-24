@@ -42,17 +42,17 @@ export declare const IncidentSchema: z.ZodObject<{
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition" | "Near Miss" | "First Aid" | "Medical Treatment" | "Lost Time" | "Fatality" | "Property Damage" | "Environmental";
     status: "Closed" | "Open" | "Investigating" | "Root Cause Analysis" | "CAPA Open";
+    source: string;
+    department: string;
+    description: string;
     anonymous: boolean;
     reporter: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    department: string;
-    description: string;
     isNearMiss: boolean;
     slaHours: number;
     regulatoryNotificationRequired: boolean;
     complianceRequired: boolean;
-    source: string;
     id?: string | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
@@ -73,13 +73,14 @@ export declare const IncidentSchema: z.ZodObject<{
 }, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition" | "Near Miss" | "First Aid" | "Medical Treatment" | "Lost Time" | "Fatality" | "Property Damage" | "Environmental";
+    department: string;
+    description: string;
     reporter: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    department: string;
-    description: string;
     status?: "Closed" | "Open" | "Investigating" | "Root Cause Analysis" | "CAPA Open" | undefined;
     id?: string | undefined;
+    source?: string | undefined;
     anonymous?: boolean | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
@@ -100,7 +101,6 @@ export declare const IncidentSchema: z.ZodObject<{
     regulatoryNotificationDate?: string | undefined;
     complianceRequired?: boolean | undefined;
     complianceDueAt?: string | undefined;
-    source?: string | undefined;
     auditHistory?: string | undefined;
 }>;
 export type IncidentInput = z.infer<typeof IncidentSchema>;

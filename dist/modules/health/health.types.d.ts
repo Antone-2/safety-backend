@@ -45,9 +45,9 @@ export declare const CreateHealthRecordSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "Other" | "Audiometric" | "Respiratory" | "Vision" | "Hearing" | "Blood" | "Urine" | "Physical";
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     frequency: string;
     employeeId: string;
     employeeName: string;
@@ -64,9 +64,9 @@ export declare const CreateHealthRecordSchema: z.ZodObject<{
     clinicName?: string | undefined;
 }, {
     type: "Other" | "Audiometric" | "Respiratory" | "Vision" | "Hearing" | "Blood" | "Urine" | "Physical";
+    site: string;
     department: string;
     createdBy: string;
-    site: string;
     frequency: string;
     employeeId: string;
     employeeName: string;
@@ -103,8 +103,8 @@ export declare const UpdateHealthRecordSchema: z.ZodObject<{
     notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     type?: "Other" | "Audiometric" | "Respiratory" | "Vision" | "Hearing" | "Blood" | "Urine" | "Physical" | undefined;
-    department?: string | undefined;
     site?: string | undefined;
+    department?: string | undefined;
     frequency?: string | undefined;
     notes?: string | null | undefined;
     findings?: string | null | undefined;
@@ -121,8 +121,8 @@ export declare const UpdateHealthRecordSchema: z.ZodObject<{
     clinicName?: string | null | undefined;
 }, {
     type?: "Other" | "Audiometric" | "Respiratory" | "Vision" | "Hearing" | "Blood" | "Urine" | "Physical" | undefined;
-    department?: string | undefined;
     site?: string | undefined;
+    department?: string | undefined;
     frequency?: string | undefined;
     notes?: string | null | undefined;
     findings?: string | null | undefined;

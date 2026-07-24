@@ -58,10 +58,10 @@ export declare const JsaSchema: z.ZodObject<{
     reviewedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "active" | "draft" | "completed" | "in-review" | "archived";
-    location: string;
-    department: string;
-    createdBy: string;
     title: string;
+    department: string;
+    location: string;
+    createdBy: string;
     steps: {
         id: string;
         description: string;
@@ -75,10 +75,10 @@ export declare const JsaSchema: z.ZodObject<{
     reviewedBy?: string | undefined;
     reviewedAt?: string | undefined;
 }, {
-    location: string;
-    department: string;
-    createdBy: string;
     title: string;
+    department: string;
+    location: string;
+    createdBy: string;
     status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
     id?: string | undefined;
     description?: string | undefined;
@@ -96,12 +96,172 @@ export declare const JsaSchema: z.ZodObject<{
 export type JsaInput = z.infer<typeof JsaSchema>;
 export declare class JsaService extends BaseService {
     constructor();
-    createJsa(data: JsaInput): Promise<any>;
-    getJsaList(filters?: Record<string, any>): Promise<any[]>;
-    getJsaById(id: string): Promise<any>;
-    updateJsa(id: string, data: Record<string, any>): Promise<any>;
-    submitForReview(id: string): Promise<any>;
-    approveJsa(id: string, reviewedBy: string): Promise<any>;
-    archiveJsa(id: string): Promise<any>;
-    addStep(id: string, step: z.infer<typeof JsaStepSchema>): Promise<any>;
+    createJsa(data: JsaInput): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    getJsaList(filters?: Record<string, any>): Promise<({
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null)[]>;
+    getJsaById(id: string): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    updateJsa(id: string, data: Record<string, any>): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    submitForReview(id: string): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    approveJsa(id: string, reviewedBy: string): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    archiveJsa(id: string): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    addStep(id: string, step: z.infer<typeof JsaStepSchema>): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
 }

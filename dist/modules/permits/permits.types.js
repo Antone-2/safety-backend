@@ -19,7 +19,8 @@ export const PermitStatusSchema = z.enum([
     "closed",
     "expired",
 ]);
-export const CreatePermitSchema = z.object({
+export const CreatePermitSchema = z
+    .object({
     type: PermitTypeSchema,
     location: z.string().min(1).max(200),
     applicant: z.string().min(1).max(200),
@@ -47,6 +48,14 @@ export const CreatePermitSchema = z.object({
     linkedJsaId: z.string().optional(),
     linkedIncidentId: z.string().optional(),
     createdBy: z.string().min(1).max(200),
+})
+    .refine((data) => {
+    const start = new Date(data.startDate);
+    const end = new Date(data.endDate);
+    return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start;
+}, {
+    message: "Permit end date must be the same as or after the start date",
+    path: ["endDate"],
 });
 export const UpdatePermitSchema = z.object({
     type: PermitTypeSchema.optional(),

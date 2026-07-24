@@ -1,7 +1,8 @@
 import { z } from "zod";
 export const ContractorStatusSchema = z.enum(["Active", "Suspended", "Blacklisted", "Expired"]);
 export const IncidentSeveritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
-export const CreateContractorSchema = z.object({
+export const CreateContractorSchema = z
+    .object({
     companyName: z.string().min(1).max(200),
     registrationNumber: z.string().min(1).max(100),
     contactPerson: z.string().min(1).max(200),
@@ -19,6 +20,18 @@ export const CreateContractorSchema = z.object({
     documents: z.array(z.string()).optional().default([]),
     performanceScore: z.number().min(0).max(100).optional(),
     createdBy: z.string().min(1).max(200),
+})
+    .refine((data) => {
+    if (!data.inductionDate || !data.inductionExpiry)
+        return true;
+    const inductionDate = new Date(data.inductionDate);
+    const inductionExpiry = new Date(data.inductionExpiry);
+    return (!Number.isNaN(inductionDate.getTime()) &&
+        !Number.isNaN(inductionExpiry.getTime()) &&
+        inductionExpiry >= inductionDate);
+}, {
+    message: "Induction expiry must be the same as or after the induction date",
+    path: ["inductionExpiry"],
 });
 export const UpdateContractorSchema = z.object({
     companyName: z.string().min(1).max(200).optional(),

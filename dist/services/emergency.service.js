@@ -1,6 +1,6 @@
 import { BaseService } from "./base.service.js";
 import { z } from "zod";
-export const EmergencyPlanSchema = z.object({
+const EmergencyPlanSchemaBase = z.object({
     id: z.string().optional(),
     title: z.string().min(1).max(200),
     scenario: z.string().min(1).max(200),
@@ -15,7 +15,20 @@ export const EmergencyPlanSchema = z.object({
     status: z.string().default("Active"),
     createdBy: z.string().min(1).max(200),
 });
-export const DrillSchema = z.object({
+export const EmergencyPlanSchema = EmergencyPlanSchemaBase
+    .refine((data) => {
+    if (!data.lastReviewed || !data.nextReview)
+        return true;
+    const lastReviewed = new Date(data.lastReviewed);
+    const nextReview = new Date(data.nextReview);
+    return (!Number.isNaN(lastReviewed.getTime()) &&
+        !Number.isNaN(nextReview.getTime()) &&
+        nextReview >= lastReviewed);
+}, {
+    message: "Next review date must be the same as or after the last reviewed date",
+    path: ["nextReview"],
+});
+const DrillSchemaBase = z.object({
     id: z.string().optional(),
     title: z.string().min(1).max(200),
     type: z.enum(["Fire", "Evacuation", "Spill", "Earthquake", "Medical", "Other"]),
@@ -32,6 +45,19 @@ export const DrillSchema = z.object({
     coordinator: z.string().min(1).max(200),
     status: z.enum(["Scheduled", "Completed", "Cancelled"]).default("Scheduled"),
     createdBy: z.string().min(1).max(200),
+});
+export const DrillSchema = DrillSchemaBase
+    .refine((data) => {
+    if (!data.actualDate)
+        return true;
+    const scheduledDate = new Date(data.scheduledDate);
+    const actualDate = new Date(data.actualDate);
+    return (!Number.isNaN(scheduledDate.getTime()) &&
+        !Number.isNaN(actualDate.getTime()) &&
+        actualDate >= scheduledDate);
+}, {
+    message: "Actual drill date must be the same as or after the scheduled date",
+    path: ["actualDate"],
 });
 export const EmergencyContactSchema = z.object({
     id: z.string().optional(),
@@ -52,12 +78,12 @@ export class EmergencyService {
     drillService;
     contactService;
     constructor() {
-        this.planService = new BaseService("emergency_plans", EmergencyPlanSchema);
-        this.drillService = new BaseService("drills", DrillSchema);
+        this.planService = new BaseService("emergency_plans", EmergencyPlanSchemaBase);
+        this.drillService = new BaseService("drills", DrillSchemaBase);
         this.contactService = new BaseService("emergency_contacts", EmergencyContactSchema);
     }
     async createPlan(data) {
-        return this.planService.create(data);
+        return this.planService.create(EmergencyPlanSchema.parse(data));
     }
     async getPlans() {
         return this.planService.getAll();
@@ -66,16 +92,22 @@ export class EmergencyService {
         return this.planService.getById(id);
     }
     async updatePlan(id, data) {
-        return this.planService.update(id, data);
+        const current = await this.getPlanById(id);
+        if (!current)
+            return null;
+        return this.planService.update(id, EmergencyPlanSchema.parse({ ...current, ...data }));
     }
     async createDrill(data) {
-        return this.drillService.create(data);
+        return this.drillService.create(DrillSchema.parse(data));
     }
     async getDrills(filters) {
         return this.drillService.getAll(filters);
     }
     async updateDrill(id, data) {
-        return this.drillService.update(id, data);
+        const current = await this.drillService.getById(id);
+        if (!current)
+            return null;
+        return this.drillService.update(id, DrillSchema.parse({ ...current, ...data }));
     }
     async createContact(data) {
         return this.contactService.create(data);

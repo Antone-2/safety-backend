@@ -18,6 +18,9 @@ const OTP_REQUEST_WINDOW_MINUTES = Number(process.env.AUTH_OTP_REQUEST_WINDOW_MI
 const OTP_MAX_REQUESTS_PER_EMAIL = Number(process.env.AUTH_OTP_MAX_REQUESTS_PER_EMAIL || 5);
 const OTP_MAX_REQUESTS_PER_IP = Number(process.env.AUTH_OTP_MAX_REQUESTS_PER_IP || 20);
 const OTP_MAX_REQUESTS_PER_DEVICE = Number(process.env.AUTH_OTP_MAX_REQUESTS_PER_DEVICE || 10);
+const ACCESS_TOKEN_TTL_MINUTES = Number(process.env.AUTH_ACCESS_TOKEN_TTL_MINUTES || 480);
+const REFRESH_SESSION_TTL_DAYS = Number(process.env.AUTH_REFRESH_SESSION_TTL_DAYS || 30);
+const MFA_TRUST_DAYS = Number(process.env.AUTH_MFA_TRUST_DAYS || 30);
 const MAX_ACTIVE_SESSIONS_PER_USER = Number(process.env.AUTH_MAX_ACTIVE_SESSIONS_PER_USER || 5);
 const ACCOUNT_LOCKOUT_THRESHOLD = Number(process.env.AUTH_ACCOUNT_LOCKOUT_THRESHOLD || 5);
 const ACCOUNT_LOCKOUT_DURATION_MINUTES = Number(process.env.AUTH_ACCOUNT_LOCKOUT_DURATION_MINUTES || 30);
@@ -40,6 +43,45 @@ function validatePasswordComplexity(password) {
     }
     if (!/[^A-Za-z0-9]/.test(password)) {
         throw new Error("Password must contain at least one special character");
+    }
+}
+const COMMON_PASSWORDS = new Set([
+    "password",
+    "123456",
+    "12345678",
+    "qwerty",
+    "abc123",
+    "monkey",
+    "master",
+    "dragon",
+    "login",
+    "admin",
+    "root",
+    "toor",
+    "letmein",
+    "passw0rd",
+    "welcome",
+    "iloveyou",
+    "sunshine",
+    "princess",
+    "football",
+    "shadow",
+    "michael",
+    "ninja",
+    "mustang",
+    "jessica",
+    "charlie",
+    "password1",
+    "1q2w3e4r",
+    "qwerty123",
+    "password123",
+    "crown123",
+    "ehs123",
+    "safety123",
+]);
+function rejectCommonPassword(password) {
+    if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+        throw new Error("Password is too common. Choose a more unique password.");
     }
 }
 async function isAccountLocked(email) {
@@ -135,11 +177,31 @@ function deviceFingerprint(req) {
         .update(`${req.get("user-agent") || "unknown"}:${clientIp(req)}`)
         .digest("hex");
 }
+function sessionFingerprint(req) {
+    const userAgent = req.get("user-agent") || "unknown";
+    const language = req.get("accept-language") || "unknown";
+    const platform = req.get("sec-ch-ua-platform") || "unknown";
+    return createHash("sha256")
+        .update(`${userAgent}:${language}:${platform}`)
+        .digest("hex");
+}
 function isPgConfigured() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
 function publicUser(user) {
     return { id: user.id, email: user.email, name: user.name, role: user.role };
+}
+function isPrivilegedRole(role) {
+    return PRIVILEGED_BOOTSTRAP_ROLES.includes(role);
+}
+function addDays(days) {
+    return new Date(Date.now() + days * 86400000).toISOString();
+}
+function getAccessCookieMaxAgeMs() {
+    return ACCESS_TOKEN_TTL_MINUTES * 60 * 1000;
+}
+function getMfaTrustedUntil() {
+    return addDays(MFA_TRUST_DAYS);
 }
 export function createAuthRouter() {
     const router = Router();
@@ -153,7 +215,16 @@ export function createAuthRouter() {
             name: user.name,
             role: user.role,
             jti: sessionId,
-        }, JWT_SECRET, { expiresIn: "15m" });
+        }, JWT_SECRET, { expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m` });
+    }
+    function generateMfaChallengeToken(user) {
+        return jwt.sign({
+            userId: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            type: "mfa-challenge",
+        }, JWT_SECRET, { expiresIn: "10m" });
     }
     async function audit(req, event, email, successful, userId, detail) {
         if (isPgConfigured()) {
@@ -339,8 +410,10 @@ export function createAuthRouter() {
     async function createAuthSession(input) {
         if (isPgConfigured()) {
             try {
-                await pgPool.query(`INSERT INTO auth_sessions (id, user_id, email, expires_at, ip_address, user_agent, refresh_hash, device_fingerprint)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
+                await pgPool.query(`INSERT INTO auth_sessions (
+             id, user_id, email, expires_at, ip_address, user_agent, refresh_hash, device_fingerprint, mfa_verified_at, mfa_trusted_until
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [
                     input.id,
                     input.userId,
                     input.email,
@@ -349,6 +422,8 @@ export function createAuthRouter() {
                     input.userAgent,
                     input.refreshHash,
                     input.deviceFingerprint,
+                    input.mfaVerifiedAt ?? null,
+                    input.mfaTrustedUntil ?? null,
                 ]);
                 return;
             }
@@ -373,7 +448,9 @@ export function createAuthRouter() {
     async function getSessionByRefreshHash(refreshHash) {
         if (isPgConfigured()) {
             try {
-                const result = await pgPool.query(`SELECT id, user_id::text AS "userId", email
+                const result = await pgPool.query(`SELECT id, user_id::text AS "userId", email,
+                  mfa_verified_at AS "mfaVerifiedAt",
+                  mfa_trusted_until AS "mfaTrustedUntil"
            FROM auth_sessions
            WHERE refresh_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
            LIMIT 1`, [refreshHash]);
@@ -385,6 +462,44 @@ export function createAuthRouter() {
         }
         const db = await getDb();
         return allRows(db, "SELECT * FROM auth_sessions WHERE refreshHash = ? AND revokedAt IS NULL AND expiresAt > ?", [refreshHash, new Date().toISOString()])[0];
+    }
+    async function getTrustedMfaSession(userId, fingerprint) {
+        if (isPgConfigured()) {
+            try {
+                const result = await pgPool.query(`SELECT mfa_verified_at AS "mfaVerifiedAt", mfa_trusted_until AS "mfaTrustedUntil"
+           FROM auth_sessions
+           WHERE user_id = $1
+             AND device_fingerprint = $2
+             AND revoked_at IS NULL
+             AND expires_at > NOW()
+             AND mfa_trusted_until IS NOT NULL
+             AND mfa_trusted_until > NOW()
+           ORDER BY mfa_trusted_until DESC
+           LIMIT 1`, [userId, fingerprint]);
+                return result.rows[0] ?? null;
+            }
+            catch {
+                return null;
+            }
+        }
+        return null;
+    }
+    async function touchSession(sessionId) {
+        const now = new Date().toISOString();
+        if (isPgConfigured()) {
+            try {
+                await pgPool.query(`UPDATE auth_sessions
+           SET last_seen_at = NOW()
+           WHERE id = $1 AND revoked_at IS NULL`, [sessionId]);
+                return;
+            }
+            catch {
+                // Fall through to SQLite fallback.
+            }
+        }
+        const db = await getDb();
+        db.prepare("UPDATE auth_sessions SET lastSeenAt = ? WHERE id = ? AND revokedAt IS NULL").run([now, sessionId]);
+        await saveDb(db);
     }
     async function listAuthSessions(userId) {
         if (isPgConfigured()) {
@@ -924,9 +1039,33 @@ export function createAuthRouter() {
         if (!foundUser)
             return res.status(401).json({ error: "Account is no longer active" });
         const user = publicUser(foundUser);
+        const { MFAService } = await import("../../services/mfa.service.js");
+        const mfaService = new MFAService(pgPool);
+        const mfaEnabled = await mfaService.isMFAEnabled(user.id);
         await resetFailedLoginAttempts(email);
-        // MFA enforcement is disabled for simpler sign-in.
         await audit(req, "otp.verify", email, true, user.id, "OTP verified successfully");
+        if (isPrivilegedRole(user.role) && !mfaEnabled) {
+            const mfaEnrollmentToken = jwt.sign({
+                userId: user.id,
+                email: user.email,
+                type: "mfa-enrollment",
+            }, JWT_SECRET, { expiresIn: "10m" });
+            return res.status(403).json({
+                user,
+                mfaEnrollmentRequired: true,
+                mfaEnrollmentToken,
+            });
+        }
+        const trustedMfaSession = mfaEnabled
+            ? await getTrustedMfaSession(user.id, sessionFingerprint(req))
+            : null;
+        if (mfaEnabled && !trustedMfaSession) {
+            return res.json({
+                user,
+                mfaRequired: true,
+                mfaChallengeToken: generateMfaChallengeToken(user),
+            });
+        }
         // Normal flow without MFA
         const sessionId = randomBytes(16).toString("hex");
         const refreshToken = randomBytes(48).toString("base64url");
@@ -936,15 +1075,17 @@ export function createAuthRouter() {
             id: decoded.jti,
             userId: user.id,
             email,
-            expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+            expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
             ipAddress: req.ip ?? "",
             userAgent: req.get("user-agent") ?? "",
             refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-            deviceFingerprint: deviceFingerprint(req),
+            deviceFingerprint: sessionFingerprint(req),
+            mfaVerifiedAt: trustedMfaSession?.mfaVerifiedAt ?? null,
+            mfaTrustedUntil: trustedMfaSession?.mfaTrustedUntil ?? null,
         });
         await enforceSessionLimit(user.id);
         await audit(req, "login", email, true, user.id);
-        const currentFingerprint = deviceFingerprint(req);
+        const currentFingerprint = sessionFingerprint(req);
         const previousSessions = await listAuthSessions(user.id);
         const isNewDevice = !previousSessions.some((s) => s.device_fingerprint === currentFingerprint);
         if (isNewDevice) {
@@ -960,21 +1101,21 @@ export function createAuthRouter() {
             httpOnly: true,
             sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
-            maxAge: 15 * 60 * 1000,
+            maxAge: getAccessCookieMaxAgeMs(),
             path: "/",
         });
         res.cookie("ehs_csrf", csrfToken, {
             httpOnly: false,
             sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
-            maxAge: 7 * 86400000,
+            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
             path: "/",
         });
         res.cookie("ehs_refresh", refreshToken, {
             httpOnly: true,
             sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
-            maxAge: 7 * 86400000,
+            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
             path: "/api/auth",
         });
         res.json({ token, user });
@@ -1004,6 +1145,9 @@ export function createAuthRouter() {
             if (challenge.userId !== verification.userId) {
                 return res.status(401).json({ error: "Token mismatch" });
             }
+            if (verification.challenge !== mfaChallengeToken) {
+                return res.status(401).json({ error: "MFA verification challenge mismatch" });
+            }
             if (!verification.mfaVerified) {
                 return res
                     .status(401)
@@ -1025,15 +1169,17 @@ export function createAuthRouter() {
                 id: decoded.jti,
                 userId: user.id,
                 email,
-                expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+                expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
                 ipAddress: req.ip ?? "",
                 userAgent: req.get("user-agent") ?? "",
                 refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-                deviceFingerprint: deviceFingerprint(req),
+                deviceFingerprint: sessionFingerprint(req),
+                mfaVerifiedAt: new Date().toISOString(),
+                mfaTrustedUntil: getMfaTrustedUntil(),
             });
             await enforceSessionLimit(user.id);
             await audit(req, "login.mfa.completed", email, true, user.id);
-            const currentFingerprint = deviceFingerprint(req);
+            const currentFingerprint = sessionFingerprint(req);
             const previousSessions = await listAuthSessions(user.id);
             const isNewDevice = !previousSessions.some((s) => s.device_fingerprint === currentFingerprint);
             if (isNewDevice) {
@@ -1045,21 +1191,21 @@ export function createAuthRouter() {
                 httpOnly: true,
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
-                maxAge: 15 * 60 * 1000,
+                maxAge: getAccessCookieMaxAgeMs(),
                 path: "/",
             });
             res.cookie("ehs_csrf", csrfToken, {
                 httpOnly: false,
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
-                maxAge: 7 * 86400000,
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
                 path: "/",
             });
             res.cookie("ehs_refresh", refreshToken, {
                 httpOnly: true,
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
-                maxAge: 7 * 86400000,
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
                 path: "/api/auth",
             });
             res.json({ token, user });
@@ -1088,13 +1234,37 @@ export function createAuthRouter() {
         const user = await findUserByEmail(session.email);
         if (!user)
             return res.status(401).json({ error: "Account is no longer active" });
-        const token = generateToken(publicUser(user), session.id);
+        const oldSessionId = String(session.id);
+        await revokeSession(oldSessionId, user.id);
+        const newSessionId = randomBytes(16).toString("hex");
+        const newRefreshToken = randomBytes(48).toString("base64url");
+        const token = generateToken(publicUser(user), newSessionId);
+        await createAuthSession({
+            id: newSessionId,
+            userId: user.id,
+            email: session.email,
+            expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
+            ipAddress: req.ip ?? "",
+            userAgent: req.get("user-agent") ?? "",
+            refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
+            deviceFingerprint: sessionFingerprint(req),
+            mfaVerifiedAt: session.mfaVerifiedAt ?? null,
+            mfaTrustedUntil: session.mfaTrustedUntil ?? null,
+        });
+        const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
         res.cookie("ehs_access", token, {
             httpOnly: true,
-            sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+            sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
-            maxAge: 15 * 60 * 1000,
+            maxAge: getAccessCookieMaxAgeMs(),
             path: "/",
+        });
+        res.cookie("ehs_refresh", newRefreshToken, {
+            httpOnly: true,
+            sameSite: cookieSameSite,
+            secure: env.NODE_ENV === "production",
+            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+            path: "/api/auth",
         });
         res.json({
             token,
@@ -1169,7 +1339,7 @@ export function createAuthRouter() {
     ]), async (req, res) => {
         if (isPgConfigured()) {
             try {
-                const result = await pgPool.query(`SELECT id::text, email, name, role, phone, created_at AS "createdAt"
+                const result = await pgPool.query(`SELECT id::text, email, name, role, phone, active, created_at AS "createdAt"
            FROM users
            ORDER BY created_at DESC`);
                 return res.json(result.rows);
@@ -1179,7 +1349,7 @@ export function createAuthRouter() {
             }
         }
         const db = await getDb();
-        const users = allRows(db, "SELECT id, email, name, role, createdAt FROM users ORDER BY createdAt DESC");
+        const users = allRows(db, "SELECT id, email, name, role, active, createdAt FROM users ORDER BY createdAt DESC");
         res.json(users);
     });
     router.get("/me", authenticateUser, async (req, res) => {
@@ -1540,10 +1710,9 @@ export function createAuthRouter() {
             let userRole;
             const enrollmentToken = req.body?.mfaEnrollmentToken;
             const authHeader = req.headers.authorization;
-            const queryToken = typeof req.query.access_token === "string" ? req.query.access_token : undefined;
             const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : undefined;
             const cookieToken = getCookieValue(req, "ehs_access");
-            const sessionToken = bearerToken || queryToken || cookieToken;
+            const sessionToken = bearerToken || cookieToken;
             if (enrollmentToken) {
                 try {
                     const decoded = jwt.verify(enrollmentToken, JWT_SECRET);
@@ -1587,7 +1756,7 @@ export function createAuthRouter() {
             }
             const { MFAService } = await import("../../services/mfa.service.js");
             const mfaService = new MFAService(pgPool);
-            const challenge = mfaService.generateSecret(userEmail);
+            const challenge = await mfaService.generateSecret(userEmail);
             const recoveryCodes = mfaService.generateRecoveryCodes(10);
             await mfaService.createMFAEnrollment(userId, challenge.secret, recoveryCodes.map((rc) => rc.code));
             await audit(req, "mfa_enroll_started", userEmail, true, userId);
@@ -1606,12 +1775,12 @@ export function createAuthRouter() {
         try {
             let userId;
             let userEmail;
+            let userRole;
             const enrollmentToken = req.body?.mfaEnrollmentToken;
             const authHeader = req.headers.authorization;
-            const queryToken = typeof req.query.access_token === "string" ? req.query.access_token : undefined;
             const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : undefined;
             const cookieToken = getCookieValue(req, "ehs_access");
-            const sessionToken = bearerToken || queryToken || cookieToken;
+            const sessionToken = bearerToken || cookieToken;
             if (enrollmentToken) {
                 try {
                     const decoded = jwt.verify(enrollmentToken, JWT_SECRET);
@@ -1620,6 +1789,11 @@ export function createAuthRouter() {
                     }
                     userId = decoded.userId;
                     userEmail = decoded.email;
+                    const userRecord = await findUserByEmail(userEmail);
+                    if (!userRecord) {
+                        return res.status(401).json({ error: "User not found" });
+                    }
+                    userRole = userRecord.role;
                 }
                 catch {
                     return res.status(401).json({ error: "Invalid or expired MFA enrollment token" });
@@ -1636,6 +1810,7 @@ export function createAuthRouter() {
                     }
                     userId = authedUser.id;
                     userEmail = authedUser.email;
+                    userRole = authedUser.role;
                 }
                 catch {
                     return res.status(401).json({ error: "Invalid or expired session token" });
@@ -1644,7 +1819,7 @@ export function createAuthRouter() {
             else {
                 return res.status(401).json({ error: "Missing authorization or MFA enrollment token" });
             }
-            const { token } = req.body;
+            const token = String(req.body?.token || "").replace(/\s+/g, "").trim();
             if (!token || token.length !== 6) {
                 return res.status(400).json({ error: "Invalid TOTP token format" });
             }
@@ -1655,7 +1830,58 @@ export function createAuthRouter() {
                 return res.status(401).json({ error: "Invalid TOTP code. Please try again." });
             }
             await audit(req, "mfa_enrollment_completed", userEmail, true, userId);
-            res.json({ ok: true, message: "MFA enrollment verified successfully" });
+            const foundUser = await findUserByEmail(userEmail);
+            if (!foundUser) {
+                return res.status(401).json({ error: "Account is no longer active" });
+            }
+            const user = publicUser(foundUser);
+            const sessionId = randomBytes(16).toString("hex");
+            const refreshToken = randomBytes(48).toString("base64url");
+            const accessToken = generateToken(user, sessionId);
+            const decoded = jwt.decode(accessToken);
+            await createAuthSession({
+                id: decoded.jti,
+                userId: user.id,
+                email: userEmail,
+                expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
+                ipAddress: req.ip ?? "",
+                userAgent: req.get("user-agent") ?? "",
+                refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
+                deviceFingerprint: sessionFingerprint(req),
+                mfaVerifiedAt: new Date().toISOString(),
+                mfaTrustedUntil: getMfaTrustedUntil(),
+            });
+            await enforceSessionLimit(user.id);
+            const currentFingerprint = sessionFingerprint(req);
+            const previousSessions = await listAuthSessions(user.id);
+            const isNewDevice = !previousSessions.some((s) => s.device_fingerprint === currentFingerprint);
+            if (isNewDevice) {
+                sendNewDeviceNotification(userEmail, req.ip ?? "", req.get("user-agent") ?? "").catch(() => undefined);
+            }
+            const csrfToken = randomBytes(24).toString("base64url");
+            const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
+            res.cookie("ehs_access", accessToken, {
+                httpOnly: true,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: getAccessCookieMaxAgeMs(),
+                path: "/",
+            });
+            res.cookie("ehs_csrf", csrfToken, {
+                httpOnly: false,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+                path: "/",
+            });
+            res.cookie("ehs_refresh", refreshToken, {
+                httpOnly: true,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+                path: "/api/auth",
+            });
+            res.json({ token: accessToken, user });
         }
         catch (error) {
             console.error("MFA verification error:", error);
@@ -1677,18 +1903,47 @@ export function createAuthRouter() {
     });
     router.post("/mfa/verify-token", async (req, res) => {
         try {
-            const { userId, token } = req.body;
-            if (!userId || !token || token.length !== 6) {
+            const mfaChallengeToken = req.body?.mfaChallengeToken;
+            const token = String(req.body?.token || "").replace(/\s+/g, "").trim();
+            if (!mfaChallengeToken || !token || token.length !== 6) {
                 return res.status(400).json({ error: "Invalid request parameters" });
+            }
+            let challenge;
+            try {
+                challenge = jwt.verify(mfaChallengeToken, JWT_SECRET);
+            }
+            catch {
+                return res.status(401).json({ error: "Invalid or expired MFA challenge" });
+            }
+            if (challenge.type !== "mfa-challenge" || !challenge.userId) {
+                return res.status(401).json({ error: "Invalid MFA challenge" });
+            }
+            const challengeLimit = await enforceAuthRateLimit({
+                scope: "device",
+                identifier: mfaChallengeToken,
+                action: "mfa.verify",
+                max: OTP_MAX_ATTEMPTS,
+                windowMinutes: OTP_TTL_MINUTES,
+            });
+            if (!challengeLimit.allowed) {
+                return res.status(429).json({
+                    error: "Too many MFA verification attempts. Please restart login.",
+                    retryAfter: challengeLimit.retryAfter,
+                });
             }
             const { MFAService } = await import("../../services/mfa.service.js");
             const mfaService = new MFAService(pgPool);
-            const verified = await mfaService.verifyTOTPToken(userId, token);
+            const verified = await mfaService.verifyTOTPToken(challenge.userId, token);
             if (!verified) {
                 return res.status(401).json({ error: "Invalid TOTP code" });
             }
             // Create a temporary MFA verification token for session creation
-            const mfaVerificationToken = jwt.sign({ userId, mfaVerified: true, type: "mfa-verification" }, JWT_SECRET, { expiresIn: "5m" });
+            const mfaVerificationToken = jwt.sign({
+                userId: challenge.userId,
+                challenge: mfaChallengeToken,
+                mfaVerified: true,
+                type: "mfa-verification",
+            }, JWT_SECRET, { expiresIn: "5m" });
             res.json({
                 ok: true,
                 mfaVerificationToken,
@@ -1701,19 +1956,48 @@ export function createAuthRouter() {
     });
     router.post("/mfa/recovery-code", async (req, res) => {
         try {
-            const { userId, code } = req.body;
-            if (!userId || !code) {
+            const { mfaChallengeToken, code } = req.body;
+            if (!mfaChallengeToken || !code) {
                 return res.status(400).json({ error: "Missing required parameters" });
+            }
+            let challenge;
+            try {
+                challenge = jwt.verify(mfaChallengeToken, JWT_SECRET);
+            }
+            catch {
+                return res.status(401).json({ error: "Invalid or expired MFA challenge" });
+            }
+            if (challenge.type !== "mfa-challenge" || !challenge.userId) {
+                return res.status(401).json({ error: "Invalid MFA challenge" });
+            }
+            const challengeLimit = await enforceAuthRateLimit({
+                scope: "device",
+                identifier: mfaChallengeToken,
+                action: "mfa.recovery",
+                max: OTP_MAX_ATTEMPTS,
+                windowMinutes: OTP_TTL_MINUTES,
+            });
+            if (!challengeLimit.allowed) {
+                return res.status(429).json({
+                    error: "Too many recovery code attempts. Please restart login.",
+                    retryAfter: challengeLimit.retryAfter,
+                });
             }
             const { MFAService } = await import("../../services/mfa.service.js");
             const mfaService = new MFAService(pgPool);
-            const verified = await mfaService.verifyRecoveryCode(userId, code);
+            const verified = await mfaService.verifyRecoveryCode(challenge.userId, code);
             if (!verified) {
                 return res
                     .status(401)
                     .json({ error: "Invalid or already-used recovery code" });
             }
-            const mfaVerificationToken = jwt.sign({ userId, mfaVerified: true, type: "mfa-recovery", recoveryUsed: true }, JWT_SECRET, { expiresIn: "5m" });
+            const mfaVerificationToken = jwt.sign({
+                userId: challenge.userId,
+                challenge: mfaChallengeToken,
+                mfaVerified: true,
+                type: "mfa-recovery",
+                recoveryUsed: true,
+            }, JWT_SECRET, { expiresIn: "5m" });
             res.json({
                 ok: true,
                 mfaVerificationToken,

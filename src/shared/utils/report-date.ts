@@ -3,8 +3,10 @@ const GOOGLE_SHEETS_UTC_OFFSET_MINUTES = Number(
 );
 
 function getDateOrder(): "dmy" | "mdy" {
-  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "dmy").toLowerCase().trim();
-  return configured === "mdy" ? "mdy" : "dmy";
+  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "mdy").toLowerCase().trim();
+  if (configured === "dmy") return "dmy";
+  if (configured === "mdy") return "mdy";
+  return "dmy";
 }
 
 function getUtcOffsetMinutes(): number {
@@ -93,6 +95,11 @@ function parseIsoLocalDateTime(value: string): string | undefined {
 }
 
 function parseNativeDate(value: string): string | undefined {
+  const hasExplicitYear = /\b\d{4}\b/.test(value);
+  if (!hasExplicitYear) {
+    return undefined;
+  }
+
   const parsed = new Date(value);
   if (
     Number.isNaN(parsed.getTime()) ||

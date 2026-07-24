@@ -108,7 +108,11 @@ async function tryServiceAccountSheet(
     if (!token) return null;
     const apiBaseUrl = getGoogleSheetsBaseUrl().replace(/\/$/, "");
     const rangePath = `${encodeURIComponent(`'${sheetName}'`)}!A:ZZ`;
-    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${rangePath}`;
+    const query = new URLSearchParams({
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "SERIAL_NUMBER",
+    });
+    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${rangePath}?${query.toString()}`;
     const res = await fetchWithTimeout(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -229,7 +233,12 @@ export async function fetchGoogleSheetRows(
   for (const sheetName of candidates) {
     const apiBaseUrl = getGoogleSheetsBaseUrl().replace(/\/$/, "");
     const rangePath = `${encodeURIComponent(`'${sheetName}'`)}!A:ZZ`;
-    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${rangePath}?key=${apiKey}`;
+    const query = new URLSearchParams({
+      key: apiKey,
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "SERIAL_NUMBER",
+    });
+    const apiUrl = `${apiBaseUrl}/spreadsheets/${formId}/values/${rangePath}?${query.toString()}`;
     try {
       const apiResponse = await fetchWithTimeout(apiUrl);
       if (apiResponse.ok) {
@@ -892,10 +901,6 @@ async function replaceGoogleSheetReportsInPostgres(reports: Array<{
   } finally {
     client.release();
   }
-
-  // Fetch each report's Drive photo into PostgreSQL so it displays reliably
-  // (and persists) without depending on Drive's sign-in/redirect at request time.
-  await fetchReportPhotosFromDrive(uniqueReports);
 }
 
 async function fetchReportPhotosFromDrive(
@@ -922,6 +927,50 @@ async function fetchReportPhotosFromDrive(
   if (stored || failed) {
     logger.info({ stored, failed }, "Google Sheets report photos synced");
   }
+}
+
+function startReportPhotoSync(
+  reports: Array<{ id: string; photoUrl: string }>,
+): void {
+  fetchReportPhotosFromDrive(reports).catch((error) => {
+    logger.warn({ err: error as Error }, "Google Sheets report photo sync failed.");
+  });
+}
+
+export async function finalizeSuccessfulGoogleSheetsSync(params: {
+  startedAt: string;
+  sheetName: string;
+  rowCount: number;
+  reports: Array<{ id: string; photoUrl: string }>;
+  updateState: (update: {
+    status: "idle";
+    finishedAt: string;
+    successAt: string;
+    sheetName: string;
+    rowCount: number;
+    importedCount: number;
+    error: null;
+  }) => Promise<void>;
+  startPhotoSync: (reports: Array<{ id: string; photoUrl: string }>) => void;
+}): Promise<GoogleSheetsSyncResult> {
+  const finishedAt = new Date().toISOString();
+  await params.updateState({
+    status: "idle",
+    finishedAt,
+    successAt: finishedAt,
+    sheetName: params.sheetName,
+    rowCount: params.rowCount,
+    importedCount: params.reports.length,
+    error: null,
+  });
+  params.startPhotoSync(params.reports);
+  return {
+    imported: params.reports.length,
+    rows: params.rowCount,
+    sheetName: params.sheetName,
+    startedAt: params.startedAt,
+    finishedAt,
+  };
 }
 
 export async function runGoogleSheetsSync(options?: {
@@ -1025,17 +1074,14 @@ export async function runGoogleSheetsSync(options?: {
         }
       }
 
-      const finishedAt = new Date().toISOString();
-      await updateSyncState({
-        status: "idle",
-        finishedAt,
-        successAt: finishedAt,
+      return finalizeSuccessfulGoogleSheetsSync({
+        startedAt,
         sheetName: fetched.sheetName,
         rowCount: rows.length,
-        importedCount: reports.length,
-        error: null,
+        reports,
+        updateState: updateSyncState,
+        startPhotoSync: startReportPhotoSync,
       });
-      return { imported: reports.length, rows: rows.length, sheetName: fetched.sheetName, startedAt, finishedAt };
     } catch (error) {
       const finishedAt = new Date().toISOString();
       const classified = classifyGoogleFormsError(error);
@@ -1166,7 +1212,7 @@ export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
         code === "ENOTFOUND"
           ? `DNS lookup failed${hostDetails}`
           : `Network error${hostDetails}: ${message}`,
-      hint: "Check network connectivity, firewall, and Google Sheets access settings.",
+      hint: "Check network connectivity or Google Sheets access settings.",
     };
   }
 
@@ -1204,7 +1250,7 @@ export function classifyGoogleFormsError(error: unknown): GoogleFormsErrorInfo {
   return {
     statusCode: 500,
     message: "Google Sheets request failed.",
-    details: stack ? `${message} (stack: ${stack.slice(0, 600)})` : message,
+    details: message,
     hint: "Check the spreadsheet ID, API key, and which Sheets/CSV base URLs are configured.",
   };
 }

@@ -17,8 +17,8 @@ export declare const CarbonEmissionSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     source: string;
-    createdBy: string;
     site: string;
+    createdBy: string;
     scope: "Scope 1" | "Scope 2" | "Scope 3";
     category: "Environmental" | "Social" | "Governance";
     quantity: number;
@@ -31,8 +31,8 @@ export declare const CarbonEmissionSchema: z.ZodObject<{
     notes?: string | undefined;
 }, {
     source: string;
-    createdBy: string;
     site: string;
+    createdBy: string;
     scope: "Scope 1" | "Scope 2" | "Scope 3";
     category: "Environmental" | "Social" | "Governance";
     quantity: number;
@@ -58,8 +58,8 @@ export declare const EnergyRecordSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     source: "Other" | "Electricity" | "Diesel" | "Petrol" | "Natural Gas" | "Solar";
-    createdBy: string;
     site: string;
+    createdBy: string;
     unit: string;
     period: string;
     recordedDate: string;
@@ -70,8 +70,8 @@ export declare const EnergyRecordSchema: z.ZodObject<{
     meterReading?: number | undefined;
 }, {
     source: "Other" | "Electricity" | "Diesel" | "Petrol" | "Natural Gas" | "Solar";
-    createdBy: string;
     site: string;
+    createdBy: string;
     unit: string;
     period: string;
     recordedDate: string;
@@ -95,8 +95,8 @@ export declare const WaterRecordSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     source: "Other" | "Municipal" | "Borehole" | "Rainwater";
-    createdBy: string;
     site: string;
+    createdBy: string;
     unit: string;
     period: string;
     recordedDate: string;
@@ -107,8 +107,8 @@ export declare const WaterRecordSchema: z.ZodObject<{
     recycled?: number | undefined;
 }, {
     source: "Other" | "Municipal" | "Borehole" | "Rainwater";
-    createdBy: string;
     site: string;
+    createdBy: string;
     unit: string;
     period: string;
     recordedDate: string;
