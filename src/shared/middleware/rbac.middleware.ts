@@ -103,7 +103,11 @@ export type Permission =
   | "heightwork:update"
   | "wiba:read"
   | "wiba:create"
-  | "wiba:update";
+  | "wiba:update"
+  | "workplace-registration:read"
+  | "workplace-registration:create"
+  | "workplace-registration:update"
+  | "workplace-registration:delete";
 
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   "super-admin": ["*"],
@@ -208,6 +212,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "wiba:read",
     "wiba:create",
     "wiba:update",
+    "workplace-registration:read",
+    "workplace-registration:create",
+    "workplace-registration:update",
+    "workplace-registration:delete",
   ],
   "EHS-officer": [
     "incidents:read",

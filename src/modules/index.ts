@@ -68,6 +68,8 @@ export function createNotificationsRouter() {
 
 export { createDocumentsRouter } from "./documents/documents.module.js";
 
+export { createWorkplaceRegistrationRouter } from "./workplace-registration/workplace-registration.module.js";
+
 export function createSettingsRouter() {
   return settingsRouter;
 }

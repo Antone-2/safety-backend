@@ -102,6 +102,10 @@ export const ROLE_PERMISSIONS = {
         "wiba:read",
         "wiba:create",
         "wiba:update",
+        "workplace-registration:read",
+        "workplace-registration:create",
+        "workplace-registration:update",
+        "workplace-registration:delete",
     ],
     "EHS-officer": [
         "incidents:read",

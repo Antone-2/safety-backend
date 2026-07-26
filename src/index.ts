@@ -46,6 +46,7 @@ import {
   createSettingsRouter,
   createAiRouter,
   createWibaRouter,
+  createWorkplaceRegistrationRouter,
 } from "./modules/index.js";
 
 import googleFormsRouter, {
@@ -190,6 +191,7 @@ mountAll(API_PREFIXES, "/equipment", createEquipmentRouter());
 mountAll(API_PREFIXES, "/contractors", createContractorsRouter());
 mountAll(API_PREFIXES, "/compliance", createComplianceRouter());
 mountAll(API_PREFIXES, "/wiba", createWibaRouter());
+mountAll(API_PREFIXES, "/workplace-registration", createWorkplaceRegistrationRouter());
 mountAll(API_PREFIXES, "/statutory-audits", createStatutoryAuditRouter());
 mountAll(API_PREFIXES, "/environmental", createEnvironmentalRouter());
 mountAll(API_PREFIXES, "/health", createHealthRouter());

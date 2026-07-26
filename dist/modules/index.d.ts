@@ -18,4 +18,5 @@ export declare function createAnalyticsRouter(): import("express-serve-static-co
 export declare function createReportsRouter(): import("express-serve-static-core").Router;
 export declare function createNotificationsRouter(): import("express-serve-static-core").Router;
 export { createDocumentsRouter } from "./documents/documents.module.js";
+export { createWorkplaceRegistrationRouter } from "./workplace-registration/workplace-registration.module.js";
 export declare function createSettingsRouter(): import("express-serve-static-core").Router;
