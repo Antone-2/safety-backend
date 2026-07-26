@@ -74,7 +74,7 @@ export class BaseService {
 
   async delete(id: string): Promise<boolean> {
     const result = await pgPool.query(`DELETE FROM ${this.tableName} WHERE id = $1`, [id]);
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async count(filters?: Record<string, any>): Promise<number> {

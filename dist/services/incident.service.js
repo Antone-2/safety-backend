@@ -1,6 +1,6 @@
 import { BaseService } from "./base.service.js";
 import { z } from "zod";
-import { getDb, saveDb, allRows } from "../lib/database.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 const now = () => new Date().toISOString();
 export const IncidentTypeSchema = z.enum(["Unsafe Act", "Unsafe Condition", "Near Miss", "First Aid", "Medical Treatment", "Lost Time", "Fatality", "Property Damage", "Environmental"]);
 export const IncidentSeveritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
@@ -44,36 +44,6 @@ export class IncidentService extends BaseService {
     }
     async createIncident(data) {
         const record = await this.create(data);
-        await this.ensureColumn(await getDb(), this.tableName, "type", "TEXT NOT NULL DEFAULT 'Unsafe Act'");
-        await this.ensureColumn(await getDb(), this.tableName, "severity", "TEXT NOT NULL DEFAULT 'Medium'");
-        await this.ensureColumn(await getDb(), this.tableName, "status", "TEXT NOT NULL DEFAULT 'Open'");
-        await this.ensureColumn(await getDb(), this.tableName, "location", "TEXT NOT NULL");
-        await this.ensureColumn(await getDb(), this.tableName, "department", "TEXT NOT NULL");
-        await this.ensureColumn(await getDb(), this.tableName, "shift", "TEXT NOT NULL");
-        await this.ensureColumn(await getDb(), this.tableName, "description", "TEXT NOT NULL");
-        await this.ensureColumn(await getDb(), this.tableName, "reporter", "TEXT NOT NULL");
-        await this.ensureColumn(await getDb(), this.tableName, "anonymous", "INTEGER NOT NULL DEFAULT 0");
-        await this.ensureColumn(await getDb(), this.tableName, "isNearMiss", "INTEGER NOT NULL DEFAULT 0");
-        await this.ensureColumn(await getDb(), this.tableName, "photoUrl", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "assignedTo", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "slaHours", "INTEGER NOT NULL DEFAULT 24");
-        await this.ensureColumn(await getDb(), this.tableName, "dueAt", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "resolutionDays", "INTEGER");
-        await this.ensureColumn(await getDb(), this.tableName, "rootCause", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "correctiveAction", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "preventiveAction", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "investigationMethod", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "witnessStatement", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "regulatoryNotificationRequired", "INTEGER NOT NULL DEFAULT 0");
-        await this.ensureColumn(await getDb(), this.tableName, "regulatoryNotificationDate", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "complianceRequired", "INTEGER NOT NULL DEFAULT 0");
-        await this.ensureColumn(await getDb(), this.tableName, "complianceDueAt", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "source", "TEXT NOT NULL DEFAULT 'manual'");
-        await this.ensureColumn(await getDb(), this.tableName, "auditHistory", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "photos", "TEXT NOT NULL DEFAULT '[]'");
-        await this.ensureColumn(await getDb(), this.tableName, "reporterEmail", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "reporterPhone", "TEXT");
-        await this.ensureColumn(await getDb(), this.tableName, "assignedToCopy", "TEXT");
         return record;
     }
     async getByStatus(status) {
@@ -86,25 +56,21 @@ export class IncidentService extends BaseService {
         return this.getAll({ location });
     }
     async getOverdue() {
-        const db = await getDb();
-        const rows = allRows(db, `SELECT * FROM ${this.tableName} WHERE status != 'Closed' AND dueAt < ?`, [now()]);
-        await saveDb(db);
-        return rows;
+        const result = await pgPool.query(`SELECT * FROM ${this.tableName} WHERE status != 'Closed' AND "dueAt" < $1`, [now()]);
+        return result.rows;
     }
     async getCriticalOpen() {
-        const db = await getDb();
-        const rows = allRows(db, `SELECT * FROM ${this.tableName} WHERE severity = 'Critical' AND status != 'Closed'`);
-        await saveDb(db);
-        return rows;
+        const result = await pgPool.query(`SELECT * FROM ${this.tableName} WHERE severity = 'Critical' AND status != 'Closed'`);
+        return result.rows;
     }
     async getStats() {
-        const db = await getDb();
         const total = await this.count();
         const open = await this.count({ status: "Open" });
         const closed = await this.count({ status: "Closed" });
-        const today = allRows(db, `SELECT COUNT(*) as count FROM ${this.tableName} WHERE date(createdAt) = date('now')`)[0]?.count || 0;
-        const week = allRows(db, `SELECT COUNT(*) as count FROM ${this.tableName} WHERE date(createdAt) >= date('now', '-7 days')`)[0]?.count || 0;
-        await saveDb(db);
+        const todayResult = await pgPool.query(`SELECT COUNT(*) as count FROM ${this.tableName} WHERE "createdAt" >= NOW()::date`);
+        const today = Number(todayResult.rows[0]?.count ?? 0);
+        const weekResult = await pgPool.query(`SELECT COUNT(*) as count FROM ${this.tableName} WHERE "createdAt" >= NOW() - INTERVAL '7 days'`);
+        const week = Number(weekResult.rows[0]?.count ?? 0);
         return { total, open, closed, today, week };
     }
 }

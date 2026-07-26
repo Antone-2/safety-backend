@@ -116,7 +116,7 @@ export declare class IncidentService extends BaseService {
         total: number;
         open: number;
         closed: number;
-        today: any;
-        week: any;
+        today: number;
+        week: number;
     }>;
 }
