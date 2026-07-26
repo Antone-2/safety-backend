@@ -1,6 +1,6 @@
 import { BaseService } from "./base.service.js";
 import { z } from "zod";
-import { getDb, saveDb, allRows } from "../lib/database.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 export const InvestigationStatusSchema = z.enum(["Pending", "In Progress", "Completed", "Closed"]);
 export const InvestigationPrioritySchema = z.enum(["Low", "Medium", "High", "Critical"]);
 export const InvestigationEvidenceSchema = z.object({
@@ -72,15 +72,14 @@ export class InvestigationService extends BaseService {
         return this.update(id, updateData);
     }
     async getStats() {
-        const db = await getDb();
-        const all = allRows(db, `SELECT * FROM investigations`);
+        const result = await pgPool.query("SELECT * FROM investigations ORDER BY createdAt DESC");
+        const all = result.rows;
         const total = all.length;
         const pending = all.filter((r) => r.status === "Pending").length;
         const inProgress = all.filter((r) => r.status === "In Progress").length;
         const completed = all.filter((r) => r.status === "Completed").length;
         const closed = all.filter((r) => r.status === "Closed").length;
         const critical = all.filter((r) => r.priority === "Critical").length;
-        await saveDb(db);
         return { total, pending, inProgress, completed, closed, critical };
     }
 }

@@ -81,13 +81,13 @@ export declare const RiskPredictionInputSchema: z.ZodObject<{
     horizonDays: number;
     department?: string | undefined;
     location?: string | undefined;
-    siteId?: string | undefined;
     activity?: string | undefined;
+    siteId?: string | undefined;
 }, {
     department?: string | undefined;
     location?: string | undefined;
-    siteId?: string | undefined;
     activity?: string | undefined;
+    siteId?: string | undefined;
     includeComponents?: boolean | undefined;
     horizonDays?: number | undefined;
 }>;
@@ -269,18 +269,18 @@ export declare const ObservationInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     limit: number;
     department?: string | undefined;
+    activity?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
     siteId?: string | undefined;
-    activity?: string | undefined;
     observer?: string | undefined;
 }, {
     department?: string | undefined;
     limit?: number | undefined;
+    activity?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
     siteId?: string | undefined;
-    activity?: string | undefined;
     observer?: string | undefined;
 }>;
 export type ObservationInput = z.infer<typeof ObservationInputSchema>;
@@ -389,13 +389,13 @@ export declare const SafetyAlertInputSchema: z.ZodObject<{
     channels: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     department?: string | undefined;
-    severity?: "notice" | "warning" | "critical" | undefined;
+    severity?: "critical" | "notice" | "warning" | undefined;
     siteId?: string | undefined;
     triggerEvent?: string | undefined;
     channels?: string[] | undefined;
 }, {
     department?: string | undefined;
-    severity?: "notice" | "warning" | "critical" | undefined;
+    severity?: "critical" | "notice" | "warning" | undefined;
     siteId?: string | undefined;
     triggerEvent?: string | undefined;
     channels?: string[] | undefined;
@@ -566,14 +566,14 @@ export declare const InvestigationAssistantResponseSchema: z.ZodObject<{
         where: z.ZodOptional<z.ZodString>;
         when: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
+        where?: string | undefined;
         who?: string[] | undefined;
         what?: string | undefined;
-        where?: string | undefined;
         when?: string | undefined;
     }, {
+        where?: string | undefined;
         who?: string[] | undefined;
         what?: string | undefined;
-        where?: string | undefined;
         when?: string | undefined;
     }>;
     suggestedQuestions: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -585,9 +585,9 @@ export declare const InvestigationAssistantResponseSchema: z.ZodObject<{
         timestamp: string;
     }[];
     entities: {
+        where?: string | undefined;
         who?: string[] | undefined;
         what?: string | undefined;
-        where?: string | undefined;
         when?: string | undefined;
     };
     severity?: string | undefined;
@@ -601,9 +601,9 @@ export declare const InvestigationAssistantResponseSchema: z.ZodObject<{
         timestamp: string;
     }[];
     entities: {
+        where?: string | undefined;
         who?: string[] | undefined;
         what?: string | undefined;
-        where?: string | undefined;
         when?: string | undefined;
     };
     severity?: string | undefined;
@@ -710,14 +710,14 @@ export declare const RiskScoreOutputSchema: z.ZodObject<{
     trend: z.ZodOptional<z.ZodEnum<["improving", "stable", "deteriorating"]>>;
     explanation: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    riskScore: number;
     riskLevel: "Critical" | "Low" | "Medium" | "High";
+    riskScore: number;
     components?: Record<string, number> | undefined;
     trend?: "improving" | "stable" | "deteriorating" | undefined;
     explanation?: string[] | undefined;
 }, {
-    riskScore: number;
     riskLevel: "Critical" | "Low" | "Medium" | "High";
+    riskScore: number;
     components?: Record<string, number> | undefined;
     trend?: "improving" | "stable" | "deteriorating" | undefined;
     explanation?: string[] | undefined;
@@ -887,13 +887,13 @@ export declare const AlertOutputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     summary: string;
     actions: string[];
-    grade: "notice" | "warning" | "critical";
+    grade: "critical" | "notice" | "warning";
     headline: string;
     recipients?: string[] | undefined;
 }, {
     summary: string;
     actions: string[];
-    grade: "notice" | "warning" | "critical";
+    grade: "critical" | "notice" | "warning";
     headline: string;
     recipients?: string[] | undefined;
 }>;

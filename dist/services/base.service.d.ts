@@ -6,8 +6,7 @@ export declare class BaseService {
     protected validate(data: any): {
         [x: string]: any;
     };
-    protected ensureColumn(db: any, table: string, column: string, definition: string): void;
-    protected ensureTable(db: any, createSql: string): void;
+    private buildFilters;
     getAll(filters?: Record<string, any>): Promise<any[]>;
     getById(id: string): Promise<any | null>;
     create(data: Record<string, any>): Promise<any>;

@@ -34,10 +34,10 @@ export declare const HazardReportSchema: z.ZodObject<{
     id?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
-    immediateActionTaken?: string | undefined;
-    riskLevel?: string | undefined;
-    reportNo?: string | undefined;
     existingControls?: string | undefined;
+    riskLevel?: string | undefined;
+    immediateActionTaken?: string | undefined;
+    reportNo?: string | undefined;
     recommendedActions?: string | undefined;
     reportedAt?: string | undefined;
     resolvedAt?: string | undefined;
@@ -54,10 +54,10 @@ export declare const HazardReportSchema: z.ZodObject<{
     id?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
-    immediateActionTaken?: string | undefined;
-    riskLevel?: string | undefined;
-    reportNo?: string | undefined;
     existingControls?: string | undefined;
+    riskLevel?: string | undefined;
+    immediateActionTaken?: string | undefined;
+    reportNo?: string | undefined;
     recommendedActions?: string | undefined;
     reportedAt?: string | undefined;
     resolvedAt?: string | undefined;

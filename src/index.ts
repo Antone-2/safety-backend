@@ -47,6 +47,8 @@ import {
   createAiRouter,
   createWibaRouter,
   createWorkplaceRegistrationRouter,
+  createRiskRouter,
+  createKpiRouter,
 } from "./modules/index.js";
 
 import googleFormsRouter, {
@@ -65,7 +67,6 @@ import hazardRouter from "./routes/hazard.js";
 import jsaRouter from "./routes/jsa.js";
 import medicalRouter from "./routes/medical.js";
 import objectivesRouter from "./routes/objectives.js";
-import riskRouter from "./routes/risk.js";
 import spillRouter from "./routes/spill.js";
 import { createStatutoryAuditRouter } from "./modules/statutory-audits/statutory-audits.controller.js";
 
@@ -208,7 +209,8 @@ mountAll(API_PREFIXES, "/esg", esgRouter);
 mountAll(API_PREFIXES, "/jsa", jsaRouter);
 mountAll(API_PREFIXES, "/objectives", objectivesRouter);
 mountAll(API_PREFIXES, "/operations", operationsRouter);
-mountAll(API_PREFIXES, "/risk", riskRouter);
+mountAll(API_PREFIXES, "/risk", createRiskRouter());
+mountAll(API_PREFIXES, "/kpi", createKpiRouter());
 mountAll(API_PREFIXES, "/security", securityRouter);
 mountAll(API_PREFIXES, "/spill", spillRouter);
 mountAll(API_PREFIXES, "/storage", storageRouter);

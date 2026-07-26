@@ -1,6 +1,65 @@
 import { z } from "zod";
-export declare const RiskMatrixSchema: z.ZodObject<{
-    id: z.ZodOptional<z.ZodString>;
+export declare const RiskLevelSchema: z.ZodEnum<["Low", "Medium", "High", "Critical"]>;
+export type RiskLevel = z.infer<typeof RiskLevelSchema>;
+export interface RiskMatrix {
+    id: string;
+    name: string;
+    description?: string;
+    likelihoodScale: Record<number, string>;
+    severityScale: Record<number, string>;
+    levels: Array<{
+        label: string;
+        minLikelihood: number;
+        maxLikelihood: number;
+        minSeverity: number;
+        maxSeverity: number;
+        color: string;
+    }>;
+    isDefault: boolean;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface RiskRegister {
+    id: string;
+    title: string;
+    location: string;
+    department: string;
+    activity: string;
+    hazard: string;
+    existingControls: string;
+    likelihood: number;
+    severity: number;
+    riskRating: number;
+    riskLevel: RiskLevel;
+    additionalControls?: string;
+    residualLikelihood?: number;
+    residualSeverity?: number;
+    residualRiskRating?: number;
+    residualRiskLevel?: RiskLevel;
+    reviewDate?: string;
+    reviewedBy?: string;
+    status: string;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface BowTie {
+    id: string;
+    title: string;
+    topEvent: string;
+    threats?: string;
+    preventiveBarriers?: string;
+    consequences?: string;
+    recoveryBarriers?: string;
+    location: string;
+    department: string;
+    createdBy: string;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export declare const CreateRiskMatrixSchema: z.ZodObject<{
     name: z.ZodString;
     description: z.ZodOptional<z.ZodString>;
     likelihoodScale: z.ZodRecord<z.ZodNumber, z.ZodString>;
@@ -43,7 +102,6 @@ export declare const RiskMatrixSchema: z.ZodObject<{
         color: string;
     }[];
     isDefault: boolean;
-    id?: string | undefined;
     description?: string | undefined;
 }, {
     name: string;
@@ -58,12 +116,11 @@ export declare const RiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[];
-    id?: string | undefined;
     description?: string | undefined;
     isDefault?: boolean | undefined;
 }>;
-export declare const RiskRegisterSchema: z.ZodObject<{
-    id: z.ZodOptional<z.ZodString>;
+export type CreateRiskMatrixInput = z.infer<typeof CreateRiskMatrixSchema>;
+export declare const CreateRiskRegisterSchema: z.ZodObject<{
     title: z.ZodString;
     location: z.ZodString;
     department: z.ZodString;
@@ -72,13 +129,9 @@ export declare const RiskRegisterSchema: z.ZodObject<{
     existingControls: z.ZodString;
     likelihood: z.ZodNumber;
     severity: z.ZodNumber;
-    riskRating: z.ZodNumber;
-    riskLevel: z.ZodString;
     additionalControls: z.ZodOptional<z.ZodString>;
     residualLikelihood: z.ZodOptional<z.ZodNumber>;
     residualSeverity: z.ZodOptional<z.ZodNumber>;
-    residualRiskRating: z.ZodOptional<z.ZodNumber>;
-    residualRiskLevel: z.ZodOptional<z.ZodString>;
     reviewDate: z.ZodOptional<z.ZodString>;
     reviewedBy: z.ZodOptional<z.ZodString>;
     status: z.ZodDefault<z.ZodString>;
@@ -94,16 +147,11 @@ export declare const RiskRegisterSchema: z.ZodObject<{
     hazard: string;
     existingControls: string;
     likelihood: number;
-    riskLevel: string;
-    riskRating: number;
-    id?: string | undefined;
     reviewedBy?: string | undefined;
     reviewDate?: string | undefined;
     additionalControls?: string | undefined;
     residualLikelihood?: number | undefined;
     residualSeverity?: number | undefined;
-    residualRiskLevel?: string | undefined;
-    residualRiskRating?: number | undefined;
 }, {
     title: string;
     department: string;
@@ -114,20 +162,62 @@ export declare const RiskRegisterSchema: z.ZodObject<{
     hazard: string;
     existingControls: string;
     likelihood: number;
-    riskLevel: string;
-    riskRating: number;
     status?: string | undefined;
-    id?: string | undefined;
     reviewedBy?: string | undefined;
     reviewDate?: string | undefined;
     additionalControls?: string | undefined;
     residualLikelihood?: number | undefined;
     residualSeverity?: number | undefined;
-    residualRiskLevel?: string | undefined;
-    residualRiskRating?: number | undefined;
 }>;
-export declare const BowTieSchema: z.ZodObject<{
-    id: z.ZodOptional<z.ZodString>;
+export type CreateRiskRegisterInput = z.infer<typeof CreateRiskRegisterSchema>;
+export declare const UpdateRiskRegisterSchema: z.ZodObject<{
+    title: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    location: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    department: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    activity: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    hazard: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    existingControls: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    likelihood: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
+    severity: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
+    additionalControls: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    residualLikelihood: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
+    residualSeverity: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
+    reviewDate: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    reviewedBy: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+    status: z.ZodOptional<z.ZodOptional<z.ZodString>>;
+}, "strip", z.ZodTypeAny, {
+    status?: string | undefined;
+    title?: string | undefined;
+    department?: string | undefined;
+    severity?: number | undefined;
+    location?: string | undefined;
+    reviewedBy?: string | undefined;
+    reviewDate?: string | undefined;
+    activity?: string | undefined;
+    hazard?: string | undefined;
+    existingControls?: string | undefined;
+    likelihood?: number | undefined;
+    additionalControls?: string | undefined;
+    residualLikelihood?: number | undefined;
+    residualSeverity?: number | undefined;
+}, {
+    status?: string | undefined;
+    title?: string | undefined;
+    department?: string | undefined;
+    severity?: number | undefined;
+    location?: string | undefined;
+    reviewedBy?: string | undefined;
+    reviewDate?: string | undefined;
+    activity?: string | undefined;
+    hazard?: string | undefined;
+    existingControls?: string | undefined;
+    likelihood?: number | undefined;
+    additionalControls?: string | undefined;
+    residualLikelihood?: number | undefined;
+    residualSeverity?: number | undefined;
+}>;
+export type UpdateRiskRegisterInput = z.infer<typeof UpdateRiskRegisterSchema>;
+export declare const CreateBowTieSchema: z.ZodObject<{
     title: z.ZodString;
     topEvent: z.ZodString;
     threats: z.ZodOptional<z.ZodString>;
@@ -145,7 +235,6 @@ export declare const BowTieSchema: z.ZodObject<{
     location: string;
     createdBy: string;
     topEvent: string;
-    id?: string | undefined;
     threats?: string | undefined;
     preventiveBarriers?: string | undefined;
     consequences?: string | undefined;
@@ -157,32 +246,16 @@ export declare const BowTieSchema: z.ZodObject<{
     createdBy: string;
     topEvent: string;
     status?: string | undefined;
-    id?: string | undefined;
     threats?: string | undefined;
     preventiveBarriers?: string | undefined;
     consequences?: string | undefined;
     recoveryBarriers?: string | undefined;
 }>;
-export declare class RiskService {
-    private matrixService;
-    private registerService;
-    private bowtieService;
-    constructor();
-    createMatrix(data: z.infer<typeof RiskMatrixSchema>): Promise<any>;
-    getMatrices(): Promise<any[]>;
-    getDefaultMatrix(): Promise<any>;
-    createRegister(data: z.infer<typeof RiskRegisterSchema>): Promise<any>;
-    getRegisters(filters?: Record<string, any>): Promise<any[]>;
-    getRegisterById(id: string): Promise<any>;
-    updateRegister(id: string, data: Record<string, any>): Promise<any>;
-    createBowTie(data: z.infer<typeof BowTieSchema>): Promise<any>;
-    getBowTies(): Promise<any[]>;
-    private calculateRiskLevel;
-    getRiskDashboard(): Promise<{
-        total: number;
-        low: number;
-        medium: number;
-        high: number;
-        critical: number;
-    }>;
+export type CreateBowTieInput = z.infer<typeof CreateBowTieSchema>;
+export interface RiskDashboard {
+    total: number;
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
 }

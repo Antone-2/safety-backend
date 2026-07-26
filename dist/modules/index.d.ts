@@ -17,6 +17,8 @@ export declare function createGovernanceRouter(): import("express-serve-static-c
 export declare function createAnalyticsRouter(): import("express-serve-static-core").Router;
 export declare function createReportsRouter(): import("express-serve-static-core").Router;
 export declare function createNotificationsRouter(): import("express-serve-static-core").Router;
+export { createRiskRouter } from "./risk/risk.module.js";
+export { createKpiRouter } from "./kpi/kpi.module.js";
 export { createDocumentsRouter } from "./documents/documents.module.js";
 export { createWorkplaceRegistrationRouter } from "./workplace-registration/workplace-registration.module.js";
 export declare function createSettingsRouter(): import("express-serve-static-core").Router;

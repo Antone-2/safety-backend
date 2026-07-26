@@ -207,7 +207,8 @@ describe("backend foundation contracts", () => {
     expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/esg", esgRouter)');
     expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/jsa", jsaRouter)');
     expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/objectives", objectivesRouter)');
-    expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/risk", riskRouter)');
+    expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/risk", createRiskRouter())');
+    expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/kpi", createKpiRouter())');
     expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/spill", spillRouter)');
   });
 
@@ -216,6 +217,9 @@ describe("backend foundation contracts", () => {
     expect(frontendApiSource).toContain('buildUrl("/api/audit"');
     expect(frontendApiSource).toContain('buildUrl("/api/context/analysis"');
     expect(frontendApiSource).toContain('buildUrl("/api/context/parties"');
+    expect(frontendApiSource).toContain('buildUrl("/api/kpi/definitions"');
+    expect(frontendApiSource).toContain('buildUrl("/api/kpi/values"');
+    expect(frontendApiSource).toContain('buildUrl("/api/kpi/dashboard"');
 
     expect(frontendDataSource).toContain('buildUrl("/api/risk/registers"');
     expect(frontendDataSource).toContain('buildUrl("/api/risk/dashboard"');

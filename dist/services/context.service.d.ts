@@ -28,6 +28,7 @@ export declare const ContextAnalysisSchema: z.ZodObject<{
     id?: string | undefined;
     reviewedBy?: string | undefined;
     reviewedAt?: string | undefined;
+    threats?: string | undefined;
     analysisNo?: string | undefined;
     politicalFactors?: string | undefined;
     economicFactors?: string | undefined;
@@ -38,7 +39,6 @@ export declare const ContextAnalysisSchema: z.ZodObject<{
     internalStrengths?: string | undefined;
     internalWeaknesses?: string | undefined;
     opportunities?: string | undefined;
-    threats?: string | undefined;
     scopeStatement?: string | undefined;
 }, {
     title: string;
@@ -48,6 +48,7 @@ export declare const ContextAnalysisSchema: z.ZodObject<{
     id?: string | undefined;
     reviewedBy?: string | undefined;
     reviewedAt?: string | undefined;
+    threats?: string | undefined;
     analysisNo?: string | undefined;
     politicalFactors?: string | undefined;
     economicFactors?: string | undefined;
@@ -58,7 +59,6 @@ export declare const ContextAnalysisSchema: z.ZodObject<{
     internalStrengths?: string | undefined;
     internalWeaknesses?: string | undefined;
     opportunities?: string | undefined;
-    threats?: string | undefined;
     scopeStatement?: string | undefined;
 }>;
 export declare const InterestedPartySchema: z.ZodObject<{

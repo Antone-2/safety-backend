@@ -32,7 +32,7 @@ export class AnalyticsService {
 
   constructor() {
     this.dashboardService = new BaseService("dashboards", DashboardSchema);
-    this.reportService = new BaseService("reports", ReportSchema);
+    this.reportService = new BaseService("analytics_reports", ReportSchema);
   }
 
   async createDashboard(data: z.infer<typeof DashboardSchema>) {

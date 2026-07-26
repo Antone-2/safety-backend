@@ -28,7 +28,7 @@ export class AnalyticsService {
     reportService;
     constructor() {
         this.dashboardService = new BaseService("dashboards", DashboardSchema);
-        this.reportService = new BaseService("reports", ReportSchema);
+        this.reportService = new BaseService("analytics_reports", ReportSchema);
     }
     async createDashboard(data) {
         return this.dashboardService.create(data);

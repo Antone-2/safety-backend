@@ -107,7 +107,11 @@ export type Permission =
   | "workplace-registration:read"
   | "workplace-registration:create"
   | "workplace-registration:update"
-  | "workplace-registration:delete";
+  | "workplace-registration:delete"
+  | "kpi:read"
+  | "kpi:create"
+  | "kpi:update"
+  | "kpi:delete";
 
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   "super-admin": ["*"],
@@ -216,6 +220,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "workplace-registration:create",
     "workplace-registration:update",
     "workplace-registration:delete",
+    "kpi:read",
+    "kpi:create",
+    "kpi:update",
+    "kpi:delete",
   ],
   "EHS-officer": [
     "incidents:read",
@@ -574,4 +582,5 @@ export const ROUTE_PERMISSION_MATRIX: Record<string, Permission> = {
   "/api/investigations": "investigations:read",
   "/api/heightwork": "heightwork:read",
   "/api/wiba": "wiba:read",
+  "/api/kpi": "kpi:read",
 };

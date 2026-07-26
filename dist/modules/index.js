@@ -33,6 +33,8 @@ export function createReportsRouter() {
 export function createNotificationsRouter() {
     return notificationsRouter;
 }
+export { createRiskRouter } from "./risk/risk.module.js";
+export { createKpiRouter } from "./kpi/kpi.module.js";
 export { createDocumentsRouter } from "./documents/documents.module.js";
 export { createWorkplaceRegistrationRouter } from "./workplace-registration/workplace-registration.module.js";
 export function createSettingsRouter() {

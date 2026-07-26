@@ -31,10 +31,12 @@ export class IncidentsRepository {
 
   async findAllReports(): Promise<Record<string, unknown>[]> {
     const result = await this.pool.query(
-      `SELECT id, type, severity, status, location, department, shift, description, reporter, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
+      `SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
        FROM reports
        WHERE LOWER(COALESCE(category, '')) LIKE '%incident%'
           OR LOWER(COALESCE(category, '')) LIKE '%accident%'
+          OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
+          OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
        ORDER BY created_at DESC`,
     );
     return result.rows as Record<string, unknown>[];

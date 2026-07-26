@@ -7,11 +7,26 @@ const now = () => new Date().toISOString();
 function mapReportToIncident(row: Record<string, unknown>): Incident {
   const status = String(row.status ?? "Open");
   const mappedStatus = status === "In Progress" ? "Investigating" : status;
-  const type = String(row.type ?? "Unsafe Condition");
+  const reportType = String(row.type ?? "").toLowerCase();
   const severity = String(row.severity ?? "Medium");
+
+  // Map report type to incident type
+  const typeMap: Record<string, string> = {
+    "unsafe act": "Unsafe Act",
+    "unsafe condition": "Unsafe Condition",
+    "near miss": "Near Miss",
+    "first aid": "First Aid",
+    "medical treatment": "Medical Treatment",
+    "lost time": "Lost Time",
+    "fatality": "Fatality",
+    "property damage": "Property Damage",
+    "environmental": "Environmental",
+  };
+  const mappedType = typeMap[reportType] ?? "Unsafe Condition";
+
   return {
     id: String(row.id),
-    type: type as Incident["type"],
+    type: mappedType as Incident["type"],
     severity: severity as Incident["severity"],
     status: mappedStatus as Incident["status"],
     location: String(row.location ?? ""),
@@ -19,8 +34,8 @@ function mapReportToIncident(row: Record<string, unknown>): Incident {
     shift: String(row.shift ?? ""),
     description: String(row.description ?? ""),
     reporter: String(row.reporter ?? ""),
-    reporterEmail: undefined,
-    reporterPhone: undefined,
+    reporterEmail: row.reporter_email ? String(row.reporter_email) : undefined,
+    reporterPhone: row.reporter_phone ? String(row.reporter_phone) : undefined,
     anonymous: Boolean(row.anonymous),
     isNearMiss: Boolean(row.is_near_miss),
     photoUrl: String(row.photo_url ?? ""),
@@ -39,7 +54,7 @@ function mapReportToIncident(row: Record<string, unknown>): Incident {
     regulatoryNotificationDate: undefined,
     complianceRequired: Boolean(row.compliance_required),
     complianceDueAt: row.compliance_due_at ? new Date(row.compliance_due_at as string).toISOString() : undefined,
-    source: String(row.source ?? "google-sheets"),
+    source: String(row.source ?? "manual"),
     auditHistory: undefined,
     createdAt: row.created_at ? new Date(row.created_at as string).toISOString() : now(),
     updatedAt: row.updated_at ? new Date(row.updated_at as string).toISOString() : now(),

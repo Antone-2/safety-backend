@@ -1677,6 +1677,212 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
       CREATE INDEX IF NOT EXISTS idx_workplace_registrations_expiry_date ON workplace_registrations(expiry_date);
     `,
     },
+    {
+        id: "053_kpi_definitions",
+        description: "Create KPI definitions table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS kpi_definitions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL DEFAULT 'General',
+        unit TEXT NOT NULL DEFAULT 'count',
+        target_value NUMERIC NOT NULL DEFAULT 0,
+        direction TEXT NOT NULL DEFAULT 'higher_is_better',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_kpi_definitions_category ON kpi_definitions(category);
+      CREATE INDEX IF NOT EXISTS idx_kpi_definitions_active ON kpi_definitions(is_active);
+    `,
+    },
+    {
+        id: "054_kpi_values",
+        description: "Create KPI values table for recorded actuals",
+        sql: `
+      CREATE TABLE IF NOT EXISTS kpi_values (
+        id TEXT PRIMARY KEY,
+        definition_id TEXT NOT NULL REFERENCES kpi_definitions(id) ON DELETE CASCADE,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        actual_value NUMERIC NOT NULL DEFAULT 0,
+        notes TEXT,
+        recorded_by TEXT NOT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_kpi_values_definition_id ON kpi_values(definition_id);
+      CREATE INDEX IF NOT EXISTS idx_kpi_values_period ON kpi_values(period_start, period_end);
+    `,
+    },
+    {
+        id: "055_seed_kpi_definitions",
+        description: "Seed default KPI definitions",
+        sql: `
+      INSERT INTO kpi_definitions (id, name, description, category, unit, target_value, direction, is_active, created_by, created_at, updated_at)
+      VALUES
+        ('workforce-meta', 'KPI Basis - Workforce', 'Workforce count used as denominator for rate-based KPIs', 'Basis', 'people', 0, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('total-manhours-meta', 'KPI Basis - Total Manhours', 'Total manhours worked used as denominator for rate-based KPIs', 'Basis', 'hours', 0, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('days-since-lti-meta', 'KPI Basis - Days Since Last LTI', 'Days since the last lost-time injury', 'Basis', 'days', 0, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('lost-day-hours-meta', 'KPI Basis - Lost Day Hours', 'Number of hours in a standard work day used for lost-time calculations', 'Basis', 'hours', 8, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('inspection-target', 'Inspections', 'Number of safety inspections completed YTD', 'Leading Indicator', 'count', 12, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('gemba-walk-target', 'Gemba Walks', 'Number of gemba walks and observations completed YTD', 'Leading Indicator', 'count', 24, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('safety-audit-target', 'Safety Audits', 'Number of safety audits completed YTD', 'Leading Indicator', 'count', 4, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('training-coverage-target', 'Training Coverage', 'Percentage of workforce with current training', 'Leading Indicator', 'percent', 95, 'higher_is_better', true, 'system', NOW(), NOW()),
+        ('trir-target', 'TRIR', 'Total Recordable Incident Rate', 'Site Safety', 'rate', 2.5, 'lower_is_better', true, 'system', NOW(), NOW()),
+        ('ltifr-target', 'LTIFR', 'Lost Time Injury Frequency Rate', 'Site Safety', 'rate', 1.0, 'lower_is_better', true, 'system', NOW(), NOW()),
+        ('ltisr-target', 'LTISR', 'Lost Time Injury Severity Rate', 'Site Safety', 'rate', 100, 'lower_is_better', true, 'system', NOW(), NOW()),
+        ('capa-closure-target', 'CAPA Closure Rate', 'Percentage of CAPA closed within due date', 'Corrective Action', 'percent', 90, 'higher_is_better', true, 'system', NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING;
+    `,
+    },
+    {
+        id: "056_create_jsa",
+        description: "Create JSA table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS jsa (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        location TEXT NOT NULL,
+        department TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','in-review','active','completed','archived')),
+        steps TEXT NOT NULL DEFAULT '[]',
+        createdBy TEXT NOT NULL,
+        createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reviewedBy TEXT,
+        reviewedAt TEXT
+      );
+    `,
+    },
+    {
+        id: "057_create_jsa_indexes",
+        description: "Create JSA indexes",
+        sql: `
+      CREATE INDEX IF NOT EXISTS idx_jsa_location ON jsa(location);
+      CREATE INDEX IF NOT EXISTS idx_jsa_department ON jsa(department);
+      CREATE INDEX IF NOT EXISTS idx_jsa_status ON jsa(status);
+    `,
+    },
+    {
+        id: "058_create_dashboards",
+        description: "Create dashboards table for analytics",
+        sql: `
+      CREATE TABLE IF NOT EXISTS dashboards (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        layout TEXT,
+        widgets TEXT,
+        filters TEXT,
+        site TEXT,
+        department TEXT,
+        role TEXT,
+        createdBy TEXT NOT NULL,
+        createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_dashboards_type ON dashboards(type);
+      CREATE INDEX IF NOT EXISTS idx_dashboards_site ON dashboards(site);
+      CREATE INDEX IF NOT EXISTS idx_dashboards_createdAt ON dashboards(createdAt DESC);
+    `,
+    },
+    {
+        id: "059_create_analytics_reports",
+        description: "Create analytics reports table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS analytics_reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        format TEXT NOT NULL DEFAULT 'PDF',
+        parameters TEXT,
+        schedule TEXT,
+        recipients TEXT,
+        lastGenerated TIMESTAMPTZ,
+        createdBy TEXT NOT NULL,
+        createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_analytics_reports_type ON analytics_reports(type);
+      CREATE INDEX IF NOT EXISTS idx_analytics_reports_createdAt ON analytics_reports(createdAt DESC);
+    `,
+    },
+    {
+        id: "061_emergency_tables",
+        description: "Create emergency plans, drills, and emergency contacts tables",
+        sql: `
+      CREATE TABLE IF NOT EXISTS emergency_plans (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        scenario TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        procedures TEXT NOT NULL,
+        emergencyContacts TEXT NOT NULL,
+        assemblyPoints TEXT,
+        specialInstructions TEXT,
+        lastReviewed TEXT,
+        nextReview TEXT,
+        status TEXT NOT NULL DEFAULT 'Active',
+        createdBy TEXT NOT NULL,
+        createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_emergency_plans_site ON emergency_plans(site);
+      CREATE INDEX IF NOT EXISTS idx_emergency_plans_status ON emergency_plans(status);
+      CREATE INDEX IF NOT EXISTS idx_emergency_plans_createdAt ON emergency_plans(createdAt DESC);
+
+      CREATE TABLE IF NOT EXISTS drills (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        scheduledDate TEXT NOT NULL,
+        actualDate TEXT,
+        participants INTEGER DEFAULT 0,
+        duration INTEGER DEFAULT 0,
+        scenario TEXT,
+        findings TEXT,
+        observations TEXT,
+        improvements TEXT,
+        coordinator TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Scheduled',
+        createdBy TEXT NOT NULL,
+        createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_drills_site ON drills(site);
+      CREATE INDEX IF NOT EXISTS idx_drills_status ON drills(status);
+      CREATE INDEX IF NOT EXISTS idx_drills_type ON drills(type);
+      CREATE INDEX IF NOT EXISTS idx_drills_createdAt ON drills(createdAt DESC);
+
+      CREATE TABLE IF NOT EXISTS emergency_contacts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT,
+        phone TEXT NOT NULL,
+        email TEXT,
+        alternatePhone TEXT,
+        isPrimary BOOLEAN NOT NULL DEFAULT FALSE,
+        isERT BOOLEAN NOT NULL DEFAULT FALSE,
+        notes TEXT,
+        createdBy TEXT NOT NULL,
+        createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_emergency_contacts_site ON emergency_contacts(site);
+      CREATE INDEX IF NOT EXISTS idx_emergency_contacts_isert ON emergency_contacts(isERT);
+      CREATE INDEX IF NOT EXISTS idx_emergency_contacts_createdAt ON emergency_contacts(createdAt DESC);
+    `,
+    },
 ];
 async function ensureMigrationsTable(client) {
     await client.query(`

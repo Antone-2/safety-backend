@@ -47,9 +47,9 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     notes?: string | undefined;
     reviewedBy?: string | undefined;
     unit?: string | undefined;
+    targetValue?: number | undefined;
     lastReviewed?: string | undefined;
     objectiveNo?: string | undefined;
-    targetValue?: number | undefined;
     currentValue?: number | undefined;
     baseline?: string | undefined;
 }, {
@@ -68,10 +68,10 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     notes?: string | undefined;
     reviewedBy?: string | undefined;
     unit?: string | undefined;
+    targetValue?: number | undefined;
     progress?: number | undefined;
     lastReviewed?: string | undefined;
     objectiveNo?: string | undefined;
-    targetValue?: number | undefined;
     currentValue?: number | undefined;
     baseline?: string | undefined;
     linkedRisks?: string | undefined;

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { allRows, getDb, saveDb } from "../lib/database.js";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
 const now = () => new Date().toISOString();
 
@@ -70,18 +70,16 @@ function toHtml(title: string, rows: any[]) {
 
 export class AnalyticsGovernanceService {
   async listTemplates() {
-    const db = await getDb();
-    return allRows(
-      db,
+    const result = await pgPool.query(
       "SELECT * FROM analytics_report_templates ORDER BY updatedAt DESC",
-    ).map(normalizeTemplate);
+    );
+    return result.rows.map(normalizeTemplate);
   }
 
   async createTemplate(
     data: Record<string, any>,
     actor?: { name?: string; email?: string },
   ) {
-    const db = await getDb();
     const createdAt = now();
     const template = {
       id: data.id || uuidv4(),
@@ -91,36 +89,34 @@ export class AnalyticsGovernanceService {
       module: data.module || "ehs",
       parameters: stringify(data.parameters, {}),
       outputFormats: stringify(data.outputFormats, ["pdf", "excel"]),
-      approvalRequired: data.approvalRequired === false ? 0 : 1,
+      approvalRequired: data.approvalRequired === false ? false : true,
       ownerId: data.ownerId || null,
       ownerName: data.ownerName || null,
-      active: data.active === false ? 0 : 1,
+      active: data.active === false ? false : true,
       createdBy: actorName(actor),
       createdAt,
       updatedAt: createdAt,
     };
-    db.prepare(
+    await pgPool.query(
       `INSERT INTO analytics_report_templates
-       (id, name, type, description, module, parameters, outputFormats, approvalRequired, ownerId, ownerName, active, createdBy, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(template));
-    await saveDb(db);
+        (id, name, type, description, module, parameters, outputFormats, approvalRequired, ownerId, ownerName, active, createdBy, createdAt, updatedAt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      Object.values(template),
+    );
     return normalizeTemplate(template);
   }
 
   async listSchedules() {
-    const db = await getDb();
-    return allRows(
-      db,
+    const result = await pgPool.query(
       "SELECT * FROM analytics_report_schedules ORDER BY nextRunAt ASC, updatedAt DESC",
-    ).map(normalizeSchedule);
+    );
+    return result.rows.map(normalizeSchedule);
   }
 
   async createSchedule(
     data: Record<string, any>,
     actor?: { name?: string; email?: string },
   ) {
-    const db = await getDb();
     const createdAt = now();
     const schedule = {
       id: data.id || uuidv4(),
@@ -130,17 +126,17 @@ export class AnalyticsGovernanceService {
       recipients: stringify(data.recipients, []),
       nextRunAt: data.nextRunAt || null,
       lastRunAt: null,
-      active: data.active === false ? 0 : 1,
+      active: data.active === false ? false : true,
       createdBy: actorName(actor),
       createdAt,
       updatedAt: createdAt,
     };
-    db.prepare(
+    await pgPool.query(
       `INSERT INTO analytics_report_schedules
-       (id, templateId, cadence, timezone, recipients, nextRunAt, lastRunAt, active, createdBy, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(schedule));
-    await saveDb(db);
+        (id, templateId, cadence, timezone, recipients, nextRunAt, lastRunAt, active, createdBy, createdAt, updatedAt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      Object.values(schedule),
+    );
     return normalizeSchedule(schedule);
   }
 
@@ -167,13 +163,12 @@ export class AnalyticsGovernanceService {
       generatedBy: actorName(actor),
       generatedAt,
     };
-    const db = await getDb();
-    db.prepare(
+    await pgPool.query(
       `INSERT INTO analytics_report_runs
-       (id, templateId, scheduleId, status, periodStart, periodEnd, dataQualityWarnings, outputManifest, generatedBy, generatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(run));
-    await saveDb(db);
+        (id, templateId, scheduleId, status, periodStart, periodEnd, dataQualityWarnings, outputManifest, generatedBy, generatedAt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      Object.values(run),
+    );
     return normalizeRun(run);
   }
 
@@ -182,7 +177,6 @@ export class AnalyticsGovernanceService {
     data: Record<string, any>,
     actor?: { id?: string; name?: string; email?: string },
   ) {
-    const db = await getDb();
     const signedAt = now();
     const signoff = {
       id: uuidv4(),
@@ -193,16 +187,16 @@ export class AnalyticsGovernanceService {
       comments: data.comments || null,
       signedAt,
     };
-    db.prepare(
+    await pgPool.query(
       `INSERT INTO analytics_report_signoffs
-       (id, runId, status, signerId, signerName, comments, signedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(Object.values(signoff));
-    db.prepare("UPDATE analytics_report_runs SET status = ? WHERE id = ?").run([
-      signoff.status,
-      runId,
-    ]);
-    await saveDb(db);
+        (id, runId, status, signerId, signerName, comments, signedAt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      Object.values(signoff),
+    );
+    await pgPool.query(
+      "UPDATE analytics_report_runs SET status = $1 WHERE id = $2",
+      [signoff.status, runId],
+    );
     return signoff;
   }
 
@@ -210,11 +204,10 @@ export class AnalyticsGovernanceService {
     type: "management-review" | "board-kpi" | "regulatory",
     actor?: { name?: string; email?: string },
   ) {
-    const db = await getDb();
-    const reports = allRows(
-      db,
+    const result = await pgPool.query(
       "SELECT * FROM reports ORDER BY date DESC LIMIT 1000",
     );
+    const reports = result.rows;
     const open = reports.filter((row) => row.status !== "Closed").length;
     const overdue = reports.filter(
       (row) =>
@@ -245,8 +238,8 @@ export class AnalyticsGovernanceService {
   }
 
   async dataQualityWarnings() {
-    const db = await getDb();
-    const rows = allRows(db, "SELECT * FROM reports");
+    const result = await pgPool.query("SELECT * FROM reports");
+    const rows = result.rows;
     const warnings: string[] = [];
     const required = [
       "id",
@@ -275,11 +268,10 @@ export class AnalyticsGovernanceService {
   }
 
   async exportRows(format: string) {
-    const db = await getDb();
-    const rows = allRows(
-      db,
+    const result = await pgPool.query(
       "SELECT * FROM reports ORDER BY date DESC LIMIT 1000",
     );
+    const rows = result.rows;
     if (format === "csv" || format === "excel") {
       return {
         contentType: "text/csv",

@@ -16,6 +16,8 @@ import analyticsRouter from "../routes/analytics.js";
 import { createDocumentsRouter } from "./documents/documents.module.js";
 import notificationsRouter from "../routes/notifications.js";
 import settingsRouter from "../routes/settings.js";
+import { createRiskRouter } from "./risk/risk.module.js";
+import { createKpiRouter } from "./kpi/kpi.module.js";
 import { createReportsRouter as createPostgresReportsRouter } from "./reports/reports.module.js";
 
 export { createPermitsRouter } from "./permits/permits.module.js";
@@ -65,6 +67,10 @@ export function createReportsRouter() {
 export function createNotificationsRouter() {
   return notificationsRouter;
 }
+
+export { createRiskRouter } from "./risk/risk.module.js";
+
+export { createKpiRouter } from "./kpi/kpi.module.js";
 
 export { createDocumentsRouter } from "./documents/documents.module.js";
 
