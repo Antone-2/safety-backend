@@ -1146,7 +1146,7 @@ addMigration(
     requireCitations INTEGER NOT NULL DEFAULT 1,
     allowExports INTEGER NOT NULL DEFAULT 1,
     maxSourceRecords INTEGER NOT NULL DEFAULT 50,
-    allowedRoles TEXT NOT NULL DEFAULT '["super-admin","EHS-manager","hse-officer","plant-manager","factory-manager"]',
+    allowedRoles TEXT NOT NULL DEFAULT '["super-admin","EHS-manager","EHS-officer","plant-manager","factory-manager"]',
     ragSources TEXT NOT NULL DEFAULT '["policies","procedures","reports","capa","audits","training"]',
     updatedBy TEXT,
     updatedAt TEXT NOT NULL

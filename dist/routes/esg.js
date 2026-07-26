@@ -19,7 +19,7 @@ router.get("/carbon", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch carbon emissions" });
     }
 });
-router.post("/carbon", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/carbon", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const emission = await esgService.createCarbonEmission(req.body);
         res.status(201).json(emission);
@@ -44,7 +44,7 @@ router.get("/energy", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch energy records" });
     }
 });
-router.post("/energy", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/energy", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await esgService.createEnergyRecord(req.body);
         res.status(201).json(record);
@@ -67,7 +67,7 @@ router.get("/water", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch water records" });
     }
 });
-router.post("/water", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/water", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await esgService.createWaterRecord(req.body);
         res.status(201).json(record);

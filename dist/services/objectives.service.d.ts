@@ -2,7 +2,7 @@ import { BaseService } from "./base.service.js";
 import { z } from "zod";
 export declare const ObjectiveStatusSchema: z.ZodEnum<["Not Started", "In Progress", "On Track", "At Risk", "Off Track", "Achieved", "Cancelled"]>;
 export type ObjectiveStatus = z.infer<typeof ObjectiveStatusSchema>;
-export declare const HseObjectiveSchema: z.ZodObject<{
+export declare const EHSObjectiveSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     objectiveNo: z.ZodOptional<z.ZodString>;
     title: z.ZodString;
@@ -78,10 +78,10 @@ export declare const HseObjectiveSchema: z.ZodObject<{
     linkedKpis?: string | undefined;
     linkedCapaIds?: string | undefined;
 }>;
-export type HseObjectiveInput = z.infer<typeof HseObjectiveSchema>;
+export type EHSObjectiveInput = z.infer<typeof EHSObjectiveSchema>;
 export declare class ObjectivesService extends BaseService {
     constructor();
-    createObjective(data: HseObjectiveInput): Promise<any>;
+    createObjective(data: EHSObjectiveInput): Promise<any>;
     getByStatus(status: string): Promise<any[]>;
     getByDepartment(department: string): Promise<any[]>;
     getByOwner(owner: string): Promise<any[]>;

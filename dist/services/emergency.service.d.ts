@@ -178,8 +178,8 @@ export declare const EmergencyContactSchema: z.ZodObject<{
     isPrimary: boolean;
     isERT: boolean;
     id?: string | undefined;
-    department?: string | undefined;
     email?: string | undefined;
+    department?: string | undefined;
     notes?: string | undefined;
     alternatePhone?: string | undefined;
 }, {
@@ -189,8 +189,8 @@ export declare const EmergencyContactSchema: z.ZodObject<{
     site: string;
     createdBy: string;
     id?: string | undefined;
-    department?: string | undefined;
     email?: string | undefined;
+    department?: string | undefined;
     notes?: string | undefined;
     alternatePhone?: string | undefined;
     isPrimary?: boolean | undefined;

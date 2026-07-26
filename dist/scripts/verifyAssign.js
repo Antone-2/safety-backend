@@ -14,7 +14,7 @@ async function main() {
     console.log("Assigning report", rid, "as admin test.admin@crownpaints.test");
     const body = {
         assignedTo: "mwangi.plant@crownpaints.test",
-        assignedToCopy: ["otieno.hse@crownpaints.test", "wanjiru.safety@crownpaints.test"],
+        assignedToCopy: ["otieno.EHS@crownpaints.test", "wanjiru.safety@crownpaints.test"],
         assignedBy: "test.admin@crownpaints.test",
     };
     const res = await fetch(`${BASE}/api/reports/${rid}/assign`, {

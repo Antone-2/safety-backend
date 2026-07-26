@@ -47,7 +47,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const record = await service.createObjective({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);
@@ -56,7 +56,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "h
   }
 });
 
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const record = await service.update(String(req.params.id), req.body);
     res.json(record);

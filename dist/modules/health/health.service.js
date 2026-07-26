@@ -1,5 +1,5 @@
 import { NotFoundError } from "../../shared/domain/errors/index.js";
-export class HealthService {
+export class HealtEHSrvice {
     repository;
     constructor(repository) {
         this.repository = repository;

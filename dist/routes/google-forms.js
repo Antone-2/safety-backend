@@ -760,6 +760,26 @@ function startReportPhotoSync(reports) {
         logger.warn({ err: error }, "Google Sheets report photo sync failed.");
     });
 }
+export async function finalizeSuccessfulGoogleSheetsSync(params) {
+    const finishedAt = new Date().toISOString();
+    await params.updateState({
+        status: "idle",
+        finishedAt,
+        successAt: finishedAt,
+        sheetName: params.sheetName,
+        rowCount: params.rowCount,
+        importedCount: params.reports.length,
+        error: null,
+    });
+    params.startPhotoSync(params.reports);
+    return {
+        imported: params.reports.length,
+        rows: params.rowCount,
+        sheetName: params.sheetName,
+        startedAt: params.startedAt,
+        finishedAt,
+    };
+}
 export async function runGoogleSheetsSync(options) {
     assertGoogleSheetsPostgresAvailable();
     if (syncInFlight)
@@ -836,18 +856,14 @@ export async function runGoogleSheetsSync(options) {
                     });
                 }
             }
-            const finishedAt = new Date().toISOString();
-            await updateSyncState({
-                status: "idle",
-                finishedAt,
-                successAt: finishedAt,
+            return finalizeSuccessfulGoogleSheetsSync({
+                startedAt,
                 sheetName: fetched.sheetName,
                 rowCount: rows.length,
-                importedCount: reports.length,
-                error: null,
+                reports,
+                updateState: updateSyncState,
+                startPhotoSync: startReportPhotoSync,
             });
-            startReportPhotoSync(reports);
-            return { imported: reports.length, rows: rows.length, sheetName: fetched.sheetName, startedAt, finishedAt };
         }
         catch (error) {
             const finishedAt = new Date().toISOString();

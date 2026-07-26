@@ -9,5 +9,5 @@ export type CreateUserInput = {
     role?: UserRole;
     phone?: string;
 };
-export type UserRole = "super-admin" | "EHS-manager" | "hse-officer" | "she-committee-member" | "supervisor" | "gm" | "plant-manager" | "factory-manager" | "depot-admin" | "maintenance-manager" | "issuer";
+export type UserRole = "super-admin" | "EHS-manager" | "EHS-officer" | "she-committee-member" | "supervisor" | "gm" | "plant-manager" | "factory-manager" | "depot-admin" | "maintenance-manager" | "issuer";
 export type AuthToken = string;

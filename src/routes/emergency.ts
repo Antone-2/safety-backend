@@ -24,7 +24,7 @@ router.get("/plans/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/plans", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.post("/plans", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const plan = await emergencyService.createPlan(req.body);
     res.status(201).json(plan);
@@ -33,7 +33,7 @@ router.post("/plans", authenticateUser, requireRole(["super-admin", "EHS-manager
   }
 });
 
-router.patch("/plans/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.patch("/plans/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const plan = await emergencyService.updatePlan(String(String(req.params.id)), req.body);
     res.json(plan);
@@ -55,7 +55,7 @@ router.get("/drills", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/drills", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/drills", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const drill = await emergencyService.createDrill(req.body);
     res.status(201).json(drill);
@@ -64,7 +64,7 @@ router.post("/drills", authenticateUser, requireRole(["super-admin", "EHS-manage
   }
 });
 
-router.patch("/drills/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.patch("/drills/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const drill = await emergencyService.updateDrill(String(String(req.params.id)), req.body);
     res.json(drill);
@@ -85,7 +85,7 @@ router.get("/contacts", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/contacts", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/contacts", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const contact = await emergencyService.createContact(req.body);
     res.status(201).json(contact);
@@ -94,7 +94,7 @@ router.post("/contacts", authenticateUser, requireRole(["super-admin", "EHS-mana
   }
 });
 
-router.patch("/contacts/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.patch("/contacts/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const contact = await emergencyService.updateContact(String(String(req.params.id)), req.body);
     res.json(contact);

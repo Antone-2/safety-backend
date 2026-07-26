@@ -1,7 +1,7 @@
 import { Redis } from "ioredis";
 import { getEnv } from "../../../config/index.js";
 const env = getEnv();
-const MINIMUM_BULLMQ_REDIS_MAJOR = 5;
+export const MINIMUM_BULLMQ_REDIS_MAJOR = 5;
 let bullMqSupportChecked = false;
 let bullMqSupported = false;
 let bullMqRedisVersion = null;
@@ -13,6 +13,21 @@ function isLocalhostRedisUrl(url) {
     if (!host)
         return true;
     return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host.toLowerCase());
+}
+export class RedisRequiredError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = "RedisRequiredError";
+    }
+}
+export class RedisVersionUnsupportedError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = "RedisVersionUnsupportedError";
+    }
+}
+export function isRedisRequired() {
+    return env.REQUIRE_REDIS === "true" && env.NODE_ENV === "production";
 }
 export const redisClient = env.REDIS_URL
     ? new Redis(env.REDIS_URL, {
@@ -108,6 +123,26 @@ export async function supportsBullMq() {
 }
 export function getBullMqRedisVersion() {
     return bullMqRedisVersion;
+}
+export async function ensureRedisProductionReady() {
+    if (!isRedisRequired()) {
+        return { connected: false, bullMqReady: false };
+    }
+    if (!env.REDIS_URL || !redisClient) {
+        throw new RedisRequiredError("REDIS_URL is required when REQUIRE_REDIS=true");
+    }
+    if (isLocalhostRedisUrl(env.REDIS_URL)) {
+        throw new RedisRequiredError("REDIS_URL must not point to localhost when REQUIRE_REDIS=true in this environment.");
+    }
+    const connected = await connectRedis();
+    if (!connected) {
+        throw new RedisRequiredError("Redis is required but could not be reached at the configured REDIS_URL.");
+    }
+    const bullMqReady = await supportsBullMq();
+    if (!bullMqReady) {
+        throw new RedisVersionUnsupportedError(`Redis ${bullMqRedisVersion || "unknown"} detected. BullMQ requires Redis ${MINIMUM_BULLMQ_REDIS_MAJOR}.0.0 or newer.`);
+    }
+    return { connected: true, bullMqReady: true };
 }
 export async function checkRedis() {
     if (!redisClient) {

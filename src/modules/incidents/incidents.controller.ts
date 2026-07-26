@@ -129,9 +129,9 @@ export function createIncidentsRouter() {
   router.get("/stats/summary", controller.getStats);
   router.get("/overdue/list", controller.getOverdue);
   router.get("/:id", controller.getById);
-  router.post("/", requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), validate(createIncidentSchema), controller.create);
-  router.post("/:id/transition", requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), controller.transition);
-  router.patch("/:id", requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager", "depot-admin"]), controller.update);
+  router.post("/", requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), validate(createIncidentSchema), controller.create);
+  router.post("/:id/transition", requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), controller.transition);
+  router.patch("/:id", requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin"]), controller.update);
   router.delete("/:id", requireRole(["super-admin", "EHS-manager"]), controller.delete);
 
   return router;

@@ -46,6 +46,8 @@ export { createFireRouter } from "./fire/fire.module.js";
 
 export { createHeightWorkRouter } from "./heightwork/heightwork.module.js";
 
+export { createWibaRouter } from "./wiba/wiba.module.js";
+
 export { createScaffoldRouter } from "./scaffolding/scaffolding.module.js";
 
 export function createGovernanceRouter() {

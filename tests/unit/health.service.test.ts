@@ -93,10 +93,10 @@ vi.mock("../../src/modules/health/health.repository.js", () => ({
   },
 }));
 
-describe("HealthService", () => {
+describe("HealtEHSrvice", () => {
   it("returns all health records", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const records = await service.getRecords();
@@ -105,8 +105,8 @@ describe("HealthService", () => {
   });
 
   it("filters health records by type", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const records = await service.getRecords({ type: "Audiometric" });
@@ -115,8 +115,8 @@ describe("HealthService", () => {
   });
 
   it("returns health record by id", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const record = await service.getRecordById("HLT-1");
@@ -125,8 +125,8 @@ describe("HealthService", () => {
   });
 
   it("creates new health record", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const record = await service.createRecord({
@@ -147,8 +147,8 @@ describe("HealthService", () => {
   });
 
   it("returns expiring surveillances", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const expiring = await service.getExpiringSurveillances(30);
@@ -156,8 +156,8 @@ describe("HealthService", () => {
   });
 
   it("returns health stats", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const stats = await service.getHealthStats();
@@ -169,8 +169,8 @@ describe("HealthService", () => {
   });
 
   it("updates health record", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const updated = await service.updateRecord("HLT-1", { findings: "Updated findings" });
@@ -178,8 +178,8 @@ describe("HealthService", () => {
   });
 
   it("deletes health record", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     const deleted = await service.deleteRecord("HLT-1");
@@ -187,8 +187,8 @@ describe("HealthService", () => {
   });
 
   it("throws NotFoundError when updating non-existent health record", async () => {
-    const { HealthService } = await import("../../src/modules/health/health.service.js");
-    const service = new HealthService(
+    const { HealtEHSrvice } = await import("../../src/modules/health/health.service.js");
+    const service = new HealtEHSrvice(
       new (await import("../../src/modules/health/health.repository.js")).HealthRepository(),
     );
     await expect(service.updateRecord("non-existent", { findings: "Test" })).rejects.toThrow("Health record");

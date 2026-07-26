@@ -50,7 +50,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch CAPA" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const record = await capaService.createCapa({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(record);
@@ -59,7 +59,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "h
         res.status(500).json({ error: "Failed to create CAPA" });
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const record = await capaService.update(String(req.params.id), req.body);
         res.json(record);
@@ -77,7 +77,7 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
         res.status(500).json({ error: "Failed to delete CAPA" });
     }
 });
-router.post("/:id/verify", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.post("/:id/verify", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const { verificationNote, verifiedBy } = req.body;
         const record = await capaService.update(String(req.params.id), {

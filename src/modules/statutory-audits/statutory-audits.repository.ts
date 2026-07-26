@@ -113,10 +113,11 @@ export class StatutoryAuditRepository {
     await this.pool.query(
       `INSERT INTO statutory_audit_records (id, location_category, location_name, sort_order, audit_type, date_done, remarks, reference_no, created_at, updated_at)
        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (id) DO UPDATE SET
-         date_done = COALESCE($5, statutory_audit_records.date_done),
-         remarks = COALESCE($6, statutory_audit_records.remarks),
-         reference_no = COALESCE($7, statutory_audit_records.reference_no),
+       ON CONFLICT (location_category, location_name, audit_type) DO UPDATE SET
+         sort_order = EXCLUDED.sort_order,
+         date_done = EXCLUDED.date_done,
+         remarks = EXCLUDED.remarks,
+         reference_no = EXCLUDED.reference_no,
          updated_at = $9`,
       [
         locationCategory,
@@ -130,6 +131,17 @@ export class StatutoryAuditRepository {
         now(),
       ],
     );
+  }
+
+  async existsByLocation(locationCategory: string, locationName: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1
+       FROM statutory_audit_records
+       WHERE location_category = $1 AND location_name = $2
+       LIMIT 1`,
+      [locationCategory, locationName],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async deleteByLocation(locationCategory: string, locationName: string): Promise<void> {

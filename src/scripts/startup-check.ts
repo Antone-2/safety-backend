@@ -1,6 +1,10 @@
 import "dotenv/config";
 import { checkDatabase, pgPool } from "../shared/infrastructure/database/postgres.client.js";
-import { checkRedis, redisClient } from "../shared/infrastructure/redis/redis.client.js";
+import {
+  checkRedis,
+  ensureRedisProductionReady,
+  redisClient,
+} from "../shared/infrastructure/redis/redis.client.js";
 import { logger } from "../shared/utils/logger.js";
 import { runPostgresMigrations } from "../shared/infrastructure/database/migrations.js";
 
@@ -44,6 +48,10 @@ async function main() {
 
     if (process.env.REDIS_URL) {
       await waitFor("redis", checkRedis);
+      if (process.env.REQUIRE_REDIS === "true") {
+        await ensureRedisProductionReady();
+        logger.info("Redis production readiness checks completed");
+      }
     } else if (process.env.REQUIRE_REDIS === "true") {
       throw new Error("REDIS_URL is required when REQUIRE_REDIS=true");
     }

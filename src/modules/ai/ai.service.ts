@@ -1005,7 +1005,7 @@ export class AiService {
     const user = `Incident: ${JSON.stringify(data)}`;
     return this.generate(
       "investigation-assistant",
-      "You are an expert HSE incident investigation assistant. Provide structured root cause questions and corrective action guidance.",
+      "You are an expert EHS incident investigation assistant. Provide structured root cause questions and corrective action guidance.",
       user,
       userId,
     );
@@ -1048,7 +1048,7 @@ export class AiService {
       .map((r: any) => `- ${r.title}: ${r.excerpt}`)
       .join("\n");
     const reply = await this.llm.generate(
-      "You are a safety assistant chatbot for Crown Paints HSE. Use the provided knowledge when relevant.",
+      "You are a safety assistant chatbot for Crown Paints EHS. Use the provided knowledge when relevant.",
       `Knowledge:\n${context}\n\nConversation: ${JSON.stringify(history)}\nUser: ${message}`,
       { temperature: 0.3 },
     );
@@ -1067,7 +1067,7 @@ export class AiService {
   async trainingRecommendation(data: any, userId?: string): Promise<Json> {
     return this.generate(
       "training-recommendation",
-      "Recommend HSE training modules based on the provided profile.",
+      "Recommend EHS training modules based on the provided profile.",
       `Input: ${JSON.stringify(data)}`,
       userId,
     );
@@ -1183,7 +1183,7 @@ export class AiService {
   async kpiForecasting(data: any, userId?: string): Promise<Json> {
     return this.generate(
       "kpi-forecasting",
-      "Forecast HSE KPI values from the provided series.",
+      "Forecast EHS KPI values from the provided series.",
       `Input: ${JSON.stringify(data)}`,
       userId,
     );
@@ -1192,7 +1192,7 @@ export class AiService {
   async executiveReports(data: any, userId?: string): Promise<Json> {
     return this.generate(
       "executive-reports",
-      "Produce a concise executive HSE report from the supplied data.",
+      "Produce a concise executive EHS report from the supplied data.",
       `Input: ${JSON.stringify(data)}`,
       userId,
     );

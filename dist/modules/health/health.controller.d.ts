@@ -1,7 +1,7 @@
 import { type Response } from "express";
-import { HealthService } from "./health.service.js";
+import { HealtEHSrvice } from "./health.service.js";
 import { type AuthRequest } from "../../shared/middleware/auth.middleware.js";
-export declare function createHealthController(service: HealthService): {
+export declare function createHealthController(service: HealtEHSrvice): {
     getRecords(req: AuthRequest, res: Response): Promise<void>;
     getById(req: AuthRequest, res: Response): Promise<void>;
     create(req: AuthRequest, res: Response): Promise<void>;

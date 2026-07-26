@@ -11,7 +11,7 @@ export const UserRoleSchema = z.enum([
   "plant-manager",
   "factory-manager",
   "depot-admin",
-  "hse-officer",
+  "EHS-officer",
   "employee",
 ]);
 export type UserRole = z.infer<typeof UserRoleSchema>;

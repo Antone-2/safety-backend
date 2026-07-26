@@ -49,6 +49,11 @@ export type ReportFilters = {
   all?: boolean;
 };
 
+export type TopReporterEntry = {
+  reporter: string;
+  reportCount: number;
+};
+
 type ReportRow = Record<string, any>;
 type CommentRow = {
   author: string;
@@ -1664,6 +1669,70 @@ export class ReportsService {
       lostDayHours,
       totalManhoursWorked,
     };
+  }
+
+  async topReportersMonthToDate(limit = 6): Promise<TopReporterEntry[]> {
+    const safeLimit = Math.min(20, Math.max(1, Math.trunc(limit) || 6));
+    const now = new Date();
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
+    );
+    const nextMonthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0),
+    );
+
+    if (isPgAvailable()) {
+      const result = await pgPool.query<{
+        reporter: string;
+        report_count: number;
+      }>(
+        `SELECT
+           CASE
+             WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+             ELSE 'Unnamed reporter'
+           END AS reporter,
+           COUNT(*)::int AS report_count
+         FROM reports
+         WHERE COALESCE(anonymous, FALSE) = FALSE
+           AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+           AND date >= $1
+           AND date < $2
+         GROUP BY 1
+         ORDER BY report_count DESC, reporter ASC
+         LIMIT $3`,
+        [monthStart.toISOString(), nextMonthStart.toISOString(), safeLimit],
+      );
+
+      return result.rows.map((row) => ({
+        reporter: row.reporter,
+        reportCount: Number(row.report_count ?? 0),
+      }));
+    }
+
+    const db = await getDb();
+    const rows = allRows(
+      db,
+      `SELECT
+         CASE
+           WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter)
+           ELSE 'Unnamed reporter'
+         END AS reporter,
+         COUNT(*) AS reportCount
+       FROM reports
+       WHERE COALESCE(anonymous, 0) = 0
+         AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+         AND date >= ?
+         AND date < ?
+       GROUP BY reporter
+       ORDER BY reportCount DESC, reporter ASC
+       LIMIT ?`,
+      [monthStart.toISOString(), nextMonthStart.toISOString(), safeLimit],
+    ) as Array<{ reporter?: unknown; reportCount?: unknown }>;
+
+    return rows.map((row) => ({
+      reporter: String(row.reporter ?? "Unnamed reporter"),
+      reportCount: Number(row.reportCount ?? 0),
+    }));
   }
 
   private async legacySummary() {

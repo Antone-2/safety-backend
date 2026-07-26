@@ -18,7 +18,7 @@ router.get("/carbon", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/carbon", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/carbon", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const emission = await esgService.createCarbonEmission(req.body);
     res.status(201).json(emission);
@@ -40,7 +40,7 @@ router.get("/energy", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/energy", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/energy", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const record = await esgService.createEnergyRecord(req.body);
     res.status(201).json(record);
@@ -61,7 +61,7 @@ router.get("/water", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/water", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/water", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const record = await esgService.createWaterRecord(req.body);
     res.status(201).json(record);

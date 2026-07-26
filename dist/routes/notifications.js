@@ -56,7 +56,7 @@ router.post("/templates", authenticateUser, requireRole(["super-admin", "EHS-man
     const template = await notificationCenterService.upsertTemplate(req.body, req.user);
     res.status(201).json(template);
 });
-router.post("/enqueue", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/enqueue", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     const job = await notificationCenterService.enqueue({
         eventKey: String(req.body.eventKey),
         workflow: req.body.workflow,

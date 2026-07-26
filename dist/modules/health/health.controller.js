@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { HealthService } from "./health.service.js";
+import { HealtEHSrvice } from "./health.service.js";
 import { HealthRepository } from "./health.repository.js";
 import { authenticateUser } from "../../shared/middleware/auth.middleware.js";
 import { rbacMiddleware } from "../../shared/middleware/rbac.middleware.js";
@@ -82,7 +82,7 @@ export function createHealthController(service) {
 }
 export function createHealthRouter() {
     const repository = new HealthRepository(pgPool);
-    const service = new HealthService(repository);
+    const service = new HealtEHSrvice(repository);
     const controller = createHealthController(service);
     const router = Router();
     router.use(authenticateUser);

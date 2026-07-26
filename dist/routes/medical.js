@@ -41,7 +41,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch medical record" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const record = await medicalService.createRecord({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(record);
@@ -50,7 +50,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "h
         res.status(500).json({ error: "Failed to create medical record" });
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const record = await medicalService.update(String(req.params.id), req.body);
         res.json(record);

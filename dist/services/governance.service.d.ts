@@ -1,12 +1,12 @@
 import { z } from "zod";
-export declare const UserRoleSchema: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "hse-officer", "employee"]>;
+export declare const UserRoleSchema: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "EHS-officer", "employee"]>;
 export type UserRole = z.infer<typeof UserRoleSchema>;
 export declare const UserSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     email: z.ZodString;
     passwordHash: z.ZodOptional<z.ZodString>;
     name: z.ZodString;
-    role: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "hse-officer", "employee"]>;
+    role: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "EHS-officer", "employee"]>;
     site: z.ZodOptional<z.ZodString>;
     department: z.ZodOptional<z.ZodString>;
     phone: z.ZodOptional<z.ZodString>;
@@ -17,7 +17,7 @@ export declare const UserSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status: "Active" | "Inactive" | "Locked";
     name: string;
-    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
+    role: "super-admin" | "EHS-manager" | "EHS-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     email: string;
     id?: string | undefined;
     phone?: string | undefined;
@@ -29,7 +29,7 @@ export declare const UserSchema: z.ZodObject<{
     lastLogin?: string | undefined;
 }, {
     name: string;
-    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
+    role: "super-admin" | "EHS-manager" | "EHS-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     email: string;
     status?: "Active" | "Inactive" | "Locked" | undefined;
     id?: string | undefined;
@@ -43,18 +43,18 @@ export declare const UserSchema: z.ZodObject<{
 }>;
 export declare const PermissionSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
-    role: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "hse-officer", "employee"]>;
+    role: z.ZodEnum<["super-admin", "EHS-manager", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "EHS-officer", "employee"]>;
     resource: z.ZodString;
     actions: z.ZodString;
     conditions: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
+    role: "super-admin" | "EHS-manager" | "EHS-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     resource: string;
     actions: string;
     id?: string | undefined;
     conditions?: string | undefined;
 }, {
-    role: "super-admin" | "EHS-manager" | "hse-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
+    role: "super-admin" | "EHS-manager" | "EHS-officer" | "plant-manager" | "factory-manager" | "supervisor" | "depot-admin" | "she-committee-member" | "gm" | "employee";
     resource: string;
     actions: string;
     id?: string | undefined;

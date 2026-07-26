@@ -41,7 +41,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch investigation" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const record = await service.createInvestigation({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(record);
@@ -50,7 +50,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "h
         res.status(500).json({ error: "Failed to create investigation" });
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await service.update(String(req.params.id), req.body);
         res.json(record);
@@ -59,7 +59,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
         res.status(500).json({ error: "Failed to update investigation" });
     }
 });
-router.post("/:id/evidence", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/:id/evidence", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await service.addEvidence(String(req.params.id), req.body);
         res.json(record);
@@ -68,7 +68,7 @@ router.post("/:id/evidence", authenticateUser, requireRole(["super-admin", "EHS-
         res.status(500).json({ error: "Failed to add evidence" });
     }
 });
-router.post("/:id/complete", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/:id/complete", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await service.completeInvestigation(String(req.params.id), req.body);
         res.json(record);

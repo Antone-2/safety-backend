@@ -36,7 +36,7 @@ router.get("/registers", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/registers", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.post("/registers", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const register = await riskService.createRegister(req.body);
     res.status(201).json(register);
@@ -55,7 +55,7 @@ router.get("/registers/:id", authenticateUser, async (req: AuthRequest, res) => 
   }
 });
 
-router.patch("/registers/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.patch("/registers/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const register = await riskService.updateRegister(String(String(req.params.id)), req.body);
     res.json(register);
@@ -73,7 +73,7 @@ router.get("/bow-ties", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/bow-ties", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/bow-ties", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const bowtie = await riskService.createBowTie(req.body);
     res.status(201).json(bowtie);

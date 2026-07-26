@@ -49,12 +49,12 @@ The current codebase is a well-structured Express monolith with clear service-la
 |--------|---------------|------------------|
 | Team size | 20+ engineers | < 10 engineers — Current |
 | Deployment | Complex (per service) | Single artifact — Simpler |
-| Data consistency | Sagas / eventual consistency | ACID transactions — Critical for HSE |
+| Data consistency | Sagas / eventual consistency | ACID transactions — Critical for EHS |
 | Latency (inter-module) | Network calls | In-process calls — Lower |
 | Debugging | Distributed tracing required | Single-process debugging |
 | Organizational fit | Conway's law (multiple teams) | Single team — Current reality |
 
-**Rationale:** HSE processes (incident → investigation → CAPA → closure) require strong transactional consistency. Splitting these into services introduces distributed-transaction complexity that is unnecessary at current scale.
+**Rationale:** EHS processes (incident → investigation → CAPA → closure) require strong transactional consistency. Splitting these into services introduces distributed-transaction complexity that is unnecessary at current scale.
 
 **Future path:** If the system grows to 50,000+ users or multiple teams own bounded contexts, extract high-traffic modules (notifications, analytics) into separate services behind the same API gateway.
 
@@ -200,7 +200,7 @@ Blacklist the JWT `jti` in Redis with TTL equal to remaining token lifetime.
 super-admin
   └── EHS-manager
         ├── she-committee-member
-        ├── hse-officer
+        ├── EHS-officer
         ├── supervisor
         │     ├── plant-manager
         │     ├── factory-manager

@@ -1,7 +1,7 @@
 import { BaseService } from "./base.service.js";
 import { z } from "zod";
 export const ObjectiveStatusSchema = z.enum(["Not Started", "In Progress", "On Track", "At Risk", "Off Track", "Achieved", "Cancelled"]);
-export const HseObjectiveSchema = z.object({
+export const EHSObjectiveSchema = z.object({
     id: z.string().optional(),
     objectiveNo: z.string().optional(),
     title: z.string().min(1).max(300),
@@ -29,7 +29,7 @@ export const HseObjectiveSchema = z.object({
 });
 export class ObjectivesService extends BaseService {
     constructor() {
-        super("hse_objectives", HseObjectiveSchema);
+        super("EHS_objectives", EHSObjectiveSchema);
     }
     async createObjective(data) {
         const record = await this.create({
@@ -55,7 +55,7 @@ export class ObjectivesService extends BaseService {
     }
     async getStats() {
         const db = await this.getDb?.() || require("../lib/database.js").getDb();
-        const all = this.allRows?.(db, `SELECT * FROM hse_objectives`) || [];
+        const all = this.allRows?.(db, `SELECT * FROM EHS_objectives`) || [];
         const total = all.length;
         const achieved = all.filter((r) => r.status === "Achieved").length;
         const onTrack = all.filter((r) => r.status === "On Track").length;

@@ -23,7 +23,7 @@ router.get("/analysis/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch context analysis" });
     }
 });
-router.post("/analysis", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/analysis", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await service.createContext({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(record);
@@ -52,7 +52,7 @@ router.get("/parties/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch interested party" });
     }
 });
-router.post("/parties", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req, res) => {
+router.post("/parties", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     try {
         const record = await service.createParty({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(record);

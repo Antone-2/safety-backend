@@ -1,14 +1,14 @@
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_EXEMPT_PATHS = new Set([
-    "/api/auth/login",
-    "/api/auth/otp/request",
-    "/api/auth/otp/verify",
-    "/api/auth/bootstrap/register",
-    "/api/auth/mfa/enroll",
-    "/api/auth/mfa/verify-enrollment",
-    "/api/auth/mfa/verify-token",
-    "/api/auth/mfa/recovery-code",
-    "/api/auth/login/mfa-complete",
+    "/auth/login",
+    "/auth/otp/request",
+    "/auth/otp/verify",
+    "/auth/bootstrap/register",
+    "/auth/mfa/enroll",
+    "/auth/mfa/verify-enrollment",
+    "/auth/mfa/verify-token",
+    "/auth/mfa/recovery-code",
+    "/auth/login/mfa-complete",
 ]);
 function hasRefreshCookie(req) {
     return Boolean(req.headers.cookie
@@ -17,7 +17,8 @@ function hasRefreshCookie(req) {
         .some((part) => part.startsWith("ehs_refresh=")));
 }
 function normalizePath(req) {
-    return `/${String(req.path || "").replace(/^\/+/, "")}`;
+    const normalized = `/${String(req.path || "").replace(/^\/+/, "")}`.replace(/^\/api(?:\/v1)?(?=\/)/, "");
+    return normalized || "/";
 }
 export function csrfProtectionMiddleware(req, res, next) {
     if (process.env.CSRF_PROTECTION_ENABLED === "false")

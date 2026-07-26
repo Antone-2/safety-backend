@@ -24,7 +24,7 @@ router.get("/analysis/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/analysis", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/analysis", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const record = await service.createContext({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);
@@ -52,7 +52,7 @@ router.get("/parties/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/parties", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer"]), async (req: AuthRequest, res) => {
+router.post("/parties", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const record = await service.createParty({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);

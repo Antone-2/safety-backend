@@ -63,7 +63,7 @@ try {
   ];
 
   const trainingRecords = [
-    { id: uuid(), recordNumber: 'TRN-REC-2026-001', courseId: trainingCourses[0].id, employeeId: demoUserId, employeeName: 'Demo EHS Manager', department: 'HSE', site: 'NBO-IA', status: 'completed', scheduledDate: '2026-01-15', startDate: now(), completionDate: '2026-01-15', expiryDate: daysFromNow(365), trainer: 'Internal Trainer', trainingProvider: '', location: 'Nairobi Training Room', score: 92, passed: 1, resultNotes: '', certificateUrl: '', feedback: '', createdBy: demoUserId, createdAt: now(), updatedAt: now() },
+    { id: uuid(), recordNumber: 'TRN-REC-2026-001', courseId: trainingCourses[0].id, employeeId: demoUserId, employeeName: 'Demo EHS Manager', department: 'EHS', site: 'NBO-IA', status: 'completed', scheduledDate: '2026-01-15', startDate: now(), completionDate: '2026-01-15', expiryDate: daysFromNow(365), trainer: 'Internal Trainer', trainingProvider: '', location: 'Nairobi Training Room', score: 92, passed: 1, resultNotes: '', certificateUrl: '', feedback: '', createdBy: demoUserId, createdAt: now(), updatedAt: now() },
   ];
 
   const ppeEquipment = [
@@ -98,7 +98,7 @@ try {
   ];
 
   const healthRecords = [
-    { id: uuid(), surveillance_number: 'HS-2026-001', employeeId: demoUserId, employeeName: 'Demo EHS Manager', department: 'HSE', site: 'NBO-IA', type: 'audiometric', examination_date: '2026-01-15', next_due_date: daysFromNow(365), frequency_months: 12, results: 'Normal hearing thresholds', findings: JSON.stringify({leftEar: 'Normal', rightEar: 'Normal'}), restrictions: '', fitness_for_work: 'fit', doctor_name: 'Dr. Smith', clinic_name: 'Crown Medical Centre', report_url: '', notes: '', created_by: demoUserId, created_at: now(), updated_at: now() },
+    { id: uuid(), surveillance_number: 'HS-2026-001', employeeId: demoUserId, employeeName: 'Demo EHS Manager', department: 'EHS', site: 'NBO-IA', type: 'audiometric', examination_date: '2026-01-15', next_due_date: daysFromNow(365), frequency_months: 12, results: 'Normal hearing thresholds', findings: JSON.stringify({leftEar: 'Normal', rightEar: 'Normal'}), restrictions: '', fitness_for_work: 'fit', doctor_name: 'Dr. Smith', clinic_name: 'Crown Medical Centre', report_url: '', notes: '', created_by: demoUserId, created_at: now(), updated_at: now() },
   ];
 
   const equipment = [
@@ -106,7 +106,7 @@ try {
   ];
 
   const documents = [
-    { id: uuid(), document_number: 'DOC-2026-001', title: 'HSE Policy Statement', code: 'HSE-POL-001', category: 'hsse_policy', type: 'policy', version: '2.0', status: 'approved', content: 'Crown Paints is committed to providing a safe and healthy workplace...', author_id: demoUserId, reviewer_id: demoUserId, approver_id: demoUserId, effective_date: '2026-01-01', expiry_date: daysFromNow(1095), site_id: 1, department_id: 3, tags: JSON.stringify(['policy', 'hse']), parent_id: '', created_by: demoUserId, created_at: now(), updated_at: now() },
+    { id: uuid(), document_number: 'DOC-2026-001', title: 'EHS Policy Statement', code: 'EHS-POL-001', category: 'hsse_policy', type: 'policy', version: '2.0', status: 'approved', content: 'Crown Paints is committed to providing a safe and healthy workplace...', author_id: demoUserId, reviewer_id: demoUserId, approver_id: demoUserId, effective_date: '2026-01-01', expiry_date: daysFromNow(1095), site_id: 1, department_id: 3, tags: JSON.stringify(['policy', 'EHS']), parent_id: '', created_by: demoUserId, created_at: now(), updated_at: now() },
   ];
 
   const contractors = [
@@ -153,8 +153,8 @@ try {
   console.log('Inserted documents');
   for (const con of contractors) insert('contractors', con);
   console.log('Inserted contractors');
-  for (const o of objectives) insert('hse_objectives', o);
-  console.log('Inserted hse_objectives');
+  for (const o of objectives) insert('EHS_objectives', o);
+  console.log('Inserted EHS_objectives');
 
   await saveDb(db);
   console.log('Seed data inserted successfully');

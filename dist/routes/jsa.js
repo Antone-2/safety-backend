@@ -31,7 +31,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch JSA" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager", "supervisor"]), async (req, res) => {
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "supervisor"]), async (req, res) => {
     try {
         const jsa = await jsaService.createJsa(req.body);
         res.status(201).json(jsa);
@@ -40,7 +40,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "h
         res.status(500).json({ error: "Failed to create JSA" });
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const jsa = await jsaService.updateJsa(String(String(req.params.id)), req.body);
         res.json(jsa);
@@ -58,7 +58,7 @@ router.post("/:id/submit", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to submit JSA for review" });
     }
 });
-router.post("/:id/approve", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager"]), async (req, res) => {
+router.post("/:id/approve", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const { reviewedBy } = req.body;
         const jsa = await jsaService.approveJsa(String(String(req.params.id)), reviewedBy || req.user?.name || "Unknown");

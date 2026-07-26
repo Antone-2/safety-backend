@@ -76,6 +76,6 @@ export class LlmClient {
     if (prompt.toLowerCase().includes("permit")) {
       return "Permit validation review: Ensure all prerequisites are met, including risk assessment completion, isolation procedures, gas testing where applicable, and competence verification of all personnel.";
     }
-    return "AI-generated response based on available HSE data and safety best practices. Please review and verify against current procedures.";
+    return "AI-generated response based on available EHS data and safety best practices. Please review and verify against current procedures.";
   }
 }

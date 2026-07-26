@@ -22,7 +22,7 @@ async function main() {
 
   const body = {
     assignedTo: "mwangi.plant@crownpaints.test",
-    assignedToCopy: ["otieno.hse@crownpaints.test", "wanjiru.safety@crownpaints.test"],
+    assignedToCopy: ["otieno.EHS@crownpaints.test", "wanjiru.safety@crownpaints.test"],
     assignedBy: "test.admin@crownpaints.test",
   };
 

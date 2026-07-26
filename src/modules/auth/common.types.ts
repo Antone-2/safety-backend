@@ -14,7 +14,7 @@ export type CreateUserInput = {
 export type UserRole =
   | "super-admin"
   | "EHS-manager"
-  | "hse-officer"
+  | "EHS-officer"
   | "she-committee-member"
   | "supervisor"
   | "gm"

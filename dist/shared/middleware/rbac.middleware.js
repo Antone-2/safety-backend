@@ -99,8 +99,11 @@ export const ROLE_PERMISSIONS = {
         "heightwork:read",
         "heightwork:create",
         "heightwork:update",
+        "wiba:read",
+        "wiba:create",
+        "wiba:update",
     ],
-    "hse-officer": [
+    "EHS-officer": [
         "incidents:read",
         "reports:read",
         "capa:read",
@@ -128,6 +131,7 @@ export const ROLE_PERMISSIONS = {
         "governance:read",
         "investigations:read",
         "heightwork:read",
+        "wiba:read",
     ],
     "plant-manager": [
         "incidents:read",
@@ -165,6 +169,7 @@ export const ROLE_PERMISSIONS = {
         "governance:read",
         "investigations:read",
         "heightwork:read",
+        "wiba:read",
     ],
     "factory-manager": [
         "incidents:read",
@@ -199,6 +204,7 @@ export const ROLE_PERMISSIONS = {
         "governance:read",
         "investigations:read",
         "heightwork:read",
+        "wiba:read",
     ],
     supervisor: [
         "incidents:read",
@@ -226,6 +232,7 @@ export const ROLE_PERMISSIONS = {
         "analytics:read",
         "investigations:read",
         "heightwork:read",
+        "wiba:read",
     ],
     "depot-admin": [
         "incidents:read",
@@ -253,6 +260,7 @@ export const ROLE_PERMISSIONS = {
         "analytics:read",
         "investigations:read",
         "heightwork:read",
+        "wiba:read",
     ],
     "she-committee-member": [
         "incidents:read",
@@ -281,6 +289,7 @@ export const ROLE_PERMISSIONS = {
         "governance:read",
         "investigations:read",
         "heightwork:read",
+        "wiba:read",
     ],
     gm: [
         "incidents:read",
@@ -433,4 +442,5 @@ export const ROUTE_PERMISSION_MATRIX = {
     "/api/governance": "governance:read",
     "/api/investigations": "investigations:read",
     "/api/heightwork": "heightwork:read",
+    "/api/wiba": "wiba:read",
 };

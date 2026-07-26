@@ -38,10 +38,10 @@ describe("hasPermission", () => {
     expect(hasPermission("EHS-manager", "medical:delete")).toBe(true);
   });
 
-  it("keeps hse-officers read-only on operational domains", () => {
-    expect(hasPermission("hse-officer", "ppe:update")).toBe(false);
-    expect(hasPermission("hse-officer", "contractors:create")).toBe(false);
-    expect(hasPermission("hse-officer", "fire:read")).toBe(true);
+  it("keeps EHS-officers read-only on operational domains", () => {
+    expect(hasPermission("EHS-officer", "ppe:update")).toBe(false);
+    expect(hasPermission("EHS-officer", "contractors:create")).toBe(false);
+    expect(hasPermission("EHS-officer", "fire:read")).toBe(true);
   });
 
   it("allows plant managers to read but not approve", () => {
@@ -93,7 +93,7 @@ describe("global mutation policy", () => {
   it("allows writes only for super-admin and EHS-manager", () => {
     expect(canRoleMutate("super-admin")).toBe(true);
     expect(canRoleMutate("EHS-manager")).toBe(true);
-    expect(canRoleMutate("hse-officer")).toBe(false);
+    expect(canRoleMutate("EHS-officer")).toBe(false);
     expect(canRoleMutate("supervisor")).toBe(false);
     expect(canRoleMutate("gm")).toBe(false);
   });

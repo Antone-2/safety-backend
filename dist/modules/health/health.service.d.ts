@@ -1,6 +1,6 @@
 import { HealthRecord, CreateHealthRecordInput, UpdateHealthRecordInput, HealthStats } from "./health.types.js";
 import { HealthRepository } from "./health.repository.js";
-export declare class HealthService {
+export declare class HealtEHSrvice {
     private repository;
     constructor(repository: HealthRepository);
     getRecords(filters?: Record<string, unknown>): Promise<HealthRecord[]>;

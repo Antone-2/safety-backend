@@ -4,7 +4,7 @@ import { z } from "zod";
 export const ObjectiveStatusSchema = z.enum(["Not Started", "In Progress", "On Track", "At Risk", "Off Track", "Achieved", "Cancelled"]);
 export type ObjectiveStatus = z.infer<typeof ObjectiveStatusSchema>;
 
-export const HseObjectiveSchema = z.object({
+export const EHSObjectiveSchema = z.object({
   id: z.string().optional(),
   objectiveNo: z.string().optional(),
   title: z.string().min(1).max(300),
@@ -31,14 +31,14 @@ export const HseObjectiveSchema = z.object({
   createdBy: z.string().min(1).max(200),
 });
 
-export type HseObjectiveInput = z.infer<typeof HseObjectiveSchema>;
+export type EHSObjectiveInput = z.infer<typeof EHSObjectiveSchema>;
 
 export class ObjectivesService extends BaseService {
   constructor() {
-    super("hse_objectives", HseObjectiveSchema);
+    super("EHS_objectives", EHSObjectiveSchema);
   }
 
-  async createObjective(data: HseObjectiveInput) {
+  async createObjective(data: EHSObjectiveInput) {
     const record = await this.create({
       ...data,
       objectiveNo: `OBJ-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -68,7 +68,7 @@ export class ObjectivesService extends BaseService {
 
   async getStats() {
     const db = await (this as any).getDb?.() || require("../lib/database.js").getDb();
-    const all = (this as any).allRows?.(db, `SELECT * FROM hse_objectives`) || [];
+    const all = (this as any).allRows?.(db, `SELECT * FROM EHS_objectives`) || [];
     const total = all.length;
     const achieved = all.filter((r: any) => r.status === "Achieved").length;
     const onTrack = all.filter((r: any) => r.status === "On Track").length;

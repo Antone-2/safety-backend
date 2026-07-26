@@ -65,6 +65,28 @@ export type GoogleSheetsSyncResult = {
     startedAt: string;
     finishedAt: string;
 };
+export declare function finalizeSuccessfulGoogleSheetsSync(params: {
+    startedAt: string;
+    sheetName: string;
+    rowCount: number;
+    reports: Array<{
+        id: string;
+        photoUrl: string;
+    }>;
+    updateState: (update: {
+        status: "idle";
+        finishedAt: string;
+        successAt: string;
+        sheetName: string;
+        rowCount: number;
+        importedCount: number;
+        error: null;
+    }) => Promise<void>;
+    startPhotoSync: (reports: Array<{
+        id: string;
+        photoUrl: string;
+    }>) => void;
+}): Promise<GoogleSheetsSyncResult>;
 export declare function runGoogleSheetsSync(options?: {
     spreadsheetId?: string;
     apiKey?: string;

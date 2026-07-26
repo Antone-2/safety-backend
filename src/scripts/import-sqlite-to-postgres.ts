@@ -117,7 +117,7 @@ async function importUsers(client: PoolClient, db: Database) {
         asText(row.email),
         asText(row.passwordHash, "!otp-only-account!"),
         asText(row.name, "Imported user"),
-        asText(row.role, "hse-officer"),
+        asText(row.role, "EHS-officer"),
         asOptionalText(row.phone),
         row.active == null ? true : asBoolean(row.active),
         asTimestamp(row.createdAt),

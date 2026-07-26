@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { POSTGRES_MIGRATIONS } from "../../src/shared/infrastructure/database/migrations.js";
 import {
@@ -9,6 +11,7 @@ import {
   getDb,
   PostgresOnlyDatabaseError,
 } from "../../src/lib/database.js";
+import { MINIMUM_BULLMQ_REDIS_MAJOR } from "../../src/shared/infrastructure/redis/redis.client.js";
 
 describe("production readiness", () => {
   it("uses unique PostgreSQL migration identifiers", () => {
@@ -42,5 +45,16 @@ describe("production readiness", () => {
     expect(reporterPointsForSeverity("High")).toBe(2);
     expect(reporterPointsForSeverity("Critical")).toBe(3);
     expect(leaderboardMonth("2026-07-13T12:00:00.000Z")).toBe("2026-07");
+  });
+
+  it("documents a non-local required Redis configuration for production", () => {
+    const envExample = readFileSync(join(process.cwd(), ".env.example"), "utf8");
+    expect(envExample).toContain("REQUIRE_REDIS=true");
+    expect(envExample).toContain("Redis 5.0.0+");
+    expect(envExample).not.toContain("REDIS_URL=redis://localhost:6379");
+  });
+
+  it("keeps the minimum BullMQ-compatible Redis major version at 5 or newer", () => {
+    expect(MINIMUM_BULLMQ_REDIS_MAJOR).toBeGreaterThanOrEqual(5);
   });
 });

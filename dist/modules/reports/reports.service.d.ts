@@ -10,6 +10,10 @@ export type ReportFilters = {
     dateTo?: string;
     all?: boolean;
 };
+export type TopReporterEntry = {
+    reporter: string;
+    reportCount: number;
+};
 export declare function buildPgFilter(filters: ReportFilters): {
     whereSql: string;
     params: unknown[];
@@ -381,6 +385,7 @@ export declare class ReportsService {
     }>;
     stats(): Promise<any>;
     summary(filters?: ReportFilters): Promise<any>;
+    topReportersMonthToDate(limit?: number): Promise<TopReporterEntry[]>;
     private legacySummary;
     selectionExport(ids: string[]): Promise<any[]>;
     generateExport(filters?: ReportFilters): Promise<{

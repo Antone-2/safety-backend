@@ -38,7 +38,7 @@ function mapGuardrailRow(row: Record<string, unknown>) {
     allowedRoles: parseJsonArray(row.allowed_roles ?? row.allowedRoles, [
       "super-admin",
       "EHS-manager",
-      "hse-officer",
+      "EHS-officer",
       "plant-manager",
       "factory-manager",
     ]),
@@ -378,7 +378,7 @@ export class AiRepository {
           allowedRoles: [
             "super-admin",
             "EHS-manager",
-            "hse-officer",
+            "EHS-officer",
             "plant-manager",
             "factory-manager",
           ],
@@ -409,7 +409,7 @@ export class AiRepository {
         allowedRoles: [
           "super-admin",
           "EHS-manager",
-          "hse-officer",
+          "EHS-officer",
           "plant-manager",
           "factory-manager",
         ],
@@ -432,7 +432,7 @@ export class AiRepository {
       allowedRoles: parseJsonArray(row.allowedRoles, [
         "super-admin",
         "EHS-manager",
-        "hse-officer",
+        "EHS-officer",
         "plant-manager",
         "factory-manager",
       ]),

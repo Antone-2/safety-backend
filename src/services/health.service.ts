@@ -1,1 +1,1 @@
-export { HealthService } from "../modules/health/health.service.js";
+export { HealtEHSrvice } from "../modules/health/health.service.js";

@@ -85,7 +85,7 @@ type TestResponse = {
   headers: Headers;
 };
 
-async function withServer(
+async function witEHSrver(
   run: (baseUrl: string) => Promise<void>,
 ) {
   const app = express();
@@ -267,7 +267,7 @@ describe("MFA Endpoints Integration", () => {
       rowCount: 1,
     });
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/enroll", {
         mfaEnrollmentToken: "enrollment-token",
       });
@@ -284,7 +284,7 @@ describe("MFA Endpoints Integration", () => {
       email: "admin@example.com",
     });
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/enroll", {
         mfaEnrollmentToken: "enrollment-token",
       });
@@ -308,7 +308,7 @@ describe("MFA Endpoints Integration", () => {
       email: "admin@example.com",
     });
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/verify-enrollment", {
         mfaEnrollmentToken: "enrollment-token",
         token: "123456",
@@ -327,7 +327,7 @@ describe("MFA Endpoints Integration", () => {
       email: "admin@example.com",
     });
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/verify-enrollment", {
         mfaEnrollmentToken: "enrollment-token",
         token: "123",
@@ -339,7 +339,7 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should return MFA challenge token after OTP verification for privileged users with MFA", async () => {
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/verify-token", {
         userId: "user-1",
         token: "123456",
@@ -367,7 +367,7 @@ describe("MFA Endpoints Integration", () => {
       throw new Error("Unexpected token");
     });
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/login/mfa-complete", {
         mfaChallengeToken: "challenge-token",
         mfaVerificationToken: "verification-token",
@@ -395,7 +395,7 @@ describe("MFA Endpoints Integration", () => {
       throw new Error("Unexpected token");
     });
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/login/mfa-complete", {
         mfaChallengeToken: "challenge-token",
         mfaVerificationToken: "verification-token",
@@ -407,7 +407,7 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should verify recovery code and return MFA verification token", async () => {
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/recovery-code", {
         userId: "user-1",
         code: "ABCD1234",
@@ -423,7 +423,7 @@ describe("MFA Endpoints Integration", () => {
   it("should reject already-used recovery codes", async () => {
     mfaMock.verifyRecoveryCode.mockResolvedValueOnce(false);
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/recovery-code", {
         userId: "user-1",
         code: "ABCD1234",
@@ -435,7 +435,7 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should report MFA status correctly", async () => {
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await getJson(baseUrl, "/api/auth/mfa/status", {
         "x-test-user": JSON.stringify({
           id: "user-1",
@@ -451,7 +451,7 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should disable MFA with correct password", async () => {
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await deleteJson(
         baseUrl,
         "/api/auth/mfa",
@@ -472,7 +472,7 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should reject MFA disable without password", async () => {
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await deleteJson(
         baseUrl,
         "/api/auth/mfa",
@@ -492,7 +492,7 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should regenerate recovery codes with correct password", async () => {
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(
         baseUrl,
         "/api/auth/mfa/recovery-codes/regenerate",
@@ -515,7 +515,7 @@ describe("MFA Endpoints Integration", () => {
   it("should reject recovery code regeneration for disabled MFA", async () => {
     mfaMock.isMFAEnabled.mockResolvedValueOnce(false);
 
-    await withServer(async (baseUrl) => {
+    await witEHSrver(async (baseUrl) => {
       const response = await postJson(
         baseUrl,
         "/api/auth/mfa/recovery-codes/regenerate",

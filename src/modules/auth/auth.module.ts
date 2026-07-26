@@ -255,6 +255,17 @@ function sessionFingerprint(req: Request) {
     .digest("hex");
 }
 
+export function hasMatchingDeviceFingerprint(
+  sessions: Array<{ device_fingerprint?: string; deviceFingerprint?: string }>,
+  currentFingerprint: string,
+): boolean {
+  return sessions.some(
+    (session) =>
+      session.device_fingerprint === currentFingerprint ||
+      session.deviceFingerprint === currentFingerprint,
+  );
+}
+
 function isPgConfigured() {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
@@ -562,7 +573,7 @@ export function createAuthRouter() {
     };
   }
 
-  async function createAuthSession(input: {
+  async function createAutEHSssion(input: {
     id: string;
     userId: string;
     email: string;
@@ -668,7 +679,7 @@ export function createAuthRouter() {
     return null;
   }
 
-  async function touchSession(sessionId: string) {
+  async function toucEHSssion(sessionId: string) {
     const now = new Date().toISOString();
     if (isPgConfigured()) {
       try {
@@ -691,11 +702,11 @@ export function createAuthRouter() {
     await saveDb(db);
   }
 
-  async function listAuthSessions(userId: string) {
+  async function listAutEHSssions(userId: string) {
     if (isPgConfigured()) {
       try {
         const result = await pgPool.query(
-          `SELECT id, created_at AS "createdAt", expires_at AS "expiresAt", ip_address AS "ipAddress", user_agent AS "userAgent"
+          `SELECT id, created_at AS "createdAt", expires_at AS "expiresAt", ip_address AS "ipAddress", user_agent AS "userAgent", device_fingerprint
            FROM auth_sessions
            WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
            ORDER BY created_at DESC`,
@@ -710,7 +721,7 @@ export function createAuthRouter() {
     const db = await getDb();
     return allRows(
       db,
-      "SELECT id, createdAt, expiresAt, ipAddress, userAgent FROM auth_sessions WHERE userId = ? AND revokedAt IS NULL AND expiresAt > ? ORDER BY createdAt DESC",
+      "SELECT id, createdAt, expiresAt, ipAddress, userAgent, deviceFingerprint FROM auth_sessions WHERE userId = ? AND revokedAt IS NULL AND expiresAt > ? ORDER BY createdAt DESC",
       [userId, new Date().toISOString()],
     );
   }
@@ -783,7 +794,7 @@ export function createAuthRouter() {
   }
 
   async function enforceSessionLimit(userId: string) {
-    const sessions = await listAuthSessions(userId);
+    const sessions = await listAutEHSssions(userId);
     if (sessions.length <= MAX_ACTIVE_SESSIONS_PER_USER) return;
     const excess = sessions.slice(MAX_ACTIVE_SESSIONS_PER_USER);
     for (const session of excess) {
@@ -1467,7 +1478,7 @@ export function createAuthRouter() {
     const refreshToken = randomBytes(48).toString("base64url");
     const token = generateToken(user, sessionId);
     const decoded = jwt.decode(token) as { jti: string; exp: number };
-    await createAuthSession({
+    await createAutEHSssion({
       id: decoded.jti,
       userId: user.id,
       email,
@@ -1483,10 +1494,8 @@ export function createAuthRouter() {
     await audit(req, "login", email, true, user.id);
 
     const currentFingerprint = sessionFingerprint(req);
-    const previousSessions = await listAuthSessions(user.id);
-    const isNewDevice = !previousSessions.some(
-      (s) => s.device_fingerprint === currentFingerprint,
-    );
+    const previousSessions = await listAutEHSssions(user.id);
+    const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
     if (isNewDevice) {
       sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(
         () => undefined,
@@ -1521,7 +1530,7 @@ export function createAuthRouter() {
       maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
       path: "/api/auth",
     });
-    res.json({ token, user });
+    res.json({ token, user, csrfToken });
   });
 
   router.post("/login/mfa-complete", async (req: Request, res: Response) => {
@@ -1576,7 +1585,7 @@ export function createAuthRouter() {
       const token = generateToken(user, sessionId);
       const decoded = jwt.decode(token) as { jti: string; exp: number };
 
-      await createAuthSession({
+      await createAutEHSssion({
         id: decoded.jti,
         userId: user.id,
         email,
@@ -1593,10 +1602,8 @@ export function createAuthRouter() {
       await audit(req, "login.mfa.completed", email, true, user.id);
 
       const currentFingerprint = sessionFingerprint(req);
-      const previousSessions = await listAuthSessions(user.id);
-      const isNewDevice = !previousSessions.some(
-        (s) => s.device_fingerprint === currentFingerprint,
-      );
+      const previousSessions = await listAutEHSssions(user.id);
+      const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
       if (isNewDevice) {
         sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(
           () => undefined,
@@ -1629,7 +1636,7 @@ export function createAuthRouter() {
         path: "/api/auth",
       });
 
-      res.json({ token, user });
+      res.json({ token, user, csrfToken });
     } catch (error) {
       console.error("MFA login completion error:", error);
       res.status(500).json({ error: "Failed to complete MFA login" });
@@ -1663,7 +1670,7 @@ export function createAuthRouter() {
     const newRefreshToken = randomBytes(48).toString("base64url");
     const token = generateToken(publicUser(user), newSessionId);
 
-    await createAuthSession({
+    await createAutEHSssion({
       id: newSessionId,
       userId: user.id,
       email: session.email,
@@ -1692,9 +1699,18 @@ export function createAuthRouter() {
       maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
       path: "/api/auth",
     });
+    const csrfToken = randomBytes(24).toString("base64url");
+    res.cookie("ehs_csrf", csrfToken, {
+      httpOnly: false,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+      path: "/",
+    });
     res.json({
       token,
       user: publicUser(user),
+      csrfToken,
     });
   });
 
@@ -1981,7 +1997,7 @@ export function createAuthRouter() {
     "/sessions",
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
-      res.json(await listAuthSessions(req.user!.id));
+      res.json(await listAutEHSssions(req.user!.id));
     },
   );
 
@@ -2495,7 +2511,7 @@ export function createAuthRouter() {
       const accessToken = generateToken(user, sessionId);
       const decoded = jwt.decode(accessToken) as { jti: string; exp: number };
 
-      await createAuthSession({
+      await createAutEHSssion({
         id: decoded.jti,
         userId: user.id,
         email: userEmail,
@@ -2510,10 +2526,8 @@ export function createAuthRouter() {
       await enforceSessionLimit(user.id);
 
       const currentFingerprint = sessionFingerprint(req);
-      const previousSessions = await listAuthSessions(user.id);
-      const isNewDevice = !previousSessions.some(
-        (s) => s.device_fingerprint === currentFingerprint,
-      );
+      const previousSessions = await listAutEHSssions(user.id);
+      const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
       if (isNewDevice) {
         sendNewDeviceNotification(userEmail, req.ip ?? "", req.get("user-agent") ?? "").catch(
           () => undefined,
@@ -2546,7 +2560,7 @@ export function createAuthRouter() {
         path: "/api/auth",
       });
 
-      res.json({ token: accessToken, user });
+      res.json({ token: accessToken, user, csrfToken });
     } catch (error) {
       console.error("MFA verification error:", error);
       res.status(500).json({ error: "Failed to verify MFA enrollment" });

@@ -116,7 +116,7 @@ router.post(
 router.post(
   "/enqueue",
   authenticateUser,
-  requireRole(["super-admin", "EHS-manager", "hse-officer"]),
+  requireRole(["super-admin", "EHS-manager", "EHS-officer"]),
   async (req: AuthRequest, res: Response) => {
     const job = await notificationCenterService.enqueue({
       eventKey: String(req.body.eventKey),

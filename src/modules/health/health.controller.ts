@@ -1,6 +1,6 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
-import { HealthService } from "./health.service.js";
+import { HealtEHSrvice } from "./health.service.js";
 import { HealthRepository } from "./health.repository.js";
 import { authenticateUser, type AuthRequest } from "../../shared/middleware/auth.middleware.js";
 import { rbacMiddleware } from "../../shared/middleware/rbac.middleware.js";
@@ -10,7 +10,7 @@ import { writeAuditLog, diffRecord } from "../../shared/audit/audit.service.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import { CreateHealthRecordSchema, UpdateHealthRecordSchema } from "./health.types.js";
 
-export function createHealthController(service: HealthService) {
+export function createHealthController(service: HealtEHSrvice) {
   return {
     async getRecords(req: AuthRequest, res: Response) {
       const filters: Record<string, unknown> = {};
@@ -85,7 +85,7 @@ export function createHealthController(service: HealthService) {
 
 export function createHealthRouter() {
   const repository = new HealthRepository(pgPool);
-  const service = new HealthService(repository);
+  const service = new HealtEHSrvice(repository);
   const controller = createHealthController(service);
   const router = Router();
 

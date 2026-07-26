@@ -759,7 +759,7 @@ export class AiService {
     }
     async investigationAssistant(data, userId) {
         const user = `Incident: ${JSON.stringify(data)}`;
-        return this.generate("investigation-assistant", "You are an expert HSE incident investigation assistant. Provide structured root cause questions and corrective action guidance.", user, userId);
+        return this.generate("investigation-assistant", "You are an expert EHS incident investigation assistant. Provide structured root cause questions and corrective action guidance.", user, userId);
     }
     async rootCauseAnalysis(data, userId) {
         return this.generate("root-cause-analysis", "You are a root cause analysis expert using ISO 45001 methodology.", `Context: ${JSON.stringify(data)}`, userId);
@@ -779,14 +779,14 @@ export class AiService {
         const context = retrieved
             .map((r) => `- ${r.title}: ${r.excerpt}`)
             .join("\n");
-        const reply = await this.llm.generate("You are a safety assistant chatbot for Crown Paints HSE. Use the provided knowledge when relevant.", `Knowledge:\n${context}\n\nConversation: ${JSON.stringify(history)}\nUser: ${message}`, { temperature: 0.3 });
+        const reply = await this.llm.generate("You are a safety assistant chatbot for Crown Paints EHS. Use the provided knowledge when relevant.", `Knowledge:\n${context}\n\nConversation: ${JSON.stringify(history)}\nUser: ${message}`, { temperature: 0.3 });
         return buildResponse("chatbot", reply, this.model);
     }
     async complianceAssistant(data, userId) {
         return this.generate("compliance-assistant", "Map the provided process to ISO 45001 / regulatory compliance requirements and list gaps.", `Input: ${JSON.stringify(data)}`, userId);
     }
     async trainingRecommendation(data, userId) {
-        return this.generate("training-recommendation", "Recommend HSE training modules based on the provided profile.", `Input: ${JSON.stringify(data)}`, userId);
+        return this.generate("training-recommendation", "Recommend EHS training modules based on the provided profile.", `Input: ${JSON.stringify(data)}`, userId);
     }
     async permitValidation(data, userId) {
         return this.generate("permit-validation", "Validate a permit-to-work application and flag missing safety controls.", `Input: ${JSON.stringify(data)}`, userId);
@@ -832,10 +832,10 @@ export class AiService {
         return this.generate("corrective-action-recommendation", "Recommend corrective and preventive actions for the described issue.", `Input: ${JSON.stringify(data)}`, userId);
     }
     async kpiForecasting(data, userId) {
-        return this.generate("kpi-forecasting", "Forecast HSE KPI values from the provided series.", `Input: ${JSON.stringify(data)}`, userId);
+        return this.generate("kpi-forecasting", "Forecast EHS KPI values from the provided series.", `Input: ${JSON.stringify(data)}`, userId);
     }
     async executiveReports(data, userId) {
-        return this.generate("executive-reports", "Produce a concise executive HSE report from the supplied data.", `Input: ${JSON.stringify(data)}`, userId);
+        return this.generate("executive-reports", "Produce a concise executive EHS report from the supplied data.", `Input: ${JSON.stringify(data)}`, userId);
     }
     getRepository() {
         return this.repository;

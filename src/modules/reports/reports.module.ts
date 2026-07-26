@@ -541,6 +541,26 @@ export function createReportsRouter() {
   );
 
   router.get(
+    "/top-reporters-mtd",
+    authenticateUser,
+    requirePermission("reports:read"),
+    async (req, res) => {
+      const requestedLimit = Number(String(req.query.limit ?? "6"));
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.min(20, Math.max(1, Math.trunc(requestedLimit)))
+        : 6;
+
+      try {
+        const topReporters = await reportsService.topReportersMonthToDate(limit);
+        res.json(topReporters);
+      } catch (error) {
+        console.error("Failed to load top reporters MTD", error);
+        res.status(500).json({ error: "Failed to load top reporters MTD" });
+      }
+    },
+  );
+
+  router.get(
     "/generate",
     authenticateUser,
     requirePermission("reports:read"),

@@ -33,7 +33,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch incident" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), async (req, res) => {
+router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), async (req, res) => {
     try {
         const data = req.body;
         const incident = await incidentService.createIncident(data);
@@ -48,7 +48,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "h
         }
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "hse-officer", "plant-manager", "factory-manager", "depot-admin"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin"]), async (req, res) => {
     try {
         const incident = await incidentService.update(String(req.params.id), req.body);
         res.json(incident);

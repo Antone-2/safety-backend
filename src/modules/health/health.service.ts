@@ -2,7 +2,7 @@ import { HealthRecord, CreateHealthRecordInput, UpdateHealthRecordInput, HealthS
 import { HealthRepository } from "./health.repository.js";
 import { NotFoundError } from "../../shared/domain/errors/index.js";
 
-export class HealthService {
+export class HealtEHSrvice {
   constructor(private repository: HealthRepository) {}
 
   async getRecords(filters?: Record<string, unknown>) {
