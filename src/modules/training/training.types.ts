@@ -103,3 +103,12 @@ export const TrainingMatrixSchema = z.object({
 export type TrainingMatrix = z.infer<typeof TrainingMatrixSchema> & { id: string; createdAt: string; updatedAt: string };
 export const TrainingMatrixInputSchema = TrainingMatrixSchema.omit({ id: true });
 export type TrainingMatrixInput = z.infer<typeof TrainingMatrixInputSchema>;
+
+export const UpdateTrainingMatrixInputSchema = z.object({
+  role: z.string().min(1).max(100).optional(),
+  department: z.string().min(1).max(100).optional(),
+  courseId: z.string().min(1).max(100).optional(),
+  frequency: z.string().min(1).max(100).optional(),
+  mandatory: z.boolean().optional(),
+});
+export type UpdateTrainingMatrixInput = z.infer<typeof UpdateTrainingMatrixInputSchema>;

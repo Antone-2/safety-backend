@@ -1,5 +1,13 @@
 import { Pool } from "pg";
-import type { Contractor, ContractorIncident, CreateContractorInput, UpdateContractorInput, CreateContractorIncidentInput, ContractorStats } from "./contractors.types.js";
+import type {
+  Contractor,
+  ContractorIncident,
+  CreateContractorInput,
+  UpdateContractorInput,
+  CreateContractorIncidentInput,
+  UpdateContractorIncidentInput,
+  ContractorStats,
+} from "./contractors.types.js";
 
 const now = () => new Date().toISOString();
 
@@ -190,15 +198,66 @@ export class ContractorsRepository {
     return asIncident(result.rows[0] as unknown as Record<string, unknown>);
   }
 
+  async findIncidentById(id: string) {
+    const result = await this.pool.query("SELECT * FROM contractor_incidents WHERE id = $1", [id]);
+    return result.rows[0] ? asIncident(result.rows[0] as unknown as Record<string, unknown>) : null;
+  }
+
   async findIncidents(contractorId: string) {
     const result = await this.pool.query("SELECT * FROM contractor_incidents WHERE contractor_id = $1 ORDER BY created_at DESC", [contractorId]);
     return result.rows.map((row) => asIncident(row as unknown as Record<string, unknown>));
+  }
+
+  async updateIncident(id: string, data: UpdateContractorIncidentInput) {
+    const fields: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    const map: Record<string, string> = {
+      contractorId: "contractor_id",
+      incidentType: "incident_type",
+      description: "description",
+      severity: "severity",
+      date: "date",
+      location: "location",
+      actionTaken: "action_taken",
+      followUpRequired: "follow_up_required",
+    };
+
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && map[key]) {
+        fields.push(`${map[key]} = $${idx}`);
+        params.push(value);
+        idx++;
+      }
+    });
+
+    if (fields.length === 0) return this.findIncidentById(id);
+
+    params.push(id);
+    const sql = `UPDATE contractor_incidents SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`;
+    const result = await this.pool.query(sql, params);
+    return result.rows[0] ? asIncident(result.rows[0] as unknown as Record<string, unknown>) : null;
+  }
+
+  async deleteIncident(id: string) {
+    const result = await this.pool.query("DELETE FROM contractor_incidents WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   async incrementIncidentCount(contractorId: string) {
     const contractor = await this.findById(contractorId);
     if (!contractor) return;
     await this.update(contractorId, { incidents: contractor.incidents + 1 });
+  }
+
+  async syncIncidentCount(contractorId: string) {
+    const result = await this.pool.query(
+      "SELECT COUNT(*) as count FROM contractor_incidents WHERE contractor_id = $1",
+      [contractorId],
+    );
+    const count = parseInt(result.rows[0]?.count ?? "0", 10);
+    await this.update(contractorId, { incidents: count });
   }
 
   async getStats(): Promise<ContractorStats> {

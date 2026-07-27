@@ -1,4 +1,12 @@
-import { Contractor, ContractorIncident, CreateContractorInput, UpdateContractorInput, CreateContractorIncidentInput, ContractorStats } from "./contractors.types.js";
+import {
+  Contractor,
+  ContractorIncident,
+  CreateContractorInput,
+  UpdateContractorInput,
+  CreateContractorIncidentInput,
+  UpdateContractorIncidentInput,
+  ContractorStats,
+} from "./contractors.types.js";
 import { ContractorsRepository } from "./contractors.repository.js";
 import { NotFoundError } from "../../shared/domain/errors/index.js";
 
@@ -37,6 +45,33 @@ export class ContractorsService {
 
   async getContractorIncidents(contractorId: string) {
     return this.repository.findIncidents(contractorId);
+  }
+
+  async getIncidentById(id: string) {
+    return this.repository.findIncidentById(id);
+  }
+
+  async updateIncident(id: string, data: UpdateContractorIncidentInput) {
+    const existing = await this.repository.findIncidentById(id);
+    if (!existing) throw new NotFoundError("Contractor incident");
+    const incident = await this.repository.updateIncident(id, data);
+    if (incident) {
+      if (existing.contractorId !== incident.contractorId) {
+        await this.repository.syncIncidentCount(existing.contractorId);
+      }
+      await this.repository.syncIncidentCount(incident.contractorId);
+    }
+    return incident;
+  }
+
+  async deleteIncident(id: string) {
+    const existing = await this.repository.findIncidentById(id);
+    if (!existing) return false;
+    const deleted = await this.repository.deleteIncident(id);
+    if (deleted) {
+      await this.repository.syncIncidentCount(existing.contractorId);
+    }
+    return deleted;
   }
 
   async getContractorStats(): Promise<ContractorStats> {

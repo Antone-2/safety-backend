@@ -73,6 +73,19 @@ export function createPermitsController(service: PermitsService) {
       res.json({ data: permit });
     },
 
+    async delete(req: AuthRequest, res: Response) {
+      const deleted = await service.deletePermit(String(req.params.id));
+      await writeAuditLog({
+        action: "permits.deleted",
+        resourceType: "permit",
+        resourceId: deleted.id,
+        context: { type: deleted.type, location: deleted.location },
+        actor: req.user,
+        request: req,
+      });
+      res.json({ ok: true, deleted: deleted.id });
+    },
+
     async advanceStatus(req: AuthRequest, res: Response) {
       const permit = await service.getPermitById(String(req.params.id));
       if (!permit) throw new NotFoundError("Permit");
@@ -136,6 +149,11 @@ export function createPermitsRouter() {
     rbacMiddleware("permits:update"),
     validate(UpdatePermitInputSchema),
     controller.update,
+  );
+  router.delete(
+    "/:id",
+    rbacMiddleware("permits:delete"),
+    controller.delete,
   );
   router.post(
     "/:id/advance",

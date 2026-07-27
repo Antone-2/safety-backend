@@ -47,6 +47,15 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
   }
 });
 
+router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+  try {
+    const deleted = await jsaService.deleteJsa(String(String(req.params.id)));
+    res.json({ ok: true, deleted: deleted.id });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete JSA" });
+  }
+});
+
 router.post("/:id/submit", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const jsa = await jsaService.submitForReview(String(String(req.params.id)));
@@ -76,4 +85,3 @@ router.post("/:id/steps", authenticateUser, async (req: AuthRequest, res) => {
 });
 
 export default router;
-

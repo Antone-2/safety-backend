@@ -68,6 +68,19 @@ export function createEnvironmentalController(service: EnvironmentalService) {
       res.json({ data: waste });
     },
 
+    async deleteWaste(req: AuthRequest, res: Response) {
+      const waste = await service.deleteWaste(String(req.params.id));
+      await writeAuditLog({
+        action: "environmental.waste.deleted",
+        resourceType: "waste_record",
+        resourceId: waste.id,
+        context: { type: waste.type, category: waste.category },
+        actor: req.user,
+        request: req,
+      });
+      res.json({ ok: true, deleted: waste.id });
+    },
+
     async getEmissions(req: AuthRequest, res: Response) {
       const filters: Record<string, unknown> = {};
       const { type, location } = req.query;
@@ -117,6 +130,19 @@ export function createEnvironmentalController(service: EnvironmentalService) {
       res.json({ data: emission });
     },
 
+    async deleteEmission(req: AuthRequest, res: Response) {
+      const emission = await service.deleteEmission(String(req.params.id));
+      await writeAuditLog({
+        action: "environmental.emission.deleted",
+        resourceType: "emission",
+        resourceId: emission.id,
+        context: { type: emission.type, parameter: emission.parameter },
+        actor: req.user,
+        request: req,
+      });
+      res.json({ ok: true, deleted: emission.id });
+    },
+
     async getChemicals(req: AuthRequest, res: Response) {
       const chemicals = await service.getChemicals();
       res.json({ data: chemicals });
@@ -163,6 +189,22 @@ export function createEnvironmentalController(service: EnvironmentalService) {
         request: req,
       });
       res.json({ data: chemical });
+    },
+
+    async deleteChemical(req: AuthRequest, res: Response) {
+      const chemical = await service.deleteChemical(String(req.params.id));
+      await writeAuditLog({
+        action: "environmental.chemical.deleted",
+        resourceType: "chemical",
+        resourceId: chemical.id,
+        context: {
+          name: chemical.name,
+          storageLocation: chemical.storageLocation,
+        },
+        actor: req.user,
+        request: req,
+      });
+      res.json({ ok: true, deleted: chemical.id });
     },
 
     async getSpills(req: AuthRequest, res: Response) {
@@ -243,6 +285,11 @@ export function createEnvironmentalRouter() {
     validate(UpdateWasteSchema),
     controller.updateWaste,
   );
+  router.delete(
+    "/waste/:id",
+    rbacMiddleware("environmental:delete"),
+    controller.deleteWaste,
+  );
 
   router.get(
     "/emissions",
@@ -261,6 +308,11 @@ export function createEnvironmentalRouter() {
     validate(UpdateEmissionSchema),
     controller.updateEmission,
   );
+  router.delete(
+    "/emissions/:id",
+    rbacMiddleware("environmental:delete"),
+    controller.deleteEmission,
+  );
 
   router.get(
     "/chemicals",
@@ -278,6 +330,11 @@ export function createEnvironmentalRouter() {
     rbacMiddleware("environmental:update"),
     validate(UpdateChemicalSchema),
     controller.updateChemical,
+  );
+  router.delete(
+    "/chemicals/:id",
+    rbacMiddleware("environmental:delete"),
+    controller.deleteChemical,
   );
 
   router.get(

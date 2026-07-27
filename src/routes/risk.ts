@@ -64,6 +64,15 @@ router.patch("/registers/:id", authenticateUser, requireRole(["super-admin", "EH
   }
 });
 
+router.delete("/registers/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+  try {
+    const deleted = await riskService.deleteRegister(String(String(req.params.id)));
+    res.json({ ok: true, deleted: deleted.id });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete risk register" });
+  }
+});
+
 router.get("/bow-ties", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const bowties = await riskService.getBowTies();
@@ -92,4 +101,3 @@ router.get("/dashboard", authenticateUser, async (req: AuthRequest, res) => {
 });
 
 export default router;
-

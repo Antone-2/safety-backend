@@ -47,12 +47,38 @@ export class AnalyticsService {
     return this.dashboardService.getById(id);
   }
 
+  async updateDashboard(id: string, data: Partial<z.infer<typeof DashboardSchema>>) {
+    const existing = await this.dashboardService.getById(id);
+    if (!existing) throw new Error("Dashboard not found");
+    return this.dashboardService.update(id, data);
+  }
+
+  async deleteDashboard(id: string) {
+    const existing = await this.dashboardService.getById(id);
+    if (!existing) throw new Error("Dashboard not found");
+    await this.dashboardService.delete(id);
+    return existing;
+  }
+
   async createReport(data: z.infer<typeof ReportSchema>) {
     return this.reportService.create(data);
   }
 
   async getReports(filters?: Record<string, any>) {
     return this.reportService.getAll(filters);
+  }
+
+  async updateReport(id: string, data: Partial<z.infer<typeof ReportSchema>>) {
+    const existing = await this.reportService.getById(id);
+    if (!existing) throw new Error("Report not found");
+    return this.reportService.update(id, data);
+  }
+
+  async deleteReport(id: string) {
+    const existing = await this.reportService.getById(id);
+    if (!existing) throw new Error("Report not found");
+    await this.reportService.delete(id);
+    return existing;
   }
 
   async generateReport(id: string) {

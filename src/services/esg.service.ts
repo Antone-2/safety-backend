@@ -67,6 +67,14 @@ export class EsgService {
     return this.carbonService.getAll(filters);
   }
 
+  async updateCarbonEmission(id: string, data: Partial<z.infer<typeof CarbonEmissionSchema>>) {
+    return this.carbonService.update(id, data);
+  }
+
+  async deleteCarbonEmission(id: string) {
+    return this.carbonService.delete(id);
+  }
+
   async createEnergyRecord(data: z.infer<typeof EnergyRecordSchema>) {
     return this.energyService.create(data);
   }
@@ -75,12 +83,28 @@ export class EsgService {
     return this.energyService.getAll(filters);
   }
 
+  async updateEnergyRecord(id: string, data: Partial<z.infer<typeof EnergyRecordSchema>>) {
+    return this.energyService.update(id, data);
+  }
+
+  async deleteEnergyRecord(id: string) {
+    return this.energyService.delete(id);
+  }
+
   async createWaterRecord(data: z.infer<typeof WaterRecordSchema>) {
     return this.waterService.create(data);
   }
 
   async getWaterRecords(filters?: Record<string, any>) {
     return this.waterService.getAll(filters);
+  }
+
+  async updateWaterRecord(id: string, data: Partial<z.infer<typeof WaterRecordSchema>>) {
+    return this.waterService.update(id, data);
+  }
+
+  async deleteWaterRecord(id: string) {
+    return this.waterService.delete(id);
   }
 
   async getEsgDashboard() {

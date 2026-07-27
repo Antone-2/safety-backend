@@ -116,6 +116,13 @@ export class EmergencyService {
     return this.planService.update(id, EmergencyPlanSchema.parse({ ...current, ...data }));
   }
 
+  async deletePlan(id: string) {
+    const current = await this.getPlanById(id);
+    if (!current) return null;
+    await this.planService.delete(id);
+    return current;
+  }
+
   async createDrill(data: z.infer<typeof DrillSchema>) {
     return this.drillService.create(DrillSchema.parse(data));
   }
@@ -130,6 +137,13 @@ export class EmergencyService {
     return this.drillService.update(id, DrillSchema.parse({ ...current, ...data }));
   }
 
+  async deleteDrill(id: string) {
+    const current = await this.drillService.getById(id);
+    if (!current) return null;
+    await this.drillService.delete(id);
+    return current;
+  }
+
   async createContact(data: z.infer<typeof EmergencyContactSchema>) {
     return this.contactService.create(data);
   }
@@ -140,6 +154,13 @@ export class EmergencyService {
 
   async updateContact(id: string, data: Record<string, any>) {
     return this.contactService.update(id, data);
+  }
+
+  async deleteContact(id: string) {
+    const current = await this.contactService.getById(id);
+    if (!current) return null;
+    await this.contactService.delete(id);
+    return current;
   }
 
   async getEmergencyStats() {

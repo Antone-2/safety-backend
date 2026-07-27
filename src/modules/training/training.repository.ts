@@ -1,5 +1,13 @@
 import { Pool } from "pg";
-import type { TrainingCourse, TrainingCourseInput, TrainingRecord, TrainingRecordInput, TrainingMatrix, TrainingMatrixInput } from "./training.types.js";
+import type {
+  TrainingCourse,
+  TrainingCourseInput,
+  TrainingRecord,
+  TrainingRecordInput,
+  TrainingMatrix,
+  TrainingMatrixInput,
+  UpdateTrainingMatrixInput,
+} from "./training.types.js";
 
 function toSnake(key: string): string {
   return key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
@@ -264,6 +272,11 @@ export class TrainingRepository {
     return result.rows.map(asMatrix);
   }
 
+  async findMatrixById(id: string) {
+    const result = await this.pool.query("SELECT * FROM training_matrices WHERE id = $1", [id]);
+    return result.rows[0] ? asMatrix(result.rows[0]) : null;
+  }
+
   async createMatrix(data: TrainingMatrixInput) {
     const result = await this.pool.query(
       `INSERT INTO training_matrices (id, role, department, course_id, frequency, mandatory, created_by, created_at, updated_at)
@@ -281,6 +294,38 @@ export class TrainingRepository {
       ]
     );
     return asMatrix(result.rows[0]);
+  }
+
+  async updateMatrix(id: string, data: UpdateTrainingMatrixInput) {
+    const fields: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    const map: Record<string, string> = {
+      role: "role",
+      department: "department",
+      courseId: "course_id",
+      frequency: "frequency",
+      mandatory: "mandatory",
+    };
+
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && map[key]) {
+        fields.push(`${map[key]} = $${idx}`);
+        params.push(value);
+        idx++;
+      }
+    });
+
+    if (fields.length === 0) return this.findMatrixById(id);
+
+    fields.push(`updated_at = $${idx}`);
+    params.push(now());
+    params.push(id);
+
+    const sql = `UPDATE training_matrices SET ${fields.join(", ")} WHERE id = $${idx + 1} RETURNING *`;
+    const result = await this.pool.query(sql, params);
+    return result.rows[0] ? asMatrix(result.rows[0]) : null;
   }
 
   async deleteMatrix(id: string) {

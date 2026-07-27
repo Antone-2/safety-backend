@@ -44,6 +44,39 @@ router.post(
   },
 );
 
+router.patch(
+  "/dashboards/:id",
+  authenticateUser,
+  requireRole(["super-admin", "EHS-manager"]),
+  async (req: AuthRequest, res) => {
+    try {
+      const dashboard = await analyticsService.updateDashboard(
+        String(req.params.id),
+        req.body,
+      );
+      res.json(dashboard);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update dashboard" });
+    }
+  },
+);
+
+router.delete(
+  "/dashboards/:id",
+  authenticateUser,
+  requireRole(["super-admin", "EHS-manager"]),
+  async (req: AuthRequest, res) => {
+    try {
+      const dashboard = await analyticsService.deleteDashboard(
+        String(req.params.id),
+      );
+      res.json({ ok: true, deleted: dashboard.id });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete dashboard" });
+    }
+  },
+);
+
 router.get("/reports", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const reports = await analyticsService.getReports();
@@ -63,6 +96,39 @@ router.post(
       res.status(201).json(report);
     } catch (error) {
       res.status(500).json({ error: "Failed to create report" });
+    }
+  },
+);
+
+router.patch(
+  "/reports/:id",
+  authenticateUser,
+  requireRole(["super-admin", "EHS-manager"]),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await analyticsService.updateReport(
+        String(req.params.id),
+        req.body,
+      );
+      res.json(report);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update report" });
+    }
+  },
+);
+
+router.delete(
+  "/reports/:id",
+  authenticateUser,
+  requireRole(["super-admin", "EHS-manager"]),
+  async (req: AuthRequest, res) => {
+    try {
+      const report = await analyticsService.deleteReport(
+        String(req.params.id),
+      );
+      res.json({ ok: true, deleted: report.id });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete report" });
     }
   },
 );

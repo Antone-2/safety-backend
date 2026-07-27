@@ -759,33 +759,73 @@ export class AiService {
         : "Source citations are optional under current admin guardrail settings.",
     ];
 
-    const selectedTables = [
-      ...(intent.wantsTrend || intent.wantsExecutiveReport
-        ? [
-            {
-              title: "Monthly Unsafe Acts / Conditions and Rated Locations",
-              headers: [
-                "Month",
-                "Unsafe Acts",
-                "Unsafe Conditions",
-                "Total",
-                "Highest Rated",
-                "Lowest Rated",
-              ],
-              rows: trends.map((row) => [
-                row.month,
-                row.unsafeActs,
-                row.unsafeConditions,
-                row.total,
-                `${row.highestRatedLocation ?? "none"} (${row.highestRatedScore ?? 0}%)`,
-                `${row.lowestRatedLocation ?? "none"} (${row.lowestRatedScore ?? 0}%)`,
-              ]),
-            },
-          ]
-        : []),
-      ...(intent.wantsKpis || intent.wantsStatus || intent.wantsExecutiveReport
-        ? [statusTable]
-        : []),
+const selectedTables = [
+  ...(intent.wantsTrend || intent.wantsExecutiveReport
+    ? [
+        {
+          title: "Monthly Unsafe Acts / Conditions",
+          headers: ["Month", "Unsafe Acts", "Unsafe Conditions", "Total"],
+          rows: trends.map((row) => [
+            row.month,
+            row.unsafeActs,
+            row.unsafeConditions,
+            row.total,
+          ]),
+        },
+      ]
+    : []),
+  ...(intent.wantsTrend || intent.wantsExecutiveReport
+    ? (() => {
+        const byYear: Record<
+          string,
+          { highest?: { location: string; score: number }; lowest?: { location: string; score: number } }
+        > = {};
+        for (const row of trends) {
+          const year = row.month.slice(-4);
+          if (!byYear[year]) byYear[year] = {};
+          if (row.highestRatedScore !== undefined && row.highestRatedLocation) {
+            if (
+              !byYear[year].highest ||
+              row.highestRatedScore > byYear[year].highest.score
+            ) {
+              byYear[year].highest = {
+                location: row.highestRatedLocation,
+                score: row.highestRatedScore,
+              };
+            }
+          }
+          if (row.lowestRatedScore !== undefined && row.lowestRatedLocation) {
+            if (
+              !byYear[year].lowest ||
+              row.lowestRatedScore < byYear[year].lowest.score
+            ) {
+              byYear[year].lowest = {
+                location: row.lowestRatedLocation,
+                score: row.lowestRatedScore,
+              };
+            }
+          }
+        }
+        return [
+          {
+            title: "Rated Locations by Year",
+            headers: ["Year", "Highest Rated Location", "Lowest Rated Location"],
+            rows: Object.entries(byYear).map(([year, data]) => [
+              year,
+              data.highest
+                ? `${data.highest.location} (${data.highest.score}%)`
+                : "none",
+              data.lowest
+                ? `${data.lowest.location} (${data.lowest.score}%)`
+                : "none",
+            ]),
+          },
+        ];
+      })()
+    : []),
+  ...(intent.wantsKpis || intent.wantsStatus || intent.wantsExecutiveReport
+    ? [statusTable]
+    : []),
       ...(intent.wantsLocations || intent.wantsExecutiveReport
         ? [locationTable, departmentTable]
         : []),

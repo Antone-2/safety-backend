@@ -42,6 +42,16 @@ router.patch("/plans/:id", authenticateUser, requireRole(["super-admin", "EHS-ma
   }
 });
 
+router.delete("/plans/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+  try {
+    const plan = await emergencyService.deletePlan(String(String(req.params.id)));
+    if (!plan) return res.status(404).json({ error: "Emergency plan not found" });
+    res.json({ ok: true, deleted: plan.id });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete emergency plan" });
+  }
+});
+
 router.get("/drills", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const filters: Record<string, any> = {};
@@ -70,6 +80,16 @@ router.patch("/drills/:id", authenticateUser, requireRole(["super-admin", "EHS-m
     res.json(drill);
   } catch (error) {
     res.status(500).json({ error: "Failed to update drill" });
+  }
+});
+
+router.delete("/drills/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+  try {
+    const drill = await emergencyService.deleteDrill(String(String(req.params.id)));
+    if (!drill) return res.status(404).json({ error: "Drill not found" });
+    res.json({ ok: true, deleted: drill.id });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete drill" });
   }
 });
 
@@ -103,6 +123,16 @@ router.patch("/contacts/:id", authenticateUser, requireRole(["super-admin", "EHS
   }
 });
 
+router.delete("/contacts/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+  try {
+    const contact = await emergencyService.deleteContact(String(String(req.params.id)));
+    if (!contact) return res.status(404).json({ error: "Emergency contact not found" });
+    res.json({ ok: true, deleted: contact.id });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete contact" });
+  }
+});
+
 router.get("/stats", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const stats = await emergencyService.getEmergencyStats();
@@ -113,4 +143,3 @@ router.get("/stats", authenticateUser, async (req: AuthRequest, res) => {
 });
 
 export default router;
-

@@ -185,6 +185,11 @@ export class EnvironmentalRepository {
     return result.rows[0] ? asWaste(result.rows[0] as unknown as Record<string, unknown>) : null;
   }
 
+  async deleteWaste(id: string) {
+    const result = await this.pool.query("DELETE FROM waste_records WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async findEmissions(filters?: Record<string, unknown>) {
     const where: string[] = [];
     const params: unknown[] = [];
@@ -277,6 +282,11 @@ export class EnvironmentalRepository {
     return result.rows[0] ? asEmission(result.rows[0] as unknown as Record<string, unknown>) : null;
   }
 
+  async deleteEmission(id: string) {
+    const result = await this.pool.query("DELETE FROM emissions WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async findChemicals(filters?: Record<string, unknown>) {
     const where: string[] = [];
     const params: unknown[] = [];
@@ -362,6 +372,11 @@ export class EnvironmentalRepository {
     const sql = `UPDATE chemicals SET ${fields.join(", ")} WHERE id = $${idx + 1} RETURNING *`;
     const result = await this.pool.query(sql, params);
     return result.rows[0] ? asChemical(result.rows[0] as unknown as Record<string, unknown>) : null;
+  }
+
+  async deleteChemical(id: string) {
+    const result = await this.pool.query("DELETE FROM chemicals WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   async findSpills(filters?: Record<string, unknown>) {

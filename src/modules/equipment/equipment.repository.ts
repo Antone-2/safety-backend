@@ -5,6 +5,7 @@ import type {
   CreateEquipmentInput,
   UpdateEquipmentInput,
   CreateEquipmentInspectionInput,
+  UpdateEquipmentInspectionInput,
   EquipmentStats,
 } from "./equipment.types.js";
 
@@ -201,6 +202,11 @@ export class EquipmentRepository {
     return result.rows.map((row) => asInspection(row as unknown as Record<string, unknown>));
   }
 
+  async findInspectionById(id: string) {
+    const result = await this.pool.query("SELECT * FROM equipment_inspections WHERE id = $1", [id]);
+    return result.rows[0] ? asInspection(result.rows[0] as unknown as Record<string, unknown>) : null;
+  }
+
   async createInspection(data: CreateEquipmentInspectionInput) {
     const result = await this.pool.query(
       `INSERT INTO equipment_inspections (id, equipment_id, inspector, inspection_date, inspection_type, findings, defects, action_required, passed, next_inspection_due, photo_url, created_by, created_at)
@@ -227,6 +233,56 @@ export class EquipmentRepository {
       [data.inspectionDate, data.nextInspectionDue, now(), data.equipmentId],
     );
     return inspection;
+  }
+
+  async updateInspection(id: string, data: UpdateEquipmentInspectionInput) {
+    const fields: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    const map: Record<string, string> = {
+      equipmentId: "equipment_id",
+      inspector: "inspector",
+      inspectionDate: "inspection_date",
+      inspectionType: "inspection_type",
+      findings: "findings",
+      defects: "defects",
+      actionRequired: "action_required",
+      passed: "passed",
+      nextInspectionDue: "next_inspection_due",
+      photoUrl: "photo_url",
+    };
+
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && map[key]) {
+        fields.push(`${map[key]} = $${idx}`);
+        params.push(value);
+        idx++;
+      }
+    });
+
+    if (fields.length === 0) return this.findInspectionById(id);
+
+    params.push(id);
+    const sql = `UPDATE equipment_inspections SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`;
+    const result = await this.pool.query(sql, params);
+    const inspection = result.rows[0]
+      ? asInspection(result.rows[0] as unknown as Record<string, unknown>)
+      : null;
+
+    if (inspection) {
+      await this.pool.query(
+        `UPDATE equipment SET last_inspection_date = $1, next_inspection_date = $2, updated_at = $3 WHERE id = $4`,
+        [inspection.inspectionDate, inspection.nextInspectionDue, now(), inspection.equipmentId],
+      );
+    }
+
+    return inspection;
+  }
+
+  async deleteInspection(id: string) {
+    const result = await this.pool.query("DELETE FROM equipment_inspections WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getStats(): Promise<EquipmentStats> {

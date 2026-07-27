@@ -95,6 +95,11 @@ export class WibaRepository {
     return result.rows.map((row) => mapRow(row as Record<string, unknown>));
   }
 
+  async findById(id: string): Promise<WibaClaim | null> {
+    const result = await this.pool.query("SELECT * FROM wiba_claims WHERE id = $1", [id]);
+    return result.rows[0] ? mapRow(result.rows[0] as Record<string, unknown>) : null;
+  }
+
   async create(data: WibaClaimInput): Promise<WibaClaim> {
     const result = await this.pool.query(
       `INSERT INTO wiba_claims (
@@ -184,5 +189,10 @@ export class WibaRepository {
       params,
     );
     return result.rows[0] ? mapRow(result.rows[0] as Record<string, unknown>) : null;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.pool.query("DELETE FROM wiba_claims WHERE id = $1", [id]);
+    return (result.rowCount ?? 0) > 0;
   }
 }

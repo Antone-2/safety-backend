@@ -57,6 +57,20 @@ export function createWibaController(service: WibaService) {
       });
       res.json({ data: claim });
     },
+
+    async deleteClaim(req: AuthRequest, res: Response) {
+      const claim = await service.deleteClaim(String(req.params.id));
+      if (!claim) throw new NotFoundError("WIBA claim");
+      await writeAuditLog({
+        action: "wiba.claim.deleted",
+        resourceType: "wiba_claim",
+        resourceId: claim.id,
+        context: { claimNo: claim.claimNo, claimantName: claim.claimantName },
+        actor: req.user,
+        request: req,
+      });
+      res.json({ ok: true, deleted: claim.id });
+    },
   };
 }
 
@@ -71,6 +85,7 @@ export function createWibaRouter() {
   router.get("/", rbacMiddleware("wiba:read"), controller.getClaims);
   router.post("/", rbacMiddleware("wiba:create"), validate(WibaClaimInputSchema), controller.createClaim);
   router.patch("/:id", rbacMiddleware("wiba:update"), validate(WibaClaimPatchSchema), controller.updateClaim);
+  router.delete("/:id", rbacMiddleware("wiba:delete"), controller.deleteClaim);
 
   return router;
 }

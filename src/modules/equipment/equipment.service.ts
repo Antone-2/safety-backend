@@ -4,6 +4,7 @@ import {
   CreateEquipmentInput,
   UpdateEquipmentInput,
   CreateEquipmentInspectionInput,
+  UpdateEquipmentInspectionInput,
   EquipmentStats,
 } from "./equipment.types.js";
 import { EquipmentRepository } from "./equipment.repository.js";
@@ -42,6 +43,22 @@ export class EquipmentService {
 
   async createInspection(data: CreateEquipmentInspectionInput) {
     return this.repository.createInspection(data);
+  }
+
+  async getInspectionById(id: string) {
+    return this.repository.findInspectionById(id);
+  }
+
+  async updateInspection(id: string, data: UpdateEquipmentInspectionInput) {
+    const existing = await this.repository.findInspectionById(id);
+    if (!existing) throw new NotFoundError("Equipment inspection");
+    return this.repository.updateInspection(id, data);
+  }
+
+  async deleteInspection(id: string) {
+    const existing = await this.repository.findInspectionById(id);
+    if (!existing) return false;
+    return this.repository.deleteInspection(id);
   }
 
   async getOverdueInspections() {

@@ -186,6 +186,14 @@ export class JsaService extends BaseService {
     return mapJsaRow(result.rows[0] ?? null);
   }
 
+  async deleteJsa(id: string) {
+    const existing = await this.getJsaById(id);
+    if (!existing) throw new Error("JSA not found");
+    const result = await pgPool.query("DELETE FROM jsa WHERE id = $1", [id]);
+    if ((result.rowCount ?? 0) === 0) throw new Error("JSA not found");
+    return existing;
+  }
+
   async submitForReview(id: string) {
     return this.updateJsa(id, { status: "in-review" });
   }
