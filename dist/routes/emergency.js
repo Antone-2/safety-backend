@@ -41,6 +41,17 @@ router.patch("/plans/:id", authenticateUser, requireRole(["super-admin", "EHS-ma
         res.status(500).json({ error: "Failed to update emergency plan" });
     }
 });
+router.delete("/plans/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const plan = await emergencyService.deletePlan(String(String(req.params.id)));
+        if (!plan)
+            return res.status(404).json({ error: "Emergency plan not found" });
+        res.json({ ok: true, deleted: plan.id });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete emergency plan" });
+    }
+});
 router.get("/drills", authenticateUser, async (req, res) => {
     try {
         const filters = {};
@@ -75,6 +86,17 @@ router.patch("/drills/:id", authenticateUser, requireRole(["super-admin", "EHS-m
         res.status(500).json({ error: "Failed to update drill" });
     }
 });
+router.delete("/drills/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const drill = await emergencyService.deleteDrill(String(String(req.params.id)));
+        if (!drill)
+            return res.status(404).json({ error: "Drill not found" });
+        res.json({ ok: true, deleted: drill.id });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete drill" });
+    }
+});
 router.get("/contacts", authenticateUser, async (req, res) => {
     try {
         const filters = {};
@@ -105,6 +127,17 @@ router.patch("/contacts/:id", authenticateUser, requireRole(["super-admin", "EHS
     }
     catch (error) {
         res.status(500).json({ error: "Failed to update contact" });
+    }
+});
+router.delete("/contacts/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const contact = await emergencyService.deleteContact(String(String(req.params.id)));
+        if (!contact)
+            return res.status(404).json({ error: "Emergency contact not found" });
+        res.json({ ok: true, deleted: contact.id });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete contact" });
     }
 });
 router.get("/stats", authenticateUser, async (req, res) => {

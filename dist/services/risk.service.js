@@ -96,6 +96,13 @@ export class RiskService {
         }
         return this.registerService.update(id, data);
     }
+    async deleteRegister(id) {
+        const existing = await this.registerService.getById(id);
+        if (!existing)
+            throw new Error("risk_registers not found");
+        await this.registerService.delete(id);
+        return existing;
+    }
     async createBowTie(data) {
         return this.bowtieService.create(data);
     }

@@ -71,8 +71,12 @@ export declare class AnalyticsService {
     createDashboard(data: z.infer<typeof DashboardSchema>): Promise<any>;
     getDashboards(filters?: Record<string, any>): Promise<any[]>;
     getDashboardById(id: string): Promise<any>;
+    updateDashboard(id: string, data: Partial<z.infer<typeof DashboardSchema>>): Promise<any>;
+    deleteDashboard(id: string): Promise<any>;
     createReport(data: z.infer<typeof ReportSchema>): Promise<any>;
     getReports(filters?: Record<string, any>): Promise<any[]>;
+    updateReport(id: string, data: Partial<z.infer<typeof ReportSchema>>): Promise<any>;
+    deleteReport(id: string): Promise<any>;
     generateReport(id: string): Promise<any>;
     getAnalyticsStats(): Promise<{
         totalDashboards: number;

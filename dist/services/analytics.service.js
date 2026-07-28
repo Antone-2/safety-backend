@@ -39,11 +39,37 @@ export class AnalyticsService {
     async getDashboardById(id) {
         return this.dashboardService.getById(id);
     }
+    async updateDashboard(id, data) {
+        const existing = await this.dashboardService.getById(id);
+        if (!existing)
+            throw new Error("Dashboard not found");
+        return this.dashboardService.update(id, data);
+    }
+    async deleteDashboard(id) {
+        const existing = await this.dashboardService.getById(id);
+        if (!existing)
+            throw new Error("Dashboard not found");
+        await this.dashboardService.delete(id);
+        return existing;
+    }
     async createReport(data) {
         return this.reportService.create(data);
     }
     async getReports(filters) {
         return this.reportService.getAll(filters);
+    }
+    async updateReport(id, data) {
+        const existing = await this.reportService.getById(id);
+        if (!existing)
+            throw new Error("Report not found");
+        return this.reportService.update(id, data);
+    }
+    async deleteReport(id) {
+        const existing = await this.reportService.getById(id);
+        if (!existing)
+            throw new Error("Report not found");
+        await this.reportService.delete(id);
+        return existing;
     }
     async generateReport(id) {
         const report = await this.reportService.getById(id);

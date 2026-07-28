@@ -1,6 +1,6 @@
 const GOOGLE_SHEETS_UTC_OFFSET_MINUTES = Number(process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180");
 function getDateOrder() {
-    const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "mdy").toLowerCase().trim();
+    const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "dmy").toLowerCase().trim();
     if (configured === "dmy")
         return "dmy";
     if (configured === "mdy")

@@ -6,6 +6,7 @@ export declare function createPermitsController(service: PermitsService): {
     getById(req: AuthRequest, res: Response): Promise<void>;
     create(req: AuthRequest, res: Response): Promise<void>;
     update(req: AuthRequest, res: Response): Promise<void>;
+    delete(req: AuthRequest, res: Response): Promise<void>;
     advanceStatus(req: AuthRequest, res: Response): Promise<void>;
     getActive(req: AuthRequest, res: Response): Promise<void>;
     getExpired(req: AuthRequest, res: Response): Promise<void>;

@@ -48,4 +48,19 @@ export declare class WibaService {
         amountAwardedKes?: number | null | undefined;
         companyClaimKes?: number | null | undefined;
     } | null>;
+    deleteClaim(id: string): Promise<{
+        status: "Closed" | "Open" | "Pending" | "Unknown";
+        id: string;
+        stage: string;
+        createdAt: string;
+        updatedAt: string;
+        claimNo: string;
+        dateOfInjury: string;
+        natureOfInjury: string;
+        claimantName: string;
+        outstandingDocuments: string[];
+        remarks?: string | undefined;
+        amountAwardedKes?: number | null | undefined;
+        companyClaimKes?: number | null | undefined;
+    } | null>;
 }

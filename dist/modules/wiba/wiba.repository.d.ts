@@ -5,6 +5,8 @@ export declare class WibaRepository {
     constructor(pool: Pool);
     seedDefaultsIfEmpty(): Promise<void>;
     findAll(): Promise<WibaClaim[]>;
+    findById(id: string): Promise<WibaClaim | null>;
     create(data: WibaClaimInput): Promise<WibaClaim>;
     update(id: string, data: WibaClaimPatch): Promise<WibaClaim | null>;
+    delete(id: string): Promise<boolean>;
 }

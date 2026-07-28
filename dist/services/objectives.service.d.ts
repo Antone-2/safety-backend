@@ -1,4 +1,3 @@
-import { BaseService } from "./base.service.js";
 import { z } from "zod";
 export declare const ObjectiveStatusSchema: z.ZodEnum<["Not Started", "In Progress", "On Track", "At Risk", "Off Track", "Achieved", "Cancelled"]>;
 export type ObjectiveStatus = z.infer<typeof ObjectiveStatusSchema>;
@@ -79,21 +78,31 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     linkedCapaIds?: string | undefined;
 }>;
 export type EHSObjectiveInput = z.infer<typeof EHSObjectiveSchema>;
-export declare class ObjectivesService extends BaseService {
-    constructor();
-    createObjective(data: EHSObjectiveInput): Promise<any>;
-    getByStatus(status: string): Promise<any[]>;
-    getByDepartment(department: string): Promise<any[]>;
-    getByOwner(owner: string): Promise<any[]>;
-    getAtRisk(): Promise<any[]>;
-    getOffTrack(): Promise<any[]>;
+type ObjectiveRecord = EHSObjectiveInput & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
+export declare class ObjectivesService {
+    private validate;
+    getAll(filters?: Record<string, unknown>): Promise<ObjectiveRecord[]>;
+    getById(id: string): Promise<ObjectiveRecord | null>;
+    createObjective(data: EHSObjectiveInput): Promise<ObjectiveRecord>;
+    update(id: string, data: Record<string, unknown>): Promise<ObjectiveRecord | null>;
+    delete(id: string): Promise<boolean>;
+    getByStatus(status: string): Promise<ObjectiveRecord[]>;
+    getByDepartment(department: string): Promise<ObjectiveRecord[]>;
+    getByOwner(owner: string): Promise<ObjectiveRecord[]>;
+    getAtRisk(): Promise<ObjectiveRecord[]>;
+    getOffTrack(): Promise<ObjectiveRecord[]>;
     getStats(): Promise<{
-        total: any;
-        achieved: any;
-        onTrack: any;
-        atRisk: any;
-        offTrack: any;
-        notStarted: any;
+        total: number;
+        achieved: number;
+        onTrack: number;
+        atRisk: number;
+        offTrack: number;
+        notStarted: number;
         completionRate: number;
     }>;
 }
+export {};

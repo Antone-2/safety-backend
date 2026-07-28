@@ -19,6 +19,13 @@ export class PermitsService {
             throw new NotFoundError("Permit");
         return this.repository.update(id, data);
     }
+    async deletePermit(id) {
+        const existing = await this.repository.findById(id);
+        if (!existing)
+            throw new NotFoundError("Permit");
+        await this.repository.delete(id);
+        return existing;
+    }
     async advanceStatus(id, newStatus) {
         const existing = await this.repository.findById(id);
         if (!existing)

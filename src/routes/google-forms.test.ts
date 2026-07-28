@@ -139,9 +139,9 @@ test("finalizes sync state before starting background photo sync", async () => {
 });
 
 test("parses ambiguous Google Sheets timestamps with the default month/day/year order", () => {
-  assert.equal(parseDate("3/25/2026 9:52:49"), "2026-03-25T06:52:49.000Z");
-  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T10:44:17.000Z");
-  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-05-04T06:26:49.000Z");
+  assert.equal(parseDate("3/25/2026 9:52:49"), "2026-03-25T13:52:49.000Z");
+  assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T17:44:17.000Z");
+  assert.equal(parseDate("5/4/2026 9:26:49"), "2026-05-04T13:26:49.000Z");
 });
 
 test("rejects yearless month-name timestamps that come from display formatting", () => {
@@ -149,14 +149,17 @@ test("rejects yearless month-name timestamps that come from display formatting",
 });
 
 test("falls back to day-first when the first part exceeds 12", () => {
-  assert.equal(parseDate("13/07/2026 14:35:10"), "2026-07-13T11:35:10.000Z");
+  assert.equal(parseDate("13/07/2026 14:35:10"), "2026-07-13T18:35:10.000Z");
 });
 
 test("honors explicit dmy date order", () => {
   const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
   process.env.GOOGLE_SHEETS_DATE_ORDER = "dmy";
   try {
-    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
+    assert.equal(
+      parseDate("4/10/2026 13:44:17", new Date("2026-11-01T16:00:00.000Z")),
+      "2026-10-04T17:44:17.000Z",
+    );
   } finally {
     if (previous === undefined) {
       delete process.env.GOOGLE_SHEETS_DATE_ORDER;
@@ -170,7 +173,7 @@ test("honors explicit mdy date order", () => {
   const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
   process.env.GOOGLE_SHEETS_DATE_ORDER = "mdy";
   try {
-    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T10:44:17.000Z");
+    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T17:44:17.000Z");
   } finally {
     if (previous === undefined) {
       delete process.env.GOOGLE_SHEETS_DATE_ORDER;
@@ -184,7 +187,7 @@ test("falls back safely to dmy when the configured date order is invalid", () =>
   const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
   process.env.GOOGLE_SHEETS_DATE_ORDER = "invalid-value";
   try {
-    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-10-04T10:44:17.000Z");
+    assert.equal(parseDate("4/10/2026 13:44:17"), "2026-04-10T17:44:17.000Z");
   } finally {
     if (previous === undefined) {
       delete process.env.GOOGLE_SHEETS_DATE_ORDER;
@@ -192,4 +195,11 @@ test("falls back safely to dmy when the configured date order is invalid", () =>
       process.env.GOOGLE_SHEETS_DATE_ORDER = previous;
     }
   }
+});
+
+test("rejects report dates that are in the future relative to Tuesday, July 28, 2026 in America/New_York", () => {
+  assert.throws(
+    () => parseDate("12/31/2026 08:00:00", new Date("2026-07-28T16:00:00.000Z")),
+    /2026-07-28/,
+  );
 });

@@ -18,6 +18,7 @@ describe("report query contract", () => {
 
   it("builds equivalent PostgreSQL filters with an exclusive end boundary", () => {
     const query = buildPgFilter(filters);
+    expect(query.whereSql).toContain("(date AT TIME ZONE 'America/New_York')::DATE <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE");
     expect(query.whereSql).toContain("date >= $5");
     expect(query.whereSql).toContain("date < $6");
     expect(query.whereSql).toContain("description ILIKE $7");
@@ -34,10 +35,11 @@ describe("report query contract", () => {
 
   it("builds equivalent SQLite filters with an exclusive end boundary", () => {
     const query = buildSqliteFilter(filters);
+    expect(query.params[0]).toBe("2026-07-29T04:00:00.000Z");
     expect(query.whereSql).toContain("date >= ?");
     expect(query.whereSql).toContain("date < ?");
     expect(query.whereSql).toContain("description LIKE ?");
-    expect(query.params.slice(0, 6)).toEqual([
+    expect(query.params.slice(1, 7)).toEqual([
       "Open",
       "Critical",
       "Mombasa - Factory",

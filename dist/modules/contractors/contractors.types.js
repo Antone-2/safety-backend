@@ -63,3 +63,13 @@ export const CreateContractorIncidentSchema = z.object({
     followUpRequired: z.boolean().default(false),
     createdBy: z.string().min(1).max(200),
 });
+export const UpdateContractorIncidentSchema = z.object({
+    contractorId: z.string().min(1).max(100).optional(),
+    incidentType: z.string().min(1).max(100).optional(),
+    description: z.string().min(1).max(2000).optional(),
+    severity: IncidentSeveritySchema.optional(),
+    date: z.string().min(1).optional(),
+    location: z.string().min(1).max(200).optional(),
+    actionTaken: z.string().max(2000).optional().nullable(),
+    followUpRequired: z.boolean().optional(),
+});

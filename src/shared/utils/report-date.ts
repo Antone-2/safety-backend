@@ -1,18 +1,63 @@
-const GOOGLE_SHEETS_UTC_OFFSET_MINUTES = Number(
-  process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180",
-);
+import { logger } from "./logger.js";
 
-function getDateOrder(): "dmy" | "mdy" {
-  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "dmy").toLowerCase().trim();
-  if (configured === "dmy") return "dmy";
-  if (configured === "mdy") return "mdy";
-  return "dmy";
+export const GOOGLE_SHEETS_TIMEZONE = "America/New_York";
+
+type TimeZoneDateParts = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+};
+
+function getTimeZoneDateParts(date: Date, timeZone: string): TimeZoneDateParts {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = formatter.formatToParts(date);
+  const lookup = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+
+  return {
+    year: lookup("year"),
+    month: lookup("month"),
+    day: lookup("day"),
+    hour: lookup("hour"),
+    minute: lookup("minute"),
+    second: lookup("second"),
+  };
 }
 
-function getUtcOffsetMinutes(): number {
-  return Number.isFinite(GOOGLE_SHEETS_UTC_OFFSET_MINUTES)
-    ? GOOGLE_SHEETS_UTC_OFFSET_MINUTES
-    : 180;
+export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = getTimeZoneDateParts(date, timeZone);
+  const zonedTimeAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  return Math.round((zonedTimeAsUtc - date.getTime()) / 60000);
+}
+
+export function getSheetTimeZoneOffsetMinutes(date: Date): number {
+  return getTimeZoneOffsetMinutes(date, GOOGLE_SHEETS_TIMEZONE);
+}
+
+export function getDateOrder(): "dmy" | "mdy" {
+  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "mdy").toLowerCase().trim();
+  if (configured === "mdy") return "mdy";
+  if (configured === "dmy") return "dmy";
+  return "mdy";
 }
 
 function fromSheetLocalTime(
@@ -24,9 +69,80 @@ function fromSheetLocalTime(
   second = 0,
   millisecond = 0,
 ): Date {
-  return new Date(
-    Date.UTC(year, month - 1, day, hour, minute, second, millisecond) -
-      getUtcOffsetMinutes() * 60_000,
+  const localDateTime = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond));
+  const offset = getSheetTimeZoneOffsetMinutes(localDateTime);
+  const utc = new Date(localDateTime.getTime() - offset * 60000);
+  logger.debug(
+    { year, month, day, hour, minute, second, offset, input: `${year}-${month}-${day}T${hour}:${minute}:${second}`, output: utc.toISOString() },
+    "report-date.fromSheetLocalTime",
+  );
+  return utc;
+}
+
+export function getSheetLocalDateString(referenceDate: Date = new Date()): string {
+  const parts = getTimeZoneDateParts(referenceDate, GOOGLE_SHEETS_TIMEZONE);
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+export function getStartOfSheetDayUtc(
+  referenceDate: Date = new Date(),
+  dayOffset = 0,
+  monthOffset = 0,
+): Date {
+  const parts = getTimeZoneDateParts(referenceDate, GOOGLE_SHEETS_TIMEZONE);
+  const shifted = new Date(
+    Date.UTC(parts.year, parts.month - 1 + monthOffset, parts.day + dayOffset, 0, 0, 0, 0),
+  );
+  return fromSheetLocalTime(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+  );
+}
+
+export function getStartOfSheetMonthUtc(
+  referenceDate: Date = new Date(),
+  monthOffset = 0,
+): Date {
+  const parts = getTimeZoneDateParts(referenceDate, GOOGLE_SHEETS_TIMEZONE);
+  const shifted = new Date(Date.UTC(parts.year, parts.month - 1 + monthOffset, 1, 0, 0, 0, 0));
+  return fromSheetLocalTime(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+  );
+}
+
+export function isReportDateInFuture(
+  isoDate: string,
+  referenceDate: Date = new Date(),
+): boolean {
+  const parsed = new Date(isoDate);
+  if (!Number.isFinite(parsed.getTime())) return true;
+  const reportDate = getSheetLocalDateString(parsed);
+  const currentDate = getSheetLocalDateString(referenceDate);
+  return reportDate > currentDate;
+}
+
+export function assertReportDateIsNotFuture(
+  isoDate: string,
+  referenceDate: Date = new Date(),
+  label = "report date",
+): void {
+  if (!isReportDateInFuture(isoDate, referenceDate)) return;
+
+  logger.warn(
+    {
+      label,
+      parsedUtc: isoDate,
+      parsedLocalDate: getSheetLocalDateString(new Date(isoDate)),
+      currentLocalDate: getSheetLocalDateString(referenceDate),
+      timezone: GOOGLE_SHEETS_TIMEZONE,
+    },
+    "report-date.futureDateRejected",
+  );
+  throw new Error(
+    `Invalid ${label}: ${new Date(isoDate).toISOString()} is after the current ${GOOGLE_SHEETS_TIMEZONE} date ${getSheetLocalDateString(referenceDate)}`,
   );
 }
 
@@ -41,8 +157,12 @@ function parseSpreadsheetSerial(value: string): string | undefined {
   }
 
   const excelEpoch = Date.UTC(1899, 11, 30);
-  const parsed = new Date(
-    excelEpoch + spreadsheetSerial * 86400000 - getUtcOffsetMinutes() * 60_000,
+  const baseUtc = new Date(excelEpoch + spreadsheetSerial * 86400000);
+  const offset = getSheetTimeZoneOffsetMinutes(baseUtc);
+  const parsed = new Date(baseUtc.getTime() - offset * 60000);
+  logger.debug(
+    { spreadsheetSerial, offset, input: value, output: parsed.toISOString() },
+    "report-date.parseSpreadsheetSerial",
   );
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : undefined;
 }
@@ -72,7 +192,8 @@ function parseLocalSlashDate(value: string): string | undefined {
   if (meridiem === "AM" && hour === 12) hour = 0;
 
   const parsed = fromSheetLocalTime(year, month, day, hour, minute, secondPart);
-  const localCheck = new Date(parsed.getTime() + getUtcOffsetMinutes() * 60_000);
+  const offset = getSheetTimeZoneOffsetMinutes(parsed);
+  const localCheck = new Date(parsed.getTime() + offset * 60000);
   if (
     localCheck.getUTCFullYear() === year &&
     localCheck.getUTCMonth() === month - 1 &&
@@ -98,6 +219,25 @@ function parseNativeDate(value: string): string | undefined {
   const hasExplicitYear = /\b\d{4}\b/.test(value);
   if (!hasExplicitYear) {
     return undefined;
+  }
+
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(value)) {
+    const parsed = new Date(value);
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      !Number.isFinite(parsed.getTime()) ||
+      parsed.getUTCFullYear() < 2000 ||
+      parsed.getUTCFullYear() > 2100
+    ) {
+      return undefined;
+    }
+    return parsed.toISOString();
+  }
+
+  const localMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):?(\d{2})(?::?(\d{2}))?)?$/);
+  if (localMatch) {
+    const [, year, month, day, hour = "0", minute = "0", second = "0"] = localMatch;
+    return fromSheetLocalTime(+year, +month, +day, +hour, +minute, +second).toISOString();
   }
 
   const parsed = new Date(value);
@@ -132,6 +272,31 @@ export function parseReportDate(value: unknown): string {
   return parsed;
 }
 
+export function parseValidatedReportDate(
+  value: unknown,
+  options?: {
+    referenceDate?: Date;
+    label?: string;
+  },
+): string {
+  const parsed = parseReportDate(value);
+  assertReportDateIsNotFuture(
+    parsed,
+    options?.referenceDate,
+    options?.label ?? "report date",
+  );
+  logger.debug(
+    {
+      raw: String(value ?? ""),
+      parsedUtc: parsed,
+      parsedLocalDate: getSheetLocalDateString(new Date(parsed)),
+      timezone: GOOGLE_SHEETS_TIMEZONE,
+    },
+    "report-date.parseValidatedReportDate",
+  );
+  return parsed;
+}
+
 export function tryParseReportDateWithFallbacks(
   value: unknown,
   ...fallbacks: unknown[]
@@ -148,5 +313,9 @@ export function tryParseReportDateWithFallbacks(
 }
 
 export function sanitizeReportDate(value: unknown, ...fallbacks: unknown[]): string {
-  return tryParseReportDateWithFallbacks(value, ...fallbacks) ?? new Date().toISOString();
+  const parsed = tryParseReportDateWithFallbacks(value, ...fallbacks);
+  if (!parsed) {
+    logger.warn({ rawValue: value, fallbacks }, "report-date.sanitizeReportDate.fallbackToNow");
+  }
+  return parsed ?? new Date().toISOString();
 }

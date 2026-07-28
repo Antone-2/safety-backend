@@ -245,3 +245,23 @@ export declare const TrainingMatrixInputSchema: z.ZodObject<Omit<{
     mandatory?: boolean | undefined;
 }>;
 export type TrainingMatrixInput = z.infer<typeof TrainingMatrixInputSchema>;
+export declare const UpdateTrainingMatrixInputSchema: z.ZodObject<{
+    role: z.ZodOptional<z.ZodString>;
+    department: z.ZodOptional<z.ZodString>;
+    courseId: z.ZodOptional<z.ZodString>;
+    frequency: z.ZodOptional<z.ZodString>;
+    mandatory: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    role?: string | undefined;
+    department?: string | undefined;
+    frequency?: string | undefined;
+    courseId?: string | undefined;
+    mandatory?: boolean | undefined;
+}, {
+    role?: string | undefined;
+    department?: string | undefined;
+    frequency?: string | undefined;
+    courseId?: string | undefined;
+    mandatory?: boolean | undefined;
+}>;
+export type UpdateTrainingMatrixInput = z.infer<typeof UpdateTrainingMatrixInputSchema>;

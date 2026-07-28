@@ -1,6 +1,7 @@
 import { allRows, getDb } from "../../lib/database.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import { tryParseReportDateWithFallbacks } from "../../shared/utils/report-date.js";
+import { logger } from "../../shared/utils/logger.js";
 
 type ReportTimestampRow = {
   id: string;
@@ -76,6 +77,7 @@ export async function auditReportTimestamps(
 
     if (!normalizedDate) {
       unrecoverable += 1;
+      logger.warn({ id: row.id, date: row.date }, "report-audit.unrecoverable");
       if (unrecoverableSamples.length < sampleLimit) {
         unrecoverableSamples.push({
           id: row.id,
@@ -109,6 +111,7 @@ export async function auditReportTimestamps(
 
     if (needsRepair) {
       repairable += 1;
+      logger.debug({ id: row.id, storedDate: row.date, normalizedDate, storedDueAt: row.due_at, normalizedDueAt }, "report-audit.repairable");
       if (repairableSamples.length < sampleLimit) {
         repairableSamples.push({
           id: row.id,

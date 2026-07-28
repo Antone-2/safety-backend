@@ -14,6 +14,8 @@ export declare function createTrainingController(service: TrainingService): {
     deleteRecord(req: AuthRequest, res: Response): Promise<void>;
     getMatrix(req: AuthRequest, res: Response): Promise<void>;
     createMatrix(req: AuthRequest, res: Response): Promise<void>;
+    updateMatrix(req: AuthRequest, res: Response): Promise<void>;
+    deleteMatrix(req: AuthRequest, res: Response): Promise<void>;
     getStats(req: AuthRequest, res: Response): Promise<void>;
 };
 export declare function createTrainingRouter(): import("express-serve-static-core").Router;

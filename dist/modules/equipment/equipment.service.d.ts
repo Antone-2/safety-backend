@@ -1,4 +1,4 @@
-import { Equipment, EquipmentInspection, CreateEquipmentInput, UpdateEquipmentInput, CreateEquipmentInspectionInput, EquipmentStats } from "./equipment.types.js";
+import { Equipment, EquipmentInspection, CreateEquipmentInput, UpdateEquipmentInput, CreateEquipmentInspectionInput, UpdateEquipmentInspectionInput, EquipmentStats } from "./equipment.types.js";
 import { EquipmentRepository } from "./equipment.repository.js";
 export declare class EquipmentService {
     private repository;
@@ -10,6 +10,9 @@ export declare class EquipmentService {
     deleteEquipment(id: string): Promise<boolean>;
     getInspections(filters?: Record<string, unknown>): Promise<EquipmentInspection[]>;
     createInspection(data: CreateEquipmentInspectionInput): Promise<EquipmentInspection>;
+    getInspectionById(id: string): Promise<EquipmentInspection | null>;
+    updateInspection(id: string, data: UpdateEquipmentInspectionInput): Promise<EquipmentInspection | null>;
+    deleteInspection(id: string): Promise<boolean>;
     getOverdueInspections(): Promise<Equipment[]>;
     getEquipmentStats(): Promise<EquipmentStats>;
 }

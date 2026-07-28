@@ -70,9 +70,14 @@ export class TrainingService {
     async createMatrix(data) {
         return this.repository.createMatrix(data);
     }
+    async updateMatrix(id, data) {
+        const existing = await this.repository.findMatrixById(id);
+        if (!existing)
+            throw new NotFoundError("Training matrix");
+        return this.repository.updateMatrix(id, data);
+    }
     async deleteMatrix(id) {
-        const matrices = await this.repository.findMatrix({ id });
-        const existing = matrices[0];
+        const existing = await this.repository.findMatrixById(id);
         if (!existing)
             return false;
         return this.repository.deleteMatrix(id);

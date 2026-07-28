@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { Equipment, EquipmentInspection, CreateEquipmentInput, UpdateEquipmentInput, CreateEquipmentInspectionInput, EquipmentStats } from "./equipment.types.js";
+import type { Equipment, EquipmentInspection, CreateEquipmentInput, UpdateEquipmentInput, CreateEquipmentInspectionInput, UpdateEquipmentInspectionInput, EquipmentStats } from "./equipment.types.js";
 export declare class EquipmentRepository {
     private pool;
     constructor(pool: Pool);
@@ -9,7 +9,10 @@ export declare class EquipmentRepository {
     update(id: string, data: UpdateEquipmentInput): Promise<Equipment | null>;
     delete(id: string): Promise<boolean>;
     findInspections(filters?: Record<string, unknown>): Promise<EquipmentInspection[]>;
+    findInspectionById(id: string): Promise<EquipmentInspection | null>;
     createInspection(data: CreateEquipmentInspectionInput): Promise<EquipmentInspection>;
+    updateInspection(id: string, data: UpdateEquipmentInspectionInput): Promise<EquipmentInspection | null>;
+    deleteInspection(id: string): Promise<boolean>;
     getStats(): Promise<EquipmentStats>;
     count(filters?: Record<string, unknown>): Promise<number>;
 }

@@ -9,6 +9,8 @@ export declare function createEquipmentController(service: EquipmentService): {
     delete(req: AuthRequest, res: Response): Promise<void>;
     getInspections(req: AuthRequest, res: Response): Promise<void>;
     createInspection(req: AuthRequest, res: Response): Promise<void>;
+    updateInspection(req: AuthRequest, res: Response): Promise<void>;
+    deleteInspection(req: AuthRequest, res: Response): Promise<void>;
     getOverdue(req: AuthRequest, res: Response): Promise<void>;
     getStats(req: AuthRequest, res: Response): Promise<void>;
 };

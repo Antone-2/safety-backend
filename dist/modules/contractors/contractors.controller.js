@@ -7,7 +7,7 @@ import { validate } from "../../shared/middleware/validation.middleware.js";
 import { NotFoundError } from "../../shared/domain/errors/index.js";
 import { writeAuditLog, diffRecord } from "../../shared/audit/audit.service.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
-import { CreateContractorSchema, UpdateContractorSchema, CreateContractorIncidentSchema, } from "./contractors.types.js";
+import { CreateContractorSchema, UpdateContractorSchema, CreateContractorIncidentSchema, UpdateContractorIncidentSchema, } from "./contractors.types.js";
 export function createContractorsController(service) {
     return {
         async getAll(req, res) {
@@ -84,6 +84,34 @@ export function createContractorsController(service) {
             const incidents = await service.getContractorIncidents(String(req.params.id));
             res.json({ data: incidents });
         },
+        async updateIncident(req, res) {
+            const before = await service.getIncidentById(String(req.params.id));
+            if (!before)
+                throw new NotFoundError("Contractor incident");
+            const incident = await service.updateIncident(String(req.params.id), req.body);
+            await writeAuditLog({
+                action: "contractors.incident_updated",
+                resourceType: "contractor_incident",
+                resourceId: String(req.params.id),
+                changes: diffRecord(before, incident),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: incident });
+        },
+        async deleteIncident(req, res) {
+            const deleted = await service.deleteIncident(String(req.params.id));
+            if (!deleted)
+                throw new NotFoundError("Contractor incident");
+            await writeAuditLog({
+                action: "contractors.incident_deleted",
+                resourceType: "contractor_incident",
+                resourceId: String(req.params.id),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: { ok: true, deleted: req.params.id } });
+        },
         async getStats(req, res) {
             const stats = await service.getContractorStats();
             res.json({ data: stats });
@@ -104,5 +132,7 @@ export function createContractorsRouter() {
     router.delete("/:id", rbacMiddleware("contractors:delete"), controller.delete);
     router.post("/incidents", rbacMiddleware("contractors:create"), validate(CreateContractorIncidentSchema), controller.recordIncident);
     router.get("/:id/incidents", rbacMiddleware("contractors:read"), controller.getIncidents);
+    router.patch("/incidents/:id", rbacMiddleware("contractors:update"), validate(UpdateContractorIncidentSchema), controller.updateIncident);
+    router.delete("/incidents/:id", rbacMiddleware("contractors:delete"), controller.deleteIncident);
     return router;
 }

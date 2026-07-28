@@ -1,5 +1,6 @@
-import { BaseService } from "./base.service.js";
 import { z } from "zod";
+import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { v4 as uuidv4 } from "uuid";
 export const EsgCategorySchema = z.enum(["Environmental", "Social", "Governance"]);
 export const CarbonEmissionSchema = z.object({
     id: z.string().optional(),
@@ -42,47 +43,312 @@ export const WaterRecordSchema = z.object({
     notes: z.string().max(500).optional(),
     createdBy: z.string().min(1).max(200),
 });
+const now = () => new Date().toISOString();
+function mapCarbonRow(row) {
+    return {
+        id: String(row.id),
+        category: String(row.category ?? "Environmental"),
+        scope: String(row.scope ?? "Scope 1"),
+        source: String(row.source ?? ""),
+        description: row.description ? String(row.description) : undefined,
+        quantity: Number(row.quantity ?? 0),
+        unit: String(row.unit ?? ""),
+        co2Equivalent: Number(row.co2_equivalent ?? 0),
+        period: String(row.period ?? ""),
+        recordedDate: row.recorded_date ? new Date(String(row.recorded_date)).toISOString() : "",
+        site: String(row.site ?? ""),
+        notes: row.notes ? String(row.notes) : undefined,
+        createdBy: String(row.created_by ?? "System"),
+        createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : now(),
+        updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : now(),
+    };
+}
+function mapEnergyRow(row) {
+    return {
+        id: String(row.id),
+        source: String(row.source ?? "Other"),
+        consumption: Number(row.consumption ?? 0),
+        unit: String(row.unit ?? ""),
+        cost: row.cost == null ? undefined : Number(row.cost),
+        period: String(row.period ?? ""),
+        recordedDate: row.recorded_date ? new Date(String(row.recorded_date)).toISOString() : "",
+        site: String(row.site ?? ""),
+        meterReading: row.meter_reading == null ? undefined : Number(row.meter_reading),
+        notes: row.notes ? String(row.notes) : undefined,
+        createdBy: String(row.created_by ?? "System"),
+        createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : now(),
+        updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : now(),
+    };
+}
+function mapWaterRow(row) {
+    return {
+        id: String(row.id),
+        source: String(row.source ?? "Other"),
+        consumption: Number(row.consumption ?? 0),
+        unit: String(row.unit ?? ""),
+        cost: row.cost == null ? undefined : Number(row.cost),
+        period: String(row.period ?? ""),
+        recordedDate: row.recorded_date ? new Date(String(row.recorded_date)).toISOString() : "",
+        site: String(row.site ?? ""),
+        recycled: row.recycled == null ? undefined : Number(row.recycled),
+        notes: row.notes ? String(row.notes) : undefined,
+        createdBy: String(row.created_by ?? "System"),
+        createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : now(),
+        updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : now(),
+    };
+}
 export class EsgService {
-    carbonService;
-    energyService;
-    waterService;
-    constructor() {
-        this.carbonService = new BaseService("carbon_emissions", CarbonEmissionSchema);
-        this.energyService = new BaseService("energy_records", EnergyRecordSchema);
-        this.waterService = new BaseService("water_records", WaterRecordSchema);
-    }
     async createCarbonEmission(data) {
-        return this.carbonService.create(data);
+        const validated = CarbonEmissionSchema.parse(data);
+        const id = validated.id || uuidv4();
+        const timestamp = now();
+        const result = await pgPool.query(`INSERT INTO carbon_emissions (
+        id, category, scope, source, description, quantity, unit, co2_equivalent,
+        period, recorded_date, site, notes, created_by, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14, $15
+      ) RETURNING *`, [
+            id,
+            validated.category,
+            validated.scope,
+            validated.source,
+            validated.description ?? null,
+            validated.quantity,
+            validated.unit,
+            validated.co2Equivalent,
+            validated.period,
+            validated.recordedDate,
+            validated.site,
+            validated.notes ?? null,
+            validated.createdBy,
+            timestamp,
+            timestamp,
+        ]);
+        return mapCarbonRow(result.rows[0]);
     }
     async getCarbonEmissions(filters) {
-        return this.carbonService.getAll(filters);
+        const where = [];
+        const params = [];
+        const columns = { scope: "scope", period: "period", site: "site" };
+        Object.entries(filters ?? {}).forEach(([key, value]) => {
+            const column = columns[key];
+            if (!column || value === undefined || value === null || value === "")
+                return;
+            params.push(value);
+            where.push(`${column} = $${params.length}`);
+        });
+        const sql = `SELECT * FROM carbon_emissions${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`;
+        const result = await pgPool.query(sql, params);
+        return result.rows.map((row) => mapCarbonRow(row));
+    }
+    async updateCarbonEmission(id, data) {
+        const map = {
+            category: "category",
+            scope: "scope",
+            source: "source",
+            description: "description",
+            quantity: "quantity",
+            unit: "unit",
+            co2Equivalent: "co2_equivalent",
+            period: "period",
+            recordedDate: "recorded_date",
+            site: "site",
+            notes: "notes",
+            createdBy: "created_by",
+        };
+        const fields = [];
+        const params = [];
+        Object.entries(data).forEach(([key, value]) => {
+            const column = map[key];
+            if (!column || value === undefined)
+                return;
+            params.push(value);
+            fields.push(`${column} = $${params.length}`);
+        });
+        if (fields.length === 0) {
+            const result = await pgPool.query("SELECT * FROM carbon_emissions WHERE id = $1", [id]);
+            return result.rows[0] ? mapCarbonRow(result.rows[0]) : null;
+        }
+        params.push(now());
+        fields.push(`updated_at = $${params.length}`);
+        params.push(id);
+        const result = await pgPool.query(`UPDATE carbon_emissions SET ${fields.join(", ")} WHERE id = $${params.length} RETURNING *`, params);
+        return result.rows[0] ? mapCarbonRow(result.rows[0]) : null;
+    }
+    async deleteCarbonEmission(id) {
+        const result = await pgPool.query("DELETE FROM carbon_emissions WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
     }
     async createEnergyRecord(data) {
-        return this.energyService.create(data);
+        const validated = EnergyRecordSchema.parse(data);
+        const id = validated.id || uuidv4();
+        const timestamp = now();
+        const result = await pgPool.query(`INSERT INTO energy_records (
+        id, source, consumption, unit, cost, period, recorded_date, site,
+        meter_reading, notes, created_by, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13
+      ) RETURNING *`, [
+            id,
+            validated.source,
+            validated.consumption,
+            validated.unit,
+            validated.cost ?? null,
+            validated.period,
+            validated.recordedDate,
+            validated.site,
+            validated.meterReading ?? null,
+            validated.notes ?? null,
+            validated.createdBy,
+            timestamp,
+            timestamp,
+        ]);
+        return mapEnergyRow(result.rows[0]);
     }
     async getEnergyRecords(filters) {
-        return this.energyService.getAll(filters);
+        const where = [];
+        const params = [];
+        const columns = { source: "source", period: "period", site: "site" };
+        Object.entries(filters ?? {}).forEach(([key, value]) => {
+            const column = columns[key];
+            if (!column || value === undefined || value === null || value === "")
+                return;
+            params.push(value);
+            where.push(`${column} = $${params.length}`);
+        });
+        const sql = `SELECT * FROM energy_records${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`;
+        const result = await pgPool.query(sql, params);
+        return result.rows.map((row) => mapEnergyRow(row));
+    }
+    async updateEnergyRecord(id, data) {
+        const map = {
+            source: "source",
+            consumption: "consumption",
+            unit: "unit",
+            cost: "cost",
+            period: "period",
+            recordedDate: "recorded_date",
+            site: "site",
+            meterReading: "meter_reading",
+            notes: "notes",
+            createdBy: "created_by",
+        };
+        const fields = [];
+        const params = [];
+        Object.entries(data).forEach(([key, value]) => {
+            const column = map[key];
+            if (!column || value === undefined)
+                return;
+            params.push(value);
+            fields.push(`${column} = $${params.length}`);
+        });
+        if (fields.length === 0) {
+            const result = await pgPool.query("SELECT * FROM energy_records WHERE id = $1", [id]);
+            return result.rows[0] ? mapEnergyRow(result.rows[0]) : null;
+        }
+        params.push(now());
+        fields.push(`updated_at = $${params.length}`);
+        params.push(id);
+        const result = await pgPool.query(`UPDATE energy_records SET ${fields.join(", ")} WHERE id = $${params.length} RETURNING *`, params);
+        return result.rows[0] ? mapEnergyRow(result.rows[0]) : null;
+    }
+    async deleteEnergyRecord(id) {
+        const result = await pgPool.query("DELETE FROM energy_records WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
     }
     async createWaterRecord(data) {
-        return this.waterService.create(data);
+        const validated = WaterRecordSchema.parse(data);
+        const id = validated.id || uuidv4();
+        const timestamp = now();
+        const result = await pgPool.query(`INSERT INTO water_records (
+        id, source, consumption, unit, cost, period, recorded_date, site,
+        recycled, notes, created_by, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13
+      ) RETURNING *`, [
+            id,
+            validated.source,
+            validated.consumption,
+            validated.unit,
+            validated.cost ?? null,
+            validated.period,
+            validated.recordedDate,
+            validated.site,
+            validated.recycled ?? null,
+            validated.notes ?? null,
+            validated.createdBy,
+            timestamp,
+            timestamp,
+        ]);
+        return mapWaterRow(result.rows[0]);
     }
     async getWaterRecords(filters) {
-        return this.waterService.getAll(filters);
+        const where = [];
+        const params = [];
+        const columns = { period: "period", site: "site" };
+        Object.entries(filters ?? {}).forEach(([key, value]) => {
+            const column = columns[key];
+            if (!column || value === undefined || value === null || value === "")
+                return;
+            params.push(value);
+            where.push(`${column} = $${params.length}`);
+        });
+        const sql = `SELECT * FROM water_records${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC`;
+        const result = await pgPool.query(sql, params);
+        return result.rows.map((row) => mapWaterRow(row));
+    }
+    async updateWaterRecord(id, data) {
+        const map = {
+            source: "source",
+            consumption: "consumption",
+            unit: "unit",
+            cost: "cost",
+            period: "period",
+            recordedDate: "recorded_date",
+            site: "site",
+            recycled: "recycled",
+            notes: "notes",
+            createdBy: "created_by",
+        };
+        const fields = [];
+        const params = [];
+        Object.entries(data).forEach(([key, value]) => {
+            const column = map[key];
+            if (!column || value === undefined)
+                return;
+            params.push(value);
+            fields.push(`${column} = $${params.length}`);
+        });
+        if (fields.length === 0) {
+            const result = await pgPool.query("SELECT * FROM water_records WHERE id = $1", [id]);
+            return result.rows[0] ? mapWaterRow(result.rows[0]) : null;
+        }
+        params.push(now());
+        fields.push(`updated_at = $${params.length}`);
+        params.push(id);
+        const result = await pgPool.query(`UPDATE water_records SET ${fields.join(", ")} WHERE id = $${params.length} RETURNING *`, params);
+        return result.rows[0] ? mapWaterRow(result.rows[0]) : null;
+    }
+    async deleteWaterRecord(id) {
+        const result = await pgPool.query("DELETE FROM water_records WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
     }
     async getEsgDashboard() {
-        const carbon = await this.carbonService.getAll();
-        const energy = await this.energyService.getAll();
-        const water = await this.waterService.getAll();
-        const totalCO2 = carbon.reduce((sum, c) => sum + (c.co2Equivalent || 0), 0);
-        const totalEnergy = energy.reduce((sum, e) => sum + (e.consumption || 0), 0);
-        const totalWater = water.reduce((sum, w) => sum + (w.consumption || 0), 0);
+        const [carbonResult, energyResult, waterResult] = await Promise.all([
+            pgPool.query("SELECT COALESCE(SUM(co2_equivalent), 0) AS total, COUNT(*) AS count FROM carbon_emissions"),
+            pgPool.query("SELECT COALESCE(SUM(consumption), 0) AS total, COUNT(*) AS count FROM energy_records"),
+            pgPool.query("SELECT COALESCE(SUM(consumption), 0) AS total, COUNT(*) AS count FROM water_records"),
+        ]);
         return {
-            totalCO2,
-            totalEnergy,
-            totalWater,
-            carbonRecords: carbon.length,
-            energyRecords: energy.length,
-            waterRecords: water.length,
+            totalCO2: Number(carbonResult.rows[0]?.total ?? 0),
+            totalEnergy: Number(energyResult.rows[0]?.total ?? 0),
+            totalWater: Number(waterResult.rows[0]?.total ?? 0),
+            carbonRecords: Number(carbonResult.rows[0]?.count ?? 0),
+            energyRecords: Number(energyResult.rows[0]?.count ?? 0),
+            waterRecords: Number(waterResult.rows[0]?.count ?? 0),
         };
     }
 }

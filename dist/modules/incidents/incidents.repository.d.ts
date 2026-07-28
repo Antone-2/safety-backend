@@ -5,6 +5,7 @@ export declare class IncidentsRepository {
     constructor(pool: Pool);
     findAll(filters?: Record<string, unknown>): Promise<Incident[]>;
     findAllReports(): Promise<Record<string, unknown>[]>;
+    findReportById(id: string): Promise<Record<string, unknown> | null>;
     findById(id: string): Promise<Incident | null>;
     create(data: IncidentInput): Promise<Incident>;
     update(id: string, data: Partial<IncidentInput>): Promise<Incident | null>;

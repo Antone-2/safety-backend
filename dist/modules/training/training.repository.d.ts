@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { TrainingCourse, TrainingCourseInput, TrainingRecordInput, TrainingMatrix, TrainingMatrixInput } from "./training.types.js";
+import type { TrainingCourse, TrainingCourseInput, TrainingRecordInput, TrainingMatrix, TrainingMatrixInput, UpdateTrainingMatrixInput } from "./training.types.js";
 export declare class TrainingRepository {
     private pool;
     constructor(pool: Pool);
@@ -14,7 +14,9 @@ export declare class TrainingRepository {
     updateRecord(id: string, data: Partial<TrainingRecordInput>): Promise<any>;
     deleteRecord(id: string): Promise<boolean>;
     findMatrix(filters?: Record<string, unknown>): Promise<TrainingMatrix[]>;
+    findMatrixById(id: string): Promise<TrainingMatrix | null>;
     createMatrix(data: TrainingMatrixInput): Promise<TrainingMatrix>;
+    updateMatrix(id: string, data: UpdateTrainingMatrixInput): Promise<TrainingMatrix | null>;
     deleteMatrix(id: string): Promise<boolean>;
     countRecords(filters?: Record<string, unknown>): Promise<number>;
 }

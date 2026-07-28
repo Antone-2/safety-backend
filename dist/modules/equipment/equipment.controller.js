@@ -7,7 +7,7 @@ import { validate } from "../../shared/middleware/validation.middleware.js";
 import { NotFoundError } from "../../shared/domain/errors/index.js";
 import { writeAuditLog, diffRecord } from "../../shared/audit/audit.service.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
-import { CreateEquipmentSchema, UpdateEquipmentSchema, CreateEquipmentInspectionSchema, } from "./equipment.types.js";
+import { CreateEquipmentSchema, UpdateEquipmentSchema, CreateEquipmentInspectionSchema, UpdateEquipmentInspectionSchema, } from "./equipment.types.js";
 export function createEquipmentController(service) {
     return {
         async getAll(req, res) {
@@ -92,6 +92,34 @@ export function createEquipmentController(service) {
             });
             res.status(201).json({ data: inspection });
         },
+        async updateInspection(req, res) {
+            const before = await service.getInspectionById(String(req.params.id));
+            if (!before)
+                throw new NotFoundError("Equipment inspection");
+            const inspection = await service.updateInspection(String(req.params.id), req.body);
+            await writeAuditLog({
+                action: "equipment.inspection_updated",
+                resourceType: "equipment_inspection",
+                resourceId: String(req.params.id),
+                changes: diffRecord(before, inspection),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: inspection });
+        },
+        async deleteInspection(req, res) {
+            const deleted = await service.deleteInspection(String(req.params.id));
+            if (!deleted)
+                throw new NotFoundError("Equipment inspection");
+            await writeAuditLog({
+                action: "equipment.inspection_deleted",
+                resourceType: "equipment_inspection",
+                resourceId: String(req.params.id),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: { ok: true, deleted: req.params.id } });
+        },
         async getOverdue(req, res) {
             const overdue = await service.getOverdueInspections();
             res.json({ data: overdue });
@@ -117,5 +145,7 @@ export function createEquipmentRouter() {
     router.patch("/:id", rbacMiddleware("equipment:update"), validate(UpdateEquipmentSchema), controller.update);
     router.delete("/:id", rbacMiddleware("equipment:delete"), controller.delete);
     router.post("/inspections", rbacMiddleware("equipment:create"), validate(CreateEquipmentInspectionSchema), controller.createInspection);
+    router.patch("/inspections/:id", rbacMiddleware("equipment:update"), validate(UpdateEquipmentInspectionSchema), controller.updateInspection);
+    router.delete("/inspections/:id", rbacMiddleware("equipment:delete"), controller.deleteInspection);
     return router;
 }

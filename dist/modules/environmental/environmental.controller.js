@@ -51,6 +51,18 @@ export function createEnvironmentalController(service) {
             });
             res.json({ data: waste });
         },
+        async deleteWaste(req, res) {
+            const waste = await service.deleteWaste(String(req.params.id));
+            await writeAuditLog({
+                action: "environmental.waste.deleted",
+                resourceType: "waste_record",
+                resourceId: waste.id,
+                context: { type: waste.type, category: waste.category },
+                actor: req.user,
+                request: req,
+            });
+            res.json({ ok: true, deleted: waste.id });
+        },
         async getEmissions(req, res) {
             const filters = {};
             const { type, location } = req.query;
@@ -92,6 +104,18 @@ export function createEnvironmentalController(service) {
             });
             res.json({ data: emission });
         },
+        async deleteEmission(req, res) {
+            const emission = await service.deleteEmission(String(req.params.id));
+            await writeAuditLog({
+                action: "environmental.emission.deleted",
+                resourceType: "emission",
+                resourceId: emission.id,
+                context: { type: emission.type, parameter: emission.parameter },
+                actor: req.user,
+                request: req,
+            });
+            res.json({ ok: true, deleted: emission.id });
+        },
         async getChemicals(req, res) {
             const chemicals = await service.getChemicals();
             res.json({ data: chemicals });
@@ -129,6 +153,21 @@ export function createEnvironmentalController(service) {
                 request: req,
             });
             res.json({ data: chemical });
+        },
+        async deleteChemical(req, res) {
+            const chemical = await service.deleteChemical(String(req.params.id));
+            await writeAuditLog({
+                action: "environmental.chemical.deleted",
+                resourceType: "chemical",
+                resourceId: chemical.id,
+                context: {
+                    name: chemical.name,
+                    storageLocation: chemical.storageLocation,
+                },
+                actor: req.user,
+                request: req,
+            });
+            res.json({ ok: true, deleted: chemical.id });
         },
         async getSpills(req, res) {
             const filters = {};
@@ -186,12 +225,15 @@ export function createEnvironmentalRouter() {
     router.get("/waste", rbacMiddleware("environmental:read"), controller.getWaste);
     router.post("/waste", rbacMiddleware("environmental:create"), validate(CreateWasteSchema), controller.createWaste);
     router.patch("/waste/:id", rbacMiddleware("environmental:update"), validate(UpdateWasteSchema), controller.updateWaste);
+    router.delete("/waste/:id", rbacMiddleware("environmental:delete"), controller.deleteWaste);
     router.get("/emissions", rbacMiddleware("environmental:read"), controller.getEmissions);
     router.post("/emissions", rbacMiddleware("environmental:create"), validate(CreateEmissionSchema), controller.createEmission);
     router.patch("/emissions/:id", rbacMiddleware("environmental:update"), validate(UpdateEmissionSchema), controller.updateEmission);
+    router.delete("/emissions/:id", rbacMiddleware("environmental:delete"), controller.deleteEmission);
     router.get("/chemicals", rbacMiddleware("environmental:read"), controller.getChemicals);
     router.post("/chemicals", rbacMiddleware("environmental:create"), validate(CreateChemicalSchema), controller.createChemical);
     router.patch("/chemicals/:id", rbacMiddleware("environmental:update"), validate(UpdateChemicalSchema), controller.updateChemical);
+    router.delete("/chemicals/:id", rbacMiddleware("environmental:delete"), controller.deleteChemical);
     router.get("/spills", rbacMiddleware("environmental:read"), controller.getSpills);
     router.post("/spills", rbacMiddleware("environmental:create"), validate(CreateSpillSchema), controller.createSpill);
     router.patch("/spills/:id", rbacMiddleware("environmental:update"), validate(UpdateSpillSchema), controller.updateSpill);

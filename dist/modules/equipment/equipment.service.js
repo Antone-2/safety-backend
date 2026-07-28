@@ -31,6 +31,21 @@ export class EquipmentService {
     async createInspection(data) {
         return this.repository.createInspection(data);
     }
+    async getInspectionById(id) {
+        return this.repository.findInspectionById(id);
+    }
+    async updateInspection(id, data) {
+        const existing = await this.repository.findInspectionById(id);
+        if (!existing)
+            throw new NotFoundError("Equipment inspection");
+        return this.repository.updateInspection(id, data);
+    }
+    async deleteInspection(id) {
+        const existing = await this.repository.findInspectionById(id);
+        if (!existing)
+            return false;
+        return this.repository.deleteInspection(id);
+    }
     async getOverdueInspections() {
         const nowIso = new Date().toISOString();
         const all = await this.repository.findAll({ status: "Operational" });

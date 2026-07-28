@@ -166,6 +166,10 @@ export class EnvironmentalRepository {
         const result = await this.pool.query(sql, params);
         return result.rows[0] ? asWaste(result.rows[0]) : null;
     }
+    async deleteWaste(id) {
+        const result = await this.pool.query("DELETE FROM waste_records WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
+    }
     async findEmissions(filters) {
         const where = [];
         const params = [];
@@ -246,6 +250,10 @@ export class EnvironmentalRepository {
         const result = await this.pool.query(sql, params);
         return result.rows[0] ? asEmission(result.rows[0]) : null;
     }
+    async deleteEmission(id) {
+        const result = await this.pool.query("DELETE FROM emissions WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
+    }
     async findChemicals(filters) {
         const where = [];
         const params = [];
@@ -319,6 +327,10 @@ export class EnvironmentalRepository {
         const sql = `UPDATE chemicals SET ${fields.join(", ")} WHERE id = $${idx + 1} RETURNING *`;
         const result = await this.pool.query(sql, params);
         return result.rows[0] ? asChemical(result.rows[0]) : null;
+    }
+    async deleteChemical(id) {
+        const result = await this.pool.query("DELETE FROM chemicals WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
     }
     async findSpills(filters) {
         const where = [];

@@ -157,6 +157,15 @@ export class JsaService extends BaseService {
         const result = await pgPool.query(`UPDATE jsa SET ${updates.join(", ")} WHERE id = $${params.length} RETURNING id, title, description, location, department, status, steps, createdBy AS "createdBy", createdAt AS "createdAt", updatedAt AS "updatedAt", reviewedBy AS "reviewedBy", reviewedAt AS "reviewedAt"`, params);
         return mapJsaRow(result.rows[0] ?? null);
     }
+    async deleteJsa(id) {
+        const existing = await this.getJsaById(id);
+        if (!existing)
+            throw new Error("JSA not found");
+        const result = await pgPool.query("DELETE FROM jsa WHERE id = $1", [id]);
+        if ((result.rowCount ?? 0) === 0)
+            throw new Error("JSA not found");
+        return existing;
+    }
     async submitForReview(id) {
         return this.updateJsa(id, { status: "in-review" });
     }

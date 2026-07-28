@@ -9,6 +9,8 @@ export declare function createContractorsController(service: ContractorsService)
     delete(req: AuthRequest, res: Response): Promise<void>;
     recordIncident(req: AuthRequest, res: Response): Promise<void>;
     getIncidents(req: AuthRequest, res: Response): Promise<void>;
+    updateIncident(req: AuthRequest, res: Response): Promise<void>;
+    deleteIncident(req: AuthRequest, res: Response): Promise<void>;
     getStats(req: AuthRequest, res: Response): Promise<void>;
 };
 export declare function createContractorsRouter(): import("express-serve-static-core").Router;

@@ -180,6 +180,27 @@ export declare class JsaService extends BaseService {
         createdAt: string;
         updatedAt: string;
     } | null>;
+    deleteJsa(id: string): Promise<{
+        id: string;
+        title: string;
+        description: string | undefined;
+        location: string;
+        department: string;
+        status: JsaStatus;
+        steps: {
+            id: string;
+            description: string;
+            hazards: string[];
+            controls: string[];
+            existingRisk: "Critical" | "Low" | "Medium" | "High";
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
+        }[];
+        createdBy: string;
+        reviewedBy: {} | undefined;
+        reviewedAt: {} | undefined;
+        createdAt: string;
+        updatedAt: string;
+    }>;
     submitForReview(id: string): Promise<{
         id: string;
         title: string;

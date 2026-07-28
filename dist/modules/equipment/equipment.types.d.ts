@@ -224,6 +224,41 @@ export declare const CreateEquipmentInspectionSchema: z.ZodObject<{
     defects?: string | undefined;
 }>;
 export type CreateEquipmentInspectionInput = z.infer<typeof CreateEquipmentInspectionSchema>;
+export declare const UpdateEquipmentInspectionSchema: z.ZodObject<{
+    equipmentId: z.ZodOptional<z.ZodString>;
+    inspector: z.ZodOptional<z.ZodString>;
+    inspectionDate: z.ZodOptional<z.ZodString>;
+    inspectionType: z.ZodOptional<z.ZodEnum<["Routine", "After Use", "Annual", "Regulatory", "Special"]>>;
+    findings: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    defects: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    actionRequired: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    passed: z.ZodOptional<z.ZodBoolean>;
+    nextInspectionDue: z.ZodOptional<z.ZodString>;
+    photoUrl: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+}, "strip", z.ZodTypeAny, {
+    photoUrl?: string | null | undefined;
+    findings?: string | null | undefined;
+    actionRequired?: string | null | undefined;
+    passed?: boolean | undefined;
+    equipmentId?: string | undefined;
+    inspector?: string | undefined;
+    inspectionDate?: string | undefined;
+    inspectionType?: "Regulatory" | "Routine" | "After Use" | "Annual" | "Special" | undefined;
+    defects?: string | null | undefined;
+    nextInspectionDue?: string | undefined;
+}, {
+    photoUrl?: string | null | undefined;
+    findings?: string | null | undefined;
+    actionRequired?: string | null | undefined;
+    passed?: boolean | undefined;
+    equipmentId?: string | undefined;
+    inspector?: string | undefined;
+    inspectionDate?: string | undefined;
+    inspectionType?: "Regulatory" | "Routine" | "After Use" | "Annual" | "Special" | undefined;
+    defects?: string | null | undefined;
+    nextInspectionDue?: string | undefined;
+}>;
+export type UpdateEquipmentInspectionInput = z.infer<typeof UpdateEquipmentInspectionSchema>;
 export interface EquipmentStats {
     total: number;
     operational: number;

@@ -83,6 +83,10 @@ export class WibaRepository {
     `);
         return result.rows.map((row) => mapRow(row));
     }
+    async findById(id) {
+        const result = await this.pool.query("SELECT * FROM wiba_claims WHERE id = $1", [id]);
+        return result.rows[0] ? mapRow(result.rows[0]) : null;
+    }
     async create(data) {
         const result = await this.pool.query(`INSERT INTO wiba_claims (
         id,
@@ -170,5 +174,9 @@ export class WibaRepository {
        WHERE id = $${idx}
        RETURNING *`, params);
         return result.rows[0] ? mapRow(result.rows[0]) : null;
+    }
+    async delete(id) {
+        const result = await this.pool.query("DELETE FROM wiba_claims WHERE id = $1", [id]);
+        return (result.rowCount ?? 0) > 0;
     }
 }

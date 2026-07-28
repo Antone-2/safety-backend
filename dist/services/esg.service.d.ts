@@ -118,23 +118,41 @@ export declare const WaterRecordSchema: z.ZodObject<{
     cost?: number | undefined;
     recycled?: number | undefined;
 }>;
+type CarbonEmission = z.infer<typeof CarbonEmissionSchema> & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
+type EnergyRecord = z.infer<typeof EnergyRecordSchema> & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
+type WaterRecord = z.infer<typeof WaterRecordSchema> & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
 export declare class EsgService {
-    private carbonService;
-    private energyService;
-    private waterService;
-    constructor();
-    createCarbonEmission(data: z.infer<typeof CarbonEmissionSchema>): Promise<any>;
-    getCarbonEmissions(filters?: Record<string, any>): Promise<any[]>;
-    createEnergyRecord(data: z.infer<typeof EnergyRecordSchema>): Promise<any>;
-    getEnergyRecords(filters?: Record<string, any>): Promise<any[]>;
-    createWaterRecord(data: z.infer<typeof WaterRecordSchema>): Promise<any>;
-    getWaterRecords(filters?: Record<string, any>): Promise<any[]>;
+    createCarbonEmission(data: z.infer<typeof CarbonEmissionSchema>): Promise<CarbonEmission>;
+    getCarbonEmissions(filters?: Record<string, unknown>): Promise<CarbonEmission[]>;
+    updateCarbonEmission(id: string, data: Partial<z.infer<typeof CarbonEmissionSchema>>): Promise<CarbonEmission | null>;
+    deleteCarbonEmission(id: string): Promise<boolean>;
+    createEnergyRecord(data: z.infer<typeof EnergyRecordSchema>): Promise<EnergyRecord>;
+    getEnergyRecords(filters?: Record<string, unknown>): Promise<EnergyRecord[]>;
+    updateEnergyRecord(id: string, data: Partial<z.infer<typeof EnergyRecordSchema>>): Promise<EnergyRecord | null>;
+    deleteEnergyRecord(id: string): Promise<boolean>;
+    createWaterRecord(data: z.infer<typeof WaterRecordSchema>): Promise<WaterRecord>;
+    getWaterRecords(filters?: Record<string, unknown>): Promise<WaterRecord[]>;
+    updateWaterRecord(id: string, data: Partial<z.infer<typeof WaterRecordSchema>>): Promise<WaterRecord | null>;
+    deleteWaterRecord(id: string): Promise<boolean>;
     getEsgDashboard(): Promise<{
-        totalCO2: any;
-        totalEnergy: any;
-        totalWater: any;
+        totalCO2: number;
+        totalEnergy: number;
+        totalWater: number;
         carbonRecords: number;
         energyRecords: number;
         waterRecords: number;
     }>;
 }
+export {};

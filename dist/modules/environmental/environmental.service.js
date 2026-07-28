@@ -16,6 +16,14 @@ export class EnvironmentalService {
             throw new NotFoundError("Waste record");
         return this.repository.updateWaste(id, data);
     }
+    async deleteWaste(id) {
+        const existing = (await this.repository.findWaste({ id }))[0];
+        if (!existing || existing.id !== id) {
+            throw new NotFoundError("Waste record");
+        }
+        await this.repository.deleteWaste(id);
+        return existing;
+    }
     async getEmissions(filters) {
         return this.repository.findEmissions(filters);
     }
@@ -28,6 +36,14 @@ export class EnvironmentalService {
             throw new NotFoundError("Emission record");
         return this.repository.updateEmission(id, data);
     }
+    async deleteEmission(id) {
+        const existing = (await this.repository.findEmissions({ id }))[0];
+        if (!existing || existing.id !== id) {
+            throw new NotFoundError("Emission record");
+        }
+        await this.repository.deleteEmission(id);
+        return existing;
+    }
     async getChemicals(filters) {
         return this.repository.findChemicals(filters);
     }
@@ -39,6 +55,13 @@ export class EnvironmentalService {
         if (!existing || existing.id !== id)
             throw new NotFoundError("Chemical");
         return this.repository.updateChemical(id, data);
+    }
+    async deleteChemical(id) {
+        const existing = (await this.repository.findChemicals({ id }))[0];
+        if (!existing || existing.id !== id)
+            throw new NotFoundError("Chemical");
+        await this.repository.deleteChemical(id);
+        return existing;
     }
     async getSpills(filters) {
         return this.repository.findSpills(filters);

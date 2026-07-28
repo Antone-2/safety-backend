@@ -36,6 +36,18 @@ export class IncidentsRepository {
        ORDER BY created_at DESC`);
         return result.rows;
     }
+    async findReportById(id) {
+        const result = await this.pool.query(`SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
+       FROM reports
+       WHERE id = $1
+         AND (
+           LOWER(COALESCE(category, '')) LIKE '%incident%'
+           OR LOWER(COALESCE(category, '')) LIKE '%accident%'
+           OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
+           OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
+         )`, [id]);
+        return result.rows[0] || null;
+    }
     async findById(id) {
         const result = await this.pool.query("SELECT * FROM incidents WHERE id = $1", [id]);
         return result.rows[0] || null;

@@ -97,6 +97,13 @@ export class EmergencyService {
             return null;
         return this.planService.update(id, EmergencyPlanSchema.parse({ ...current, ...data }));
     }
+    async deletePlan(id) {
+        const current = await this.getPlanById(id);
+        if (!current)
+            return null;
+        await this.planService.delete(id);
+        return current;
+    }
     async createDrill(data) {
         return this.drillService.create(DrillSchema.parse(data));
     }
@@ -109,6 +116,13 @@ export class EmergencyService {
             return null;
         return this.drillService.update(id, DrillSchema.parse({ ...current, ...data }));
     }
+    async deleteDrill(id) {
+        const current = await this.drillService.getById(id);
+        if (!current)
+            return null;
+        await this.drillService.delete(id);
+        return current;
+    }
     async createContact(data) {
         return this.contactService.create(data);
     }
@@ -117,6 +131,13 @@ export class EmergencyService {
     }
     async updateContact(id, data) {
         return this.contactService.update(id, data);
+    }
+    async deleteContact(id) {
+        const current = await this.contactService.getById(id);
+        if (!current)
+            return null;
+        await this.contactService.delete(id);
+        return current;
     }
     async getEmergencyStats() {
         const plans = await this.planService.getAll();

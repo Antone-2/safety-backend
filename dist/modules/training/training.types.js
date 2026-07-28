@@ -76,3 +76,10 @@ export const TrainingMatrixSchema = z.object({
     createdBy: z.string().min(1).max(200),
 });
 export const TrainingMatrixInputSchema = TrainingMatrixSchema.omit({ id: true });
+export const UpdateTrainingMatrixInputSchema = z.object({
+    role: z.string().min(1).max(100).optional(),
+    department: z.string().min(1).max(100).optional(),
+    courseId: z.string().min(1).max(100).optional(),
+    frequency: z.string().min(1).max(100).optional(),
+    mandatory: z.boolean().optional(),
+});

@@ -1,4 +1,3 @@
-import { BaseService } from "./base.service.js";
 import { z } from "zod";
 export declare const InvestigationStatusSchema: z.ZodEnum<["Pending", "In Progress", "Completed", "Closed"]>;
 export declare const InvestigationPrioritySchema: z.ZodEnum<["Low", "Medium", "High", "Critical"]>;
@@ -140,25 +139,34 @@ export declare const InvestigationSchema: z.ZodObject<{
     incidentForm?: string | undefined;
 }>;
 export type InvestigationInput = z.infer<typeof InvestigationSchema>;
-export declare class InvestigationService extends BaseService {
-    constructor();
-    createInvestigation(data: InvestigationInput): Promise<any>;
-    getByIncidentId(incidentId: string): Promise<any[]>;
-    getByStatus(status: string): Promise<any[]>;
-    getByPriority(priority: string): Promise<any[]>;
+type InvestigationRecord = InvestigationInput & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
+export declare class InvestigationService {
+    private validate;
+    getAll(filters?: Record<string, any>): Promise<InvestigationRecord[]>;
+    getById(id: string): Promise<InvestigationRecord | null>;
+    createInvestigation(data: InvestigationInput): Promise<InvestigationRecord>;
+    getByIncidentId(incidentId: string): Promise<InvestigationRecord[]>;
+    getByStatus(status: string): Promise<InvestigationRecord[]>;
+    getByPriority(priority: string): Promise<InvestigationRecord[]>;
     addEvidence(id: string, evidence: {
         name: string;
         url?: string;
         uploadedBy: string;
         type?: string;
         description?: string;
-    }): Promise<any>;
+    }): Promise<InvestigationRecord | null>;
     completeInvestigation(id: string, data: {
         rootCause?: string;
         findings?: string;
         recommendations?: string;
         reviewedBy?: string;
-    }): Promise<any>;
+    }): Promise<InvestigationRecord | null>;
+    update(id: string, data: Record<string, any>): Promise<InvestigationRecord | null>;
+    delete(id: string): Promise<boolean>;
     getStats(): Promise<{
         total: number;
         pending: number;
@@ -168,3 +176,4 @@ export declare class InvestigationService extends BaseService {
         critical: number;
     }>;
 }
+export {};

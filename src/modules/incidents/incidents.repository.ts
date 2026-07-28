@@ -42,6 +42,22 @@ export class IncidentsRepository {
     return result.rows as Record<string, unknown>[];
   }
 
+  async findReportById(id: string): Promise<Record<string, unknown> | null> {
+    const result = await this.pool.query(
+      `SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
+       FROM reports
+       WHERE id = $1
+         AND (
+           LOWER(COALESCE(category, '')) LIKE '%incident%'
+           OR LOWER(COALESCE(category, '')) LIKE '%accident%'
+           OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
+           OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
+         )`,
+      [id],
+    );
+    return (result.rows[0] as Record<string, unknown>) || null;
+  }
+
   async findById(id: string): Promise<Incident | null> {
     const result = await this.pool.query("SELECT * FROM incidents WHERE id = $1", [id]);
     return (result.rows[0] as Incident) || null;

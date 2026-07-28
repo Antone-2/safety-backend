@@ -209,11 +209,12 @@ export class AnalyticsGovernanceService {
     );
     const reports = result.rows;
     const open = reports.filter((row) => row.status !== "Closed").length;
+    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
     const overdue = reports.filter(
       (row) =>
         row.due_at &&
         row.status !== "Closed" &&
-        new Date(row.due_at) < new Date(),
+        new Date(row.due_at) < nyNow,
     ).length;
     const generatedRun = await this.generateRun({ packType: type }, actor);
     return {
@@ -257,9 +258,12 @@ export class AnalyticsGovernanceService {
       ).length;
       if (missing) warnings.push(`${missing} report(s) are missing ${field}.`);
     }
-    const future = rows.filter(
-      (row) => row.date && new Date(row.date) > new Date(),
-    ).length;
+    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const future = rows.filter((row) => {
+      if (!row.date) return false;
+      const nyDate = new Date(new Date(row.date).toLocaleString("en-US", { timeZone: "America/New_York" }));
+      return nyDate > nyNow;
+    }).length;
     if (future) warnings.push(`${future} report(s) have future dates.`);
     const duplicateIds = rows.length - new Set(rows.map((row) => row.id)).size;
     if (duplicateIds)

@@ -1,4 +1,4 @@
-import { Contractor, ContractorIncident, CreateContractorInput, UpdateContractorInput, CreateContractorIncidentInput, ContractorStats } from "./contractors.types.js";
+import { Contractor, ContractorIncident, CreateContractorInput, UpdateContractorInput, CreateContractorIncidentInput, UpdateContractorIncidentInput, ContractorStats } from "./contractors.types.js";
 import { ContractorsRepository } from "./contractors.repository.js";
 export declare class ContractorsService {
     private repository;
@@ -10,5 +10,8 @@ export declare class ContractorsService {
     deleteContractor(id: string): Promise<boolean>;
     recordIncident(data: CreateContractorIncidentInput): Promise<ContractorIncident>;
     getContractorIncidents(contractorId: string): Promise<ContractorIncident[]>;
+    getIncidentById(id: string): Promise<ContractorIncident | null>;
+    updateIncident(id: string, data: UpdateContractorIncidentInput): Promise<ContractorIncident | null>;
+    deleteIncident(id: string): Promise<boolean>;
     getContractorStats(): Promise<ContractorStats>;
 }

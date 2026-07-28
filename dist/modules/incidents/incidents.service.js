@@ -76,7 +76,11 @@ export class IncidentsService {
         });
     }
     async getById(id) {
-        return this.repository.findById(id);
+        const incident = await this.repository.findById(id);
+        if (incident)
+            return incident;
+        const report = await this.repository.findReportById(id);
+        return report ? mapReportToIncident(report) : null;
     }
     async create(data) {
         if (data.severity === "Critical" && !data.department) {

@@ -13,4 +13,11 @@ export class WibaService {
     async updateClaim(id, data) {
         return this.repository.update(id, data);
     }
+    async deleteClaim(id) {
+        const existing = await this.repository.findById(id);
+        if (!existing)
+            return null;
+        await this.repository.delete(id);
+        return existing;
+    }
 }

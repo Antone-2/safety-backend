@@ -205,12 +205,15 @@ export declare class EmergencyService {
     getPlans(): Promise<any[]>;
     getPlanById(id: string): Promise<any>;
     updatePlan(id: string, data: Record<string, any>): Promise<any>;
+    deletePlan(id: string): Promise<any>;
     createDrill(data: z.infer<typeof DrillSchema>): Promise<any>;
     getDrills(filters?: Record<string, any>): Promise<any[]>;
     updateDrill(id: string, data: Record<string, any>): Promise<any>;
+    deleteDrill(id: string): Promise<any>;
     createContact(data: z.infer<typeof EmergencyContactSchema>): Promise<any>;
     getContacts(filters?: Record<string, any>): Promise<any[]>;
     updateContact(id: string, data: Record<string, any>): Promise<any>;
+    deleteContact(id: string): Promise<any>;
     getEmergencyStats(): Promise<{
         totalPlans: number;
         activePlans: number;

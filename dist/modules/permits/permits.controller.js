@@ -59,6 +59,18 @@ export function createPermitsController(service) {
             });
             res.json({ data: permit });
         },
+        async delete(req, res) {
+            const deleted = await service.deletePermit(String(req.params.id));
+            await writeAuditLog({
+                action: "permits.deleted",
+                resourceType: "permit",
+                resourceId: deleted.id,
+                context: { type: deleted.type, location: deleted.location },
+                actor: req.user,
+                request: req,
+            });
+            res.json({ ok: true, deleted: deleted.id });
+        },
         async advanceStatus(req, res) {
             const permit = await service.getPermitById(String(req.params.id));
             if (!permit)
@@ -99,6 +111,7 @@ export function createPermitsRouter() {
     router.get("/:id", rbacMiddleware("permits:read"), controller.getById);
     router.post("/", rbacMiddleware("permits:create"), validate(CreatePermitInputSchema), controller.create);
     router.patch("/:id", rbacMiddleware("permits:update"), validate(UpdatePermitInputSchema), controller.update);
+    router.delete("/:id", rbacMiddleware("permits:delete"), controller.delete);
     router.post("/:id/advance", rbacMiddleware("permits:approve"), controller.advanceStatus);
     return router;
 }

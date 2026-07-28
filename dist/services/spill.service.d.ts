@@ -1,4 +1,3 @@
-import { BaseService } from "./base.service.js";
 import { z } from "zod";
 export declare const SpillSeveritySchema: z.ZodEnum<["Minor", "Major", "Critical"]>;
 export type SpillSeverity = z.infer<typeof SpillSeveritySchema>;
@@ -64,16 +63,25 @@ export declare const SpillSchema: z.ZodObject<{
     spillNo?: string | undefined;
 }>;
 export type SpillInput = z.infer<typeof SpillSchema>;
-export declare class SpillService extends BaseService {
-    constructor();
-    createSpill(data: SpillInput): Promise<any>;
-    getSpills(filters?: Record<string, any>): Promise<any[]>;
-    getSpillById(id: string): Promise<any>;
+type SpillRecord = SpillInput & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
+export declare class SpillService {
+    getAll(filters?: Record<string, unknown>): Promise<SpillRecord[]>;
+    getById(id: string): Promise<SpillRecord | null>;
+    createSpill(data: SpillInput): Promise<SpillRecord>;
+    update(id: string, data: Record<string, unknown>): Promise<SpillRecord | null>;
+    delete(id: string): Promise<boolean>;
+    getSpills(filters?: Record<string, unknown>): Promise<SpillRecord[]>;
+    getSpillById(id: string): Promise<SpillRecord | null>;
     getStats(): Promise<{
-        total: any;
-        minor: any;
-        major: any;
-        critical: any;
-        reportedToNema: any;
+        total: number;
+        minor: number;
+        major: number;
+        critical: number;
+        reportedToNema: number;
     }>;
 }
+export {};

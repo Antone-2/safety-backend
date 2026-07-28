@@ -73,3 +73,15 @@ export const CreateEquipmentInspectionSchema = z.object({
     photoUrl: z.string().optional(),
     createdBy: z.string().min(1).max(200),
 });
+export const UpdateEquipmentInspectionSchema = z.object({
+    equipmentId: z.string().min(1).max(100).optional(),
+    inspector: z.string().min(1).max(200).optional(),
+    inspectionDate: z.string().min(1).optional(),
+    inspectionType: InspectionTypeSchema.optional(),
+    findings: z.string().max(2000).optional().nullable(),
+    defects: z.string().max(1000).optional().nullable(),
+    actionRequired: z.string().max(1000).optional().nullable(),
+    passed: z.boolean().optional(),
+    nextInspectionDue: z.string().min(1).optional(),
+    photoUrl: z.string().optional().nullable(),
+});

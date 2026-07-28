@@ -33,6 +33,32 @@ export class ContractorsService {
     async getContractorIncidents(contractorId) {
         return this.repository.findIncidents(contractorId);
     }
+    async getIncidentById(id) {
+        return this.repository.findIncidentById(id);
+    }
+    async updateIncident(id, data) {
+        const existing = await this.repository.findIncidentById(id);
+        if (!existing)
+            throw new NotFoundError("Contractor incident");
+        const incident = await this.repository.updateIncident(id, data);
+        if (incident) {
+            if (existing.contractorId !== incident.contractorId) {
+                await this.repository.syncIncidentCount(existing.contractorId);
+            }
+            await this.repository.syncIncidentCount(incident.contractorId);
+        }
+        return incident;
+    }
+    async deleteIncident(id) {
+        const existing = await this.repository.findIncidentById(id);
+        if (!existing)
+            return false;
+        const deleted = await this.repository.deleteIncident(id);
+        if (deleted) {
+            await this.repository.syncIncidentCount(existing.contractorId);
+        }
+        return deleted;
+    }
     async getContractorStats() {
         return this.repository.getStats();
     }

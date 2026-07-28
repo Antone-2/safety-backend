@@ -1,4 +1,4 @@
-import { TrainingCourse, TrainingCourseInput, TrainingRecordInput, TrainingMatrix, TrainingMatrixInput } from "./training.types.js";
+import { TrainingCourse, TrainingCourseInput, TrainingRecordInput, TrainingMatrix, TrainingMatrixInput, UpdateTrainingMatrixInput } from "./training.types.js";
 import { TrainingRepository } from "./training.repository.js";
 export declare class TrainingService {
     private repository;
@@ -15,6 +15,7 @@ export declare class TrainingService {
     deleteRecord(id: string): Promise<boolean>;
     getMatrix(filters?: Record<string, unknown>): Promise<TrainingMatrix[]>;
     createMatrix(data: TrainingMatrixInput): Promise<TrainingMatrix>;
+    updateMatrix(id: string, data: UpdateTrainingMatrixInput): Promise<TrainingMatrix | null>;
     deleteMatrix(id: string): Promise<boolean>;
     getStats(): Promise<{
         total: number;

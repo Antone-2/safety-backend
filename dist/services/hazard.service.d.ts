@@ -1,4 +1,3 @@
-import { BaseService } from "./base.service.js";
 import { z } from "zod";
 export declare const HazardCategorySchema: z.ZodEnum<["Slip/Trip", "Chemical Spill", "PPE Violation", "Electrical", "Falling Object", "Vehicle/Forklift", "Inhalation/Fumes", "Fire/Ignition", "Manual Handling", "Noise Exposure", "Confined Space", "Fall from Height", "Other"]>;
 export type HazardCategory = z.infer<typeof HazardCategorySchema>;
@@ -64,15 +63,24 @@ export declare const HazardReportSchema: z.ZodObject<{
     resolution?: string | undefined;
 }>;
 export type HazardReportInput = z.infer<typeof HazardReportSchema>;
-export declare class HazardService extends BaseService {
-    constructor();
-    createReport(data: HazardReportInput): Promise<any>;
-    getReports(filters?: Record<string, any>): Promise<any[]>;
-    getReportById(id: string): Promise<any>;
+type HazardRecord = HazardReportInput & {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+};
+export declare class HazardService {
+    getAll(filters?: Record<string, unknown>): Promise<HazardRecord[]>;
+    getById(id: string): Promise<HazardRecord | null>;
+    createReport(data: HazardReportInput): Promise<HazardRecord>;
+    update(id: string, data: Record<string, unknown>): Promise<HazardRecord | null>;
+    delete(id: string): Promise<boolean>;
+    getReports(filters?: Record<string, unknown>): Promise<HazardRecord[]>;
+    getReportById(id: string): Promise<HazardRecord | null>;
     getStats(): Promise<{
-        total: any;
-        open: any;
-        critical: any;
-        high: any;
+        total: number;
+        open: number;
+        critical: number;
+        high: number;
     }>;
 }
+export {};

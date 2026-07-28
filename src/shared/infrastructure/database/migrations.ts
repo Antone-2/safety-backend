@@ -321,6 +321,182 @@ export const POSTGRES_MIGRATIONS: PostgresMigration[] = [
     `,
   },
   {
+    id: "012b_foundation_investigations",
+    description: "Create investigations table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS investigations (
+        id TEXT PRIMARY KEY,
+        investigation_no TEXT,
+        incident_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        investigator TEXT NOT NULL,
+        investigation_team TEXT,
+        status TEXT NOT NULL DEFAULT 'Pending',
+        priority TEXT NOT NULL DEFAULT 'Medium',
+        evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+        root_cause TEXT,
+        contributing_factors TEXT,
+        corrective_actions TEXT,
+        preventive_actions TEXT,
+        findings TEXT,
+        recommendations TEXT,
+        due_date TIMESTAMPTZ,
+        completed_date TIMESTAMPTZ,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        incident_form TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_investigations_incident_id ON investigations(incident_id);
+      CREATE INDEX IF NOT EXISTS idx_investigations_status ON investigations(status);
+      CREATE INDEX IF NOT EXISTS idx_investigations_priority ON investigations(priority);
+      CREATE INDEX IF NOT EXISTS idx_investigations_created_at ON investigations(created_at DESC);
+    `,
+  },
+  {
+    id: "012c_foundation_ehs_objectives",
+    description: "Create EHS objectives table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS ehs_objectives (
+        id TEXT PRIMARY KEY,
+        objective_no TEXT,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL,
+        department TEXT NOT NULL,
+        site TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        target_value NUMERIC,
+        current_value NUMERIC,
+        unit TEXT,
+        baseline TEXT,
+        start_date TIMESTAMPTZ NOT NULL,
+        end_date TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Not Started',
+        progress NUMERIC NOT NULL DEFAULT 0,
+        linked_risks TEXT NOT NULL DEFAULT '[]',
+        linked_kpis TEXT NOT NULL DEFAULT '[]',
+        linked_capa_ids TEXT NOT NULL DEFAULT '[]',
+        evidence TEXT,
+        last_reviewed TIMESTAMPTZ,
+        reviewed_by TEXT,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_status ON ehs_objectives(status);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_department ON ehs_objectives(department);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_site ON ehs_objectives(site);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_owner ON ehs_objectives(owner);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_end_date ON ehs_objectives(end_date);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_created_at ON ehs_objectives(created_at DESC);
+    `,
+  },
+  {
+    id: "012d_foundation_esg_tables",
+    description: "Create ESG carbon, energy, and water tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS carbon_emissions (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        source TEXT NOT NULL,
+        description TEXT,
+        quantity NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL,
+        co2_equivalent NUMERIC NOT NULL DEFAULT 0,
+        period TEXT NOT NULL,
+        recorded_date TIMESTAMPTZ NOT NULL,
+        site TEXT NOT NULL,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_scope ON carbon_emissions(scope);
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_period ON carbon_emissions(period);
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_site ON carbon_emissions(site);
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_recorded_date ON carbon_emissions(recorded_date DESC);
+
+      CREATE TABLE IF NOT EXISTS energy_records (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        consumption NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL,
+        cost NUMERIC,
+        period TEXT NOT NULL,
+        recorded_date TIMESTAMPTZ NOT NULL,
+        site TEXT NOT NULL,
+        meter_reading NUMERIC,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_energy_records_source ON energy_records(source);
+      CREATE INDEX IF NOT EXISTS idx_energy_records_period ON energy_records(period);
+      CREATE INDEX IF NOT EXISTS idx_energy_records_site ON energy_records(site);
+      CREATE INDEX IF NOT EXISTS idx_energy_records_recorded_date ON energy_records(recorded_date DESC);
+
+      CREATE TABLE IF NOT EXISTS water_records (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        consumption NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL,
+        cost NUMERIC,
+        period TEXT NOT NULL,
+        recorded_date TIMESTAMPTZ NOT NULL,
+        site TEXT NOT NULL,
+        recycled NUMERIC,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_water_records_period ON water_records(period);
+      CREATE INDEX IF NOT EXISTS idx_water_records_site ON water_records(site);
+      CREATE INDEX IF NOT EXISTS idx_water_records_recorded_date ON water_records(recorded_date DESC);
+    `,
+  },
+  {
+    id: "012e_foundation_hazard_reports",
+    description: "Create hazard reports table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS hazard_reports (
+        id TEXT PRIMARY KEY,
+        report_no TEXT,
+        category TEXT NOT NULL,
+        location TEXT NOT NULL,
+        department TEXT NOT NULL,
+        description TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        risk_level TEXT,
+        existing_controls TEXT,
+        recommended_actions TEXT,
+        immediate_action_taken TEXT,
+        reported_by TEXT NOT NULL,
+        reported_at TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'Open',
+        assigned_to TEXT,
+        resolved_at TIMESTAMPTZ,
+        resolution TEXT,
+        photo_url TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_status ON hazard_reports(status);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_severity ON hazard_reports(severity);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_category ON hazard_reports(category);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_department ON hazard_reports(department);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_created_at ON hazard_reports(created_at DESC);
+    `,
+  },
+  {
     id: "010_auth_session_refresh_hash",
     description: "Add refresh token hash storage to auth sessions",
     sql: `
@@ -1904,6 +2080,128 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
       CREATE INDEX IF NOT EXISTS idx_emergency_contacts_site ON emergency_contacts(site);
       CREATE INDEX IF NOT EXISTS idx_emergency_contacts_isert ON emergency_contacts(isERT);
       CREATE INDEX IF NOT EXISTS idx_emergency_contacts_createdAt ON emergency_contacts(createdAt DESC);
+    `,
+  },
+  {
+    id: "031_timezone_fix",
+    description: "Convert TIMESTAMP to TIMESTAMPTZ and add America/New_York timezone validation",
+    sql: `
+      DO $$
+      DECLARE
+        rec record;
+      BEGIN
+        FOR rec IN
+          SELECT *
+          FROM (
+            VALUES
+              ('reports', 'date', 'America/New_York'),
+              ('reports', 'due_at', 'America/New_York'),
+              ('reports', 'compliance_due_at', 'America/New_York'),
+              ('incidents', 'date', 'America/New_York'),
+              ('incidents', 'due_at', 'America/New_York'),
+              ('incidents', 'regulatory_notification_date', 'America/New_York'),
+              ('incidents', 'compliance_due_at', 'America/New_York'),
+              ('capa', 'due_date', 'America/New_York'),
+              ('capa', 'start_date', 'America/New_York'),
+              ('capa', 'completed_date', 'America/New_York'),
+              ('capa', 'verified_at', 'America/New_York'),
+              ('permits', 'start_date', 'America/New_York'),
+              ('permits', 'end_date', 'America/New_York'),
+              ('training_records', 'scheduled_date', 'America/New_York'),
+              ('training_records', 'completed_date', 'America/New_York'),
+              ('training_records', 'expiry_date', 'America/New_York'),
+              ('investigations', 'due_date', 'America/New_York'),
+              ('investigations', 'completed_date', 'America/New_York'),
+              ('investigations', 'reviewed_at', 'America/New_York'),
+              ('documents', 'review_date', 'America/New_York'),
+              ('documents', 'approval_date', 'America/New_York'),
+              ('documents', 'effective_date', 'America/New_York'),
+              ('documents', 'expiry_date', 'America/New_York'),
+              ('documents', 'next_review_date', 'America/New_York'),
+              ('equipment', 'purchase_date', 'America/New_York'),
+              ('equipment', 'installation_date', 'America/New_York'),
+              ('equipment', 'warranty_expiry', 'America/New_York'),
+              ('equipment', 'last_inspection_date', 'America/New_York'),
+              ('equipment', 'next_inspection_date', 'America/New_York'),
+              ('equipment_inspections', 'inspection_date', 'America/New_York'),
+              ('equipment_inspections', 'next_inspection_due', 'America/New_York'),
+              ('compliance_obligations', 'due_date', 'America/New_York'),
+              ('compliance_obligations', 'last_compliance_date', 'America/New_York'),
+              ('audits', 'start_date', 'America/New_York'),
+              ('audits', 'end_date', 'America/New_York'),
+              ('legal_updates', 'effective_date', 'America/New_York'),
+              ('legal_updates', 'due_date', 'America/New_York'),
+              ('hazard_reports', 'reported_at', 'America/New_York'),
+              ('hazard_reports', 'resolved_at', 'America/New_York'),
+              ('carbon_emissions', 'recorded_date', 'America/New_York'),
+              ('energy_records', 'recorded_date', 'America/New_York'),
+              ('water_records', 'recorded_date', 'America/New_York'),
+              ('waste_records', 'generated_date', 'America/New_York'),
+              ('waste_records', 'disposed_date', 'America/New_York'),
+              ('ppe_equipment', 'issued_date', 'America/New_York'),
+              ('ppe_equipment', 'expiry_date', 'America/New_York'),
+              ('ppe_equipment', 'inspection_date', 'America/New_York'),
+              ('ppe_equipment', 'inspection_due_date', 'America/New_York'),
+              ('contractors', 'insurance_expiry', 'America/New_York'),
+              ('contractors', 'last_audit_date', 'America/New_York'),
+              ('contractors', 'induction_date', 'America/New_York'),
+              ('contractors', 'induction_expiry', 'America/New_York'),
+              ('contractor_incidents', 'date', 'America/New_York'),
+              ('ehs_objectives', 'start_date', 'America/New_York'),
+              ('ehs_objectives', 'end_date', 'America/New_York'),
+              ('ehs_objectives', 'last_reviewed', 'America/New_York'),
+              ('analytics_report_schedules', 'next_run_at', 'UTC'),
+              ('analytics_report_schedules', 'last_run_at', 'UTC'),
+              ('analytics_report_runs', 'period_start', 'UTC'),
+              ('analytics_report_runs', 'period_end', 'UTC')
+          ) AS cols(table_name, column_name, assumed_timezone)
+        LOOP
+          IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = rec.table_name
+              AND column_name = rec.column_name
+              AND data_type = 'timestamp without time zone'
+          ) THEN
+            EXECUTE format(
+              'ALTER TABLE %I ALTER COLUMN %I TYPE TIMESTAMPTZ USING %I AT TIME ZONE %L',
+              rec.table_name,
+              rec.column_name,
+              rec.column_name,
+              rec.assumed_timezone
+            );
+          END IF;
+        END LOOP;
+      END $$;
+
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'reports' AND column_name = 'date')
+          AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reports_date_not_future') THEN
+          ALTER TABLE reports
+            ADD CONSTRAINT reports_date_not_future
+            CHECK ((date AT TIME ZONE 'America/New_York')::DATE <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'incidents' AND column_name = 'date')
+          AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'incidents_date_not_future') THEN
+          ALTER TABLE incidents
+            ADD CONSTRAINT incidents_date_not_future
+            CHECK ((date AT TIME ZONE 'America/New_York')::DATE <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE);
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'equipment_inspections' AND column_name = 'inspection_date')
+          AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'equipment_inspections_date_not_future') THEN
+          ALTER TABLE equipment_inspections
+            ADD CONSTRAINT equipment_inspections_date_not_future
+            CHECK ((inspection_date AT TIME ZONE 'America/New_York')::DATE <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE);
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_reports_date_ny ON reports ((date AT TIME ZONE 'America/New_York')::DATE);
+      CREATE INDEX IF NOT EXISTS idx_incidents_date_ny ON incidents ((date AT TIME ZONE 'America/New_York')::DATE);
+      CREATE INDEX IF NOT EXISTS idx_reports_due_at_ny ON reports ((due_at AT TIME ZONE 'America/New_York')::DATE);
     `,
   },
 ];

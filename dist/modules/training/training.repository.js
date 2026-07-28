@@ -229,6 +229,10 @@ export class TrainingRepository {
         const result = await this.pool.query(sql, params);
         return result.rows.map(asMatrix);
     }
+    async findMatrixById(id) {
+        const result = await this.pool.query("SELECT * FROM training_matrices WHERE id = $1", [id]);
+        return result.rows[0] ? asMatrix(result.rows[0]) : null;
+    }
     async createMatrix(data) {
         const result = await this.pool.query(`INSERT INTO training_matrices (id, role, department, course_id, frequency, mandatory, created_by, created_at, updated_at)
        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8)
@@ -243,6 +247,33 @@ export class TrainingRepository {
             now(),
         ]);
         return asMatrix(result.rows[0]);
+    }
+    async updateMatrix(id, data) {
+        const fields = [];
+        const params = [];
+        let idx = 1;
+        const map = {
+            role: "role",
+            department: "department",
+            courseId: "course_id",
+            frequency: "frequency",
+            mandatory: "mandatory",
+        };
+        Object.entries(data).forEach(([key, value]) => {
+            if (value !== undefined && map[key]) {
+                fields.push(`${map[key]} = $${idx}`);
+                params.push(value);
+                idx++;
+            }
+        });
+        if (fields.length === 0)
+            return this.findMatrixById(id);
+        fields.push(`updated_at = $${idx}`);
+        params.push(now());
+        params.push(id);
+        const sql = `UPDATE training_matrices SET ${fields.join(", ")} WHERE id = $${idx + 1} RETURNING *`;
+        const result = await this.pool.query(sql, params);
+        return result.rows[0] ? asMatrix(result.rows[0]) : null;
     }
     async deleteMatrix(id) {
         const result = await this.pool.query("DELETE FROM training_matrices WHERE id = $1", [id]);

@@ -49,6 +49,15 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
         res.status(500).json({ error: "Failed to update JSA" });
     }
 });
+router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const deleted = await jsaService.deleteJsa(String(String(req.params.id)));
+        res.json({ ok: true, deleted: deleted.id });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete JSA" });
+    }
+});
 router.post("/:id/submit", authenticateUser, async (req, res) => {
     try {
         const jsa = await jsaService.submitForReview(String(String(req.params.id)));

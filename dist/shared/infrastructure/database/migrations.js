@@ -312,6 +312,182 @@ export const POSTGRES_MIGRATIONS = [
     `,
     },
     {
+        id: "012b_foundation_investigations",
+        description: "Create investigations table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS investigations (
+        id TEXT PRIMARY KEY,
+        investigation_no TEXT,
+        incident_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        investigator TEXT NOT NULL,
+        investigation_team TEXT,
+        status TEXT NOT NULL DEFAULT 'Pending',
+        priority TEXT NOT NULL DEFAULT 'Medium',
+        evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+        root_cause TEXT,
+        contributing_factors TEXT,
+        corrective_actions TEXT,
+        preventive_actions TEXT,
+        findings TEXT,
+        recommendations TEXT,
+        due_date TIMESTAMPTZ,
+        completed_date TIMESTAMPTZ,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        incident_form TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_investigations_incident_id ON investigations(incident_id);
+      CREATE INDEX IF NOT EXISTS idx_investigations_status ON investigations(status);
+      CREATE INDEX IF NOT EXISTS idx_investigations_priority ON investigations(priority);
+      CREATE INDEX IF NOT EXISTS idx_investigations_created_at ON investigations(created_at DESC);
+    `,
+    },
+    {
+        id: "012c_foundation_ehs_objectives",
+        description: "Create EHS objectives table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS ehs_objectives (
+        id TEXT PRIMARY KEY,
+        objective_no TEXT,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL,
+        department TEXT NOT NULL,
+        site TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        target_value NUMERIC,
+        current_value NUMERIC,
+        unit TEXT,
+        baseline TEXT,
+        start_date TIMESTAMPTZ NOT NULL,
+        end_date TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Not Started',
+        progress NUMERIC NOT NULL DEFAULT 0,
+        linked_risks TEXT NOT NULL DEFAULT '[]',
+        linked_kpis TEXT NOT NULL DEFAULT '[]',
+        linked_capa_ids TEXT NOT NULL DEFAULT '[]',
+        evidence TEXT,
+        last_reviewed TIMESTAMPTZ,
+        reviewed_by TEXT,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_status ON ehs_objectives(status);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_department ON ehs_objectives(department);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_site ON ehs_objectives(site);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_owner ON ehs_objectives(owner);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_end_date ON ehs_objectives(end_date);
+      CREATE INDEX IF NOT EXISTS idx_ehs_objectives_created_at ON ehs_objectives(created_at DESC);
+    `,
+    },
+    {
+        id: "012d_foundation_esg_tables",
+        description: "Create ESG carbon, energy, and water tables",
+        sql: `
+      CREATE TABLE IF NOT EXISTS carbon_emissions (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        source TEXT NOT NULL,
+        description TEXT,
+        quantity NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL,
+        co2_equivalent NUMERIC NOT NULL DEFAULT 0,
+        period TEXT NOT NULL,
+        recorded_date TIMESTAMPTZ NOT NULL,
+        site TEXT NOT NULL,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_scope ON carbon_emissions(scope);
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_period ON carbon_emissions(period);
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_site ON carbon_emissions(site);
+      CREATE INDEX IF NOT EXISTS idx_carbon_emissions_recorded_date ON carbon_emissions(recorded_date DESC);
+
+      CREATE TABLE IF NOT EXISTS energy_records (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        consumption NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL,
+        cost NUMERIC,
+        period TEXT NOT NULL,
+        recorded_date TIMESTAMPTZ NOT NULL,
+        site TEXT NOT NULL,
+        meter_reading NUMERIC,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_energy_records_source ON energy_records(source);
+      CREATE INDEX IF NOT EXISTS idx_energy_records_period ON energy_records(period);
+      CREATE INDEX IF NOT EXISTS idx_energy_records_site ON energy_records(site);
+      CREATE INDEX IF NOT EXISTS idx_energy_records_recorded_date ON energy_records(recorded_date DESC);
+
+      CREATE TABLE IF NOT EXISTS water_records (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        consumption NUMERIC NOT NULL DEFAULT 0,
+        unit TEXT NOT NULL,
+        cost NUMERIC,
+        period TEXT NOT NULL,
+        recorded_date TIMESTAMPTZ NOT NULL,
+        site TEXT NOT NULL,
+        recycled NUMERIC,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_water_records_period ON water_records(period);
+      CREATE INDEX IF NOT EXISTS idx_water_records_site ON water_records(site);
+      CREATE INDEX IF NOT EXISTS idx_water_records_recorded_date ON water_records(recorded_date DESC);
+    `,
+    },
+    {
+        id: "012e_foundation_hazard_reports",
+        description: "Create hazard reports table",
+        sql: `
+      CREATE TABLE IF NOT EXISTS hazard_reports (
+        id TEXT PRIMARY KEY,
+        report_no TEXT,
+        category TEXT NOT NULL,
+        location TEXT NOT NULL,
+        department TEXT NOT NULL,
+        description TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        risk_level TEXT,
+        existing_controls TEXT,
+        recommended_actions TEXT,
+        immediate_action_taken TEXT,
+        reported_by TEXT NOT NULL,
+        reported_at TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'Open',
+        assigned_to TEXT,
+        resolved_at TIMESTAMPTZ,
+        resolution TEXT,
+        photo_url TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_status ON hazard_reports(status);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_severity ON hazard_reports(severity);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_category ON hazard_reports(category);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_department ON hazard_reports(department);
+      CREATE INDEX IF NOT EXISTS idx_hazard_reports_created_at ON hazard_reports(created_at DESC);
+    `,
+    },
+    {
         id: "010_auth_session_refresh_hash",
         description: "Add refresh token hash storage to auth sessions",
         sql: `

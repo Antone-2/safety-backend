@@ -175,6 +175,7 @@ export declare class RiskService {
     getRegisters(filters?: Record<string, any>): Promise<any[]>;
     getRegisterById(id: string): Promise<any>;
     updateRegister(id: string, data: Record<string, any>): Promise<any>;
+    deleteRegister(id: string): Promise<any>;
     createBowTie(data: z.infer<typeof BowTieSchema>): Promise<any>;
     getBowTies(): Promise<any[]>;
     private calculateRiskLevel;

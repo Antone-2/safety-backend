@@ -7,7 +7,7 @@ import { validate } from "../../shared/middleware/validation.middleware.js";
 import { NotFoundError } from "../../shared/domain/errors/index.js";
 import { writeAuditLog, diffRecord } from "../../shared/audit/audit.service.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
-import { TrainingCourseInputSchema, TrainingRecordInputSchema, } from "./training.types.js";
+import { TrainingCourseInputSchema, TrainingRecordInputSchema, UpdateTrainingMatrixInputSchema, } from "./training.types.js";
 export function createTrainingController(service) {
     return {
         async getAll(req, res) {
@@ -134,6 +134,35 @@ export function createTrainingController(service) {
             });
             res.status(201).json({ data: matrix });
         },
+        async updateMatrix(req, res) {
+            const before = await service.getMatrix({ id: String(req.params.id) });
+            const existing = before[0];
+            if (!existing)
+                throw new NotFoundError("Training matrix");
+            const matrix = await service.updateMatrix(String(req.params.id), req.body);
+            await writeAuditLog({
+                action: "training.matrix.updated",
+                resourceType: "training_matrix",
+                resourceId: String(req.params.id),
+                changes: diffRecord(existing, matrix),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: matrix });
+        },
+        async deleteMatrix(req, res) {
+            const deleted = await service.deleteMatrix(String(req.params.id));
+            if (!deleted)
+                throw new NotFoundError("Training matrix");
+            await writeAuditLog({
+                action: "training.matrix.deleted",
+                resourceType: "training_matrix",
+                resourceId: String(req.params.id),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: { ok: true, deleted: req.params.id } });
+        },
         async getStats(req, res) {
             const stats = await service.getStats();
             res.json({ data: stats });
@@ -154,6 +183,8 @@ export function createTrainingRouter() {
     router.delete("/records/:id", rbacMiddleware("training:delete"), controller.deleteRecord);
     router.get("/matrix", rbacMiddleware("training:read"), controller.getMatrix);
     router.post("/matrix", rbacMiddleware("training:create"), controller.createMatrix);
+    router.patch("/matrix/:id", rbacMiddleware("training:update"), validate(UpdateTrainingMatrixInputSchema), controller.updateMatrix);
+    router.delete("/matrix/:id", rbacMiddleware("training:delete"), controller.deleteMatrix);
     router.get("/stats", rbacMiddleware("training:read"), controller.getStats);
     router.post("/courses", rbacMiddleware("training:create"), validate(TrainingCourseInputSchema), controller.createCourse);
     router.patch("/courses/:id", rbacMiddleware("training:update"), controller.updateCourse);

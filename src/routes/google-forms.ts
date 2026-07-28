@@ -7,7 +7,10 @@ import { broadcastReport } from "../modules/reports/reports.module.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 import { storeReportPhotoFromDrive } from "../modules/reports/report-photo.service.js";
 import { logger } from "../shared/utils/logger.js";
-import { parseReportDate } from "../shared/utils/report-date.js";
+import {
+  GOOGLE_SHEETS_TIMEZONE,
+  parseValidatedReportDate,
+} from "../shared/utils/report-date.js";
 
 const router = Router();
 const SYNC_STATE_ID = "google_forms";
@@ -333,13 +336,26 @@ function normalizeStatus(status?: string): "Open" | "In Progress" | "Closed" {
   return "Open";
 }
 
-export function parseDate(dateStr?: string): string {
+export function parseDate(dateStr?: string, referenceDate?: Date): string {
   if (!dateStr?.trim()) throw new Error("Google Sheets row is missing its report date");
 
   try {
-    return parseReportDate(dateStr);
-  } catch {
-    throw new Error(`Invalid Google Sheets report date: ${dateStr.trim()}`);
+    const parsed = parseValidatedReportDate(dateStr, {
+      referenceDate,
+      label: "Google Sheets report date",
+    });
+    logger.debug(
+      {
+        raw: dateStr,
+        parsedUtc: parsed,
+        timezone: GOOGLE_SHEETS_TIMEZONE,
+      },
+      "google-forms.parseDate",
+    );
+    return parsed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid Google Sheets report date";
+    throw new Error(`Invalid Google Sheets report date: ${dateStr.trim()} (${message})`);
   }
 }
 
@@ -651,6 +667,7 @@ export function buildReportRecordFromRow(
   const anonymous = reporter.toLowerCase() === "anonymous";
   const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
   const dueAt = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
+  logger.debug({ date, dueAt, slaHours, dateRaw }, "google-forms.buildReportRecordFromRow.computedDates");
   const photoUrl = extractPhotoUrl(headers, row);
   const department = defaults.departments[0];
   const shift = "Day";

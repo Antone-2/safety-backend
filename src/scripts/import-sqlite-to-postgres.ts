@@ -60,17 +60,31 @@ function asInteger(value: unknown, fallback = 0): number {
 function asTimestamp(value: unknown, fallback = new Date()): Date {
   if (typeof value === "number" && value > 0 && value < 100_000) {
     const excelEpoch = Date.UTC(1899, 11, 30);
-    return new Date(excelEpoch + value * 86_400_000);
+    const baseUtc = new Date(excelEpoch + value * 86_400_000);
+    const nyStr = baseUtc.toLocaleString("en-US", { timeZone: "America/New_York" });
+    const nyDate = new Date(nyStr);
+    const offset = nyDate.getTime() - baseUtc.getTime();
+    return new Date(baseUtc.getTime() - offset);
   }
   const text = asText(value);
   const dayFirst = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (dayFirst) {
     const [, day, month, year, hour = "0", minute = "0", second = "0"] = dayFirst;
-    const parsed = new Date(Date.UTC(+year, +month - 1, +day, +hour, +minute, +second));
+    const localDateTime = new Date(Date.UTC(+year, +month - 1, +day, +hour, +minute, +second));
+    const nyStr = localDateTime.toLocaleString("en-US", { timeZone: "America/New_York" });
+    const nyDate = new Date(nyStr);
+    const offset = nyDate.getTime() - localDateTime.getTime();
+    const parsed = new Date(localDateTime.getTime() - offset);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
   const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  if (!Number.isNaN(parsed.getTime())) {
+    const nyStr = parsed.toLocaleString("en-US", { timeZone: "America/New_York" });
+    const nyDate = new Date(nyStr);
+    const offset = nyDate.getTime() - parsed.getTime();
+    return new Date(parsed.getTime() - offset);
+  }
+  return fallback;
 }
 
 function asJson(value: unknown, fallback: unknown): string {

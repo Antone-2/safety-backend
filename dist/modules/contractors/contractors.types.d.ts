@@ -219,6 +219,35 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
     followUpRequired?: boolean | undefined;
 }>;
 export type CreateContractorIncidentInput = z.infer<typeof CreateContractorIncidentSchema>;
+export declare const UpdateContractorIncidentSchema: z.ZodObject<{
+    contractorId: z.ZodOptional<z.ZodString>;
+    incidentType: z.ZodOptional<z.ZodString>;
+    description: z.ZodOptional<z.ZodString>;
+    severity: z.ZodOptional<z.ZodEnum<["Low", "Medium", "High", "Critical"]>>;
+    date: z.ZodOptional<z.ZodString>;
+    location: z.ZodOptional<z.ZodString>;
+    actionTaken: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+    followUpRequired: z.ZodOptional<z.ZodBoolean>;
+}, "strip", z.ZodTypeAny, {
+    date?: string | undefined;
+    description?: string | undefined;
+    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
+    location?: string | undefined;
+    contractorId?: string | undefined;
+    incidentType?: string | undefined;
+    actionTaken?: string | null | undefined;
+    followUpRequired?: boolean | undefined;
+}, {
+    date?: string | undefined;
+    description?: string | undefined;
+    severity?: "Critical" | "Low" | "Medium" | "High" | undefined;
+    location?: string | undefined;
+    contractorId?: string | undefined;
+    incidentType?: string | undefined;
+    actionTaken?: string | null | undefined;
+    followUpRequired?: boolean | undefined;
+}>;
+export type UpdateContractorIncidentInput = z.infer<typeof UpdateContractorIncidentSchema>;
 export interface ContractorStats {
     total: number;
     active: number;

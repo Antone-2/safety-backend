@@ -28,6 +28,24 @@ router.post("/carbon", authenticateUser, requireRole(["super-admin", "EHS-manage
         res.status(500).json({ error: "Failed to create carbon emission record" });
     }
 });
+router.patch("/carbon/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
+    try {
+        const emission = await esgService.updateCarbonEmission(String(req.params.id), req.body);
+        res.json(emission);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to update carbon emission record" });
+    }
+});
+router.delete("/carbon/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const deleted = await esgService.deleteCarbonEmission(String(req.params.id));
+        res.json({ success: deleted });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete carbon emission record" });
+    }
+});
 router.get("/energy", authenticateUser, async (req, res) => {
     try {
         const filters = {};
@@ -53,6 +71,24 @@ router.post("/energy", authenticateUser, requireRole(["super-admin", "EHS-manage
         res.status(500).json({ error: "Failed to create energy record" });
     }
 });
+router.patch("/energy/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
+    try {
+        const record = await esgService.updateEnergyRecord(String(req.params.id), req.body);
+        res.json(record);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to update energy record" });
+    }
+});
+router.delete("/energy/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const deleted = await esgService.deleteEnergyRecord(String(req.params.id));
+        res.json({ success: deleted });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete energy record" });
+    }
+});
 router.get("/water", authenticateUser, async (req, res) => {
     try {
         const filters = {};
@@ -74,6 +110,24 @@ router.post("/water", authenticateUser, requireRole(["super-admin", "EHS-manager
     }
     catch (error) {
         res.status(500).json({ error: "Failed to create water record" });
+    }
+});
+router.patch("/water/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
+    try {
+        const record = await esgService.updateWaterRecord(String(req.params.id), req.body);
+        res.json(record);
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to update water record" });
+    }
+});
+router.delete("/water/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    try {
+        const deleted = await esgService.deleteWaterRecord(String(req.params.id));
+        res.json({ success: deleted });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to delete water record" });
     }
 });
 router.get("/dashboard", authenticateUser, async (req, res) => {
