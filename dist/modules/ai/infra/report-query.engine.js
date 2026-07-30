@@ -331,7 +331,6 @@ export class ReportQueryEngine {
             recommendedActions: input.managementActions,
             citedReports: input.citedReports.map(compactReportEvidence),
         };
-        console.log("[ai-debug] generateEvidenceBoundAnswer start");
         const answer = await this.deps.llm.generate("You are Crown Safety Data AI. Answer only from the trusted analytics context you are given. Do not invent KPIs, counts, dates, locations, departments, or incidents. If the context is insufficient, say exactly what is missing. Use a concise executive tone. Cite report IDs inline when making factual claims.", [
             `User question: ${input.question}`,
             `Period: ${input.period}`,
@@ -341,7 +340,6 @@ export class ReportQueryEngine {
             "2. supporting evidence",
             "3. immediate actions if relevant",
         ].join("\n\n"), { temperature: 0.1, maxTokens: 900 });
-        console.log("[ai-debug] generateEvidenceBoundAnswer end");
         return { answer, trustedContext };
     }
     async executeReportQuery(input) {
@@ -351,9 +349,7 @@ export class ReportQueryEngine {
             ...input.governedInput,
             filters: planned.responseFilters,
         };
-        console.log("[ai-debug] start executeReportQuery");
         const initialResult = await this.reports.list(planned.reportFilters, 1, 10000);
-        console.log("[ai-debug] reports.list done", initialResult?.data?.length);
         const reportsData = initialResult.data;
         const [summary, topReporters] = await Promise.all([
             this.getReportSummary(planned.reportFilters, reportsData),
@@ -654,7 +650,7 @@ export class ReportQueryEngine {
                 ? (() => {
                     const byYear = {};
                     for (const row of trends) {
-                        const year = row.month.slice(-4);
+                        const year = row.month.split("-")[0];
                         if (!byYear[year])
                             byYear[year] = {};
                         if (row.highestRatedScore !== undefined && row.highestRatedLocation) {

@@ -494,19 +494,27 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        db.prepare("INSERT INTO auth_sessions (id, userId, email, createdAt, expiresAt, ipAddress, userAgent, refreshHash, deviceFingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run([
-            input.id,
-            input.userId,
-            input.email,
-            new Date().toISOString(),
-            input.expiresAt,
-            input.ipAddress,
-            input.userAgent,
-            input.refreshHash,
-            input.deviceFingerprint,
-        ]);
-        await saveDb(db);
+        try {
+            const db = await getDb();
+            db.prepare("INSERT INTO auth_sessions (id, userId, email, createdAt, expiresAt, ipAddress, userAgent, refreshHash, deviceFingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run([
+                input.id,
+                input.userId,
+                input.email,
+                new Date().toISOString(),
+                input.expiresAt,
+                input.ipAddress,
+                input.userAgent,
+                input.refreshHash,
+                input.deviceFingerprint,
+            ]);
+            await saveDb(db);
+        }
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                throw new ExternalServiceError("PostgreSQL", "Session persistence is temporarily unavailable. Please try again.");
+            }
+            throw error;
+        }
     }
     async function getSessionByRefreshHash(refreshHash) {
         if (isPgConfigured()) {
@@ -523,8 +531,17 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        return allRows(db, "SELECT * FROM auth_sessions WHERE refreshHash = ? AND revokedAt IS NULL AND expiresAt > ?", [refreshHash, new Date().toISOString()])[0];
+        try {
+            const db = await getDb();
+            return allRows(db, "SELECT * FROM auth_sessions WHERE refreshHash = ? AND revokedAt IS NULL AND expiresAt > ?", [refreshHash, new Date().toISOString()])[0];
+        }
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                warnDisabledSqliteFallback("Refresh session lookup skipped", error);
+                return undefined;
+            }
+            throw error;
+        }
     }
     async function getTrustedMfaSession(userId, fingerprint) {
         if (isPgConfigured()) {
@@ -608,9 +625,18 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        db.prepare("UPDATE auth_sessions SET revokedAt = ? WHERE id = ? AND userId = ?").run([now, sessionId, userId]);
-        await saveDb(db);
+        try {
+            const db = await getDb();
+            db.prepare("UPDATE auth_sessions SET revokedAt = ? WHERE id = ? AND userId = ?").run([now, sessionId, userId]);
+            await saveDb(db);
+        }
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                warnDisabledSqliteFallback("Session revocation skipped", error);
+                return;
+            }
+            throw error;
+        }
     }
     async function revokeUserSessions(userId) {
         const now = new Date().toISOString();
@@ -623,9 +649,18 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        db.prepare("UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL").run([now, userId]);
-        await saveDb(db);
+        try {
+            const db = await getDb();
+            db.prepare("UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL").run([now, userId]);
+            await saveDb(db);
+        }
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                warnDisabledSqliteFallback("User session revocation skipped", error);
+                return;
+            }
+            throw error;
+        }
     }
     async function enforceSessionLimit(userId) {
         const sessions = await listAutEHSssions(userId);
@@ -1167,6 +1202,16 @@ export function createAuthRouter() {
             });
         }
         catch {
+            if (process.env.NODE_ENV !== "production") {
+                return res.json({
+                    ok: true,
+                    delivered: false,
+                    mode: "development",
+                    message: "Email delivery unavailable in development. Use the fallback login code shown below.",
+                    expiresMinutes: OTP_TTL_MINUTES,
+                    devCode: code,
+                });
+            }
             return res.status(502).json({
                 error: "Could not send login code. Check SMTP configuration and try again.",
             });
@@ -1398,69 +1443,78 @@ export function createAuthRouter() {
         }
     });
     router.post("/refresh", async (req, res) => {
-        const cookie = req.headers.cookie
-            ?.split(";")
-            .map((part) => part.trim())
-            .find((part) => part.startsWith("ehs_refresh="))
-            ?.slice("ehs_refresh=".length);
-        if (!cookie)
-            return res.status(401).json({ error: "Refresh session is missing" });
-        const hash = createHash("sha256")
-            .update(decodeURIComponent(cookie))
-            .digest("hex");
-        const session = await getSessionByRefreshHash(hash);
-        if (!session)
-            return res
-                .status(401)
-                .json({ error: "Refresh session is invalid or expired" });
-        const user = await findUserByEmail(session.email);
-        if (!user)
-            return res.status(401).json({ error: "Account is no longer active" });
-        const oldSessionId = String(session.id);
-        await revokeSession(oldSessionId, user.id);
-        const newSessionId = randomBytes(16).toString("hex");
-        const newRefreshToken = randomBytes(48).toString("base64url");
-        const token = generateToken(publicUser(user), newSessionId);
-        await createAutEHSssion({
-            id: newSessionId,
-            userId: user.id,
-            email: session.email,
-            expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
-            ipAddress: req.ip ?? "",
-            userAgent: req.get("user-agent") ?? "",
-            refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
-            deviceFingerprint: sessionFingerprint(req),
-            mfaVerifiedAt: session.mfaVerifiedAt ?? null,
-            mfaTrustedUntil: session.mfaTrustedUntil ?? null,
-        });
-        const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
-        res.cookie("ehs_access", token, {
-            httpOnly: true,
-            sameSite: cookieSameSite,
-            secure: env.NODE_ENV === "production",
-            maxAge: getAccessCookieMaxAgeMs(),
-            path: "/",
-        });
-        res.cookie("ehs_refresh", newRefreshToken, {
-            httpOnly: true,
-            sameSite: cookieSameSite,
-            secure: env.NODE_ENV === "production",
-            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-            path: "/api/auth",
-        });
-        const csrfToken = randomBytes(24).toString("base64url");
-        res.cookie("ehs_csrf", csrfToken, {
-            httpOnly: false,
-            sameSite: cookieSameSite,
-            secure: env.NODE_ENV === "production",
-            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-            path: "/",
-        });
-        res.json({
-            token,
-            user: publicUser(user),
-            csrfToken,
-        });
+        try {
+            const cookie = req.headers.cookie
+                ?.split(";")
+                .map((part) => part.trim())
+                .find((part) => part.startsWith("ehs_refresh="))
+                ?.slice("ehs_refresh=".length);
+            if (!cookie)
+                return res.status(401).json({ error: "Refresh session is missing" });
+            const hash = createHash("sha256")
+                .update(decodeURIComponent(cookie))
+                .digest("hex");
+            const session = await getSessionByRefreshHash(hash);
+            if (!session)
+                return res
+                    .status(401)
+                    .json({ error: "Refresh session is invalid or expired" });
+            const user = await findUserByEmail(session.email);
+            if (!user)
+                return res.status(401).json({ error: "Account is no longer active" });
+            const oldSessionId = String(session.id);
+            await revokeSession(oldSessionId, user.id);
+            const newSessionId = randomBytes(16).toString("hex");
+            const newRefreshToken = randomBytes(48).toString("base64url");
+            const token = generateToken(publicUser(user), newSessionId);
+            await createAutEHSssion({
+                id: newSessionId,
+                userId: user.id,
+                email: session.email,
+                expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
+                ipAddress: req.ip ?? "",
+                userAgent: req.get("user-agent") ?? "",
+                refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
+                deviceFingerprint: sessionFingerprint(req),
+                mfaVerifiedAt: session.mfaVerifiedAt ?? null,
+                mfaTrustedUntil: session.mfaTrustedUntil ?? null,
+            });
+            const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
+            res.cookie("ehs_access", token, {
+                httpOnly: true,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: getAccessCookieMaxAgeMs(),
+                path: "/",
+            });
+            res.cookie("ehs_refresh", newRefreshToken, {
+                httpOnly: true,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+                path: "/api/auth",
+            });
+            const csrfToken = randomBytes(24).toString("base64url");
+            res.cookie("ehs_csrf", csrfToken, {
+                httpOnly: false,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+                path: "/",
+            });
+            res.json({
+                token,
+                user: publicUser(user),
+                csrfToken,
+            });
+        }
+        catch (error) {
+            if (error instanceof ExternalServiceError) {
+                return res.status(503).json({ error: error.message });
+            }
+            console.error("Refresh session error:", error);
+            return res.status(500).json({ error: "Failed to refresh session" });
+        }
     });
     router.post("/register", async (req, res) => {
         return res.status(403).json({

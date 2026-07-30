@@ -88,6 +88,26 @@ function readPagination(req) {
         limit: Number(String(req.query.limit)) || 50,
     };
 }
+export function dedupeDashboardReports(rows) {
+    const byId = new Map();
+    const toTime = (value) => {
+        if (!value)
+            return Number.NEGATIVE_INFINITY;
+        const time = new Date(value).getTime();
+        return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
+    };
+    const getRecency = (row) => Math.max(toTime(row.updatedAt), toTime(row.createdAt), toTime(row.date));
+    for (const row of rows) {
+        const id = String(row.id ?? "").trim();
+        if (!id)
+            continue;
+        const existing = byId.get(id);
+        if (!existing || getRecency(row) >= getRecency(existing)) {
+            byId.set(id, row);
+        }
+    }
+    return Array.from(byId.values());
+}
 function routeParam(req, name) {
     const value = req.params[name];
     return Array.isArray(value) ? value[0] : (value ?? "");
@@ -395,11 +415,14 @@ export function createReportsRouter() {
                     reportsService.list({ ...filters, all: true }, 1, limit),
                 ]);
                 return {
-                    reports,
+                    reports: {
+                        ...reports,
+                        data: dedupeDashboardReports(reports.data),
+                    },
                     summary,
                     topReporters,
-                    analyticsReports: analyticsReports.data,
-                    analyticsPreview: analyticsReports.data,
+                    analyticsReports: dedupeDashboardReports(analyticsReports.data),
+                    analyticsPreview: dedupeDashboardReports(analyticsReports.data),
                     generatedAt: new Date().toISOString(),
                 };
             }, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);

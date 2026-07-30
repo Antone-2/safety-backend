@@ -154,7 +154,7 @@ export class ComplianceRepository {
         this.pool = pool;
     }
     shouldUseFallback() {
-        return !Boolean(process.env.DATABASE_URL || process.env.DB_HOST || process.env.POSTGRES_URL);
+        return !(process.env.DATABASE_URL || process.env.DB_HOST || process.env.POSTGRES_URL);
     }
     async withFallback(fallback, operation) {
         if (this.shouldUseFallback()) {
