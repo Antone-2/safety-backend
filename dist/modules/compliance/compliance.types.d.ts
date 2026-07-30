@@ -146,7 +146,7 @@ export declare const CreateComplianceAuditSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "Internal" | "External" | "Regulatory" | "Management Review";
-    status: "Completed" | "Closed" | "In Progress" | "Planned";
+    status: "Planned" | "In Progress" | "Completed" | "Closed";
     title: string;
     site: string;
     department: string;
@@ -168,7 +168,7 @@ export declare const CreateComplianceAuditSchema: z.ZodObject<{
     endDate: string;
     createdBy: string;
     leadAuditor: string;
-    status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Closed" | undefined;
     teamMembers?: string[] | undefined;
     scope?: string | undefined;
     criteria?: string | undefined;
@@ -192,7 +192,7 @@ export declare const UpdateComplianceAuditSchema: z.ZodObject<{
     reportUrl: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     type?: "Internal" | "External" | "Regulatory" | "Management Review" | undefined;
-    status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Closed" | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
@@ -206,7 +206,7 @@ export declare const UpdateComplianceAuditSchema: z.ZodObject<{
     reportUrl?: string | null | undefined;
 }, {
     type?: "Internal" | "External" | "Regulatory" | "Management Review" | undefined;
-    status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Closed" | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;

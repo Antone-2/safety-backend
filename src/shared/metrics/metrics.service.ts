@@ -6,6 +6,33 @@ export class MetricsService {
   private requestsByMethod: Record<string, number> = {};
   private requestsByStatus: Record<string, number> = {};
   private requestsByPath: Record<string, number> = {};
+  private counters: Record<string, number> = {};
+  private latencyByMetric: Record<string, number[]> = {};
+
+  private trimLatencySeries(values: number[]) {
+    if (values.length > 1000) {
+      return values.slice(-1000);
+    }
+    return values;
+  }
+
+  private summarizeLatencies(values: number[]) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
+    const p99 = sorted[Math.floor(sorted.length * 0.99)] ?? 0;
+    const max = sorted[sorted.length - 1] ?? 0;
+    return {
+      count: values.length,
+      averageLatencyMs: values.length
+        ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2))
+        : 0,
+      medianLatencyMs: Number(median.toFixed(2)),
+      p95LatencyMs: Number(p95.toFixed(2)),
+      p99LatencyMs: Number(p99.toFixed(2)),
+      maxLatencyMs: Number(max.toFixed(2)),
+    };
+  }
 
   recordRequest(method: string, path: string, statusCode: number, durationMs: number) {
     this.requestsTotal += 1;
@@ -16,15 +43,25 @@ export class MetricsService {
     if (statusCode >= 500) {
       this.errorsTotal += 1;
     }
-    if (this.latencyMsValues.length > 1000) {
-      this.latencyMsValues = this.latencyMsValues.slice(-1000);
-    }
+    this.latencyMsValues = this.trimLatencySeries(this.latencyMsValues);
+  }
+
+  incrementCounter(name: string, value = 1) {
+    this.counters[name] = (this.counters[name] || 0) + value;
+  }
+
+  recordLatency(name: string, durationMs: number) {
+    const values = this.latencyByMetric[name] || [];
+    values.push(durationMs);
+    this.latencyByMetric[name] = this.trimLatencySeries(values);
+  }
+
+  recordCacheEvent(scope: string, outcome: string) {
+    this.incrementCounter(`cache.${scope}.${outcome}`);
   }
 
   getSnapshot() {
-    const latencies = [...this.latencyMsValues].sort((a, b) => a - b);
-    const median = latencies[Math.floor(latencies.length / 2)] ?? 0;
-    const p95 = latencies[Math.floor(latencies.length * 0.95)] ?? 0;
+    const latencySummary = this.summarizeLatencies(this.latencyMsValues);
 
     return {
       startedAt: new Date(this.startedAt).toISOString(),
@@ -34,11 +71,17 @@ export class MetricsService {
       requestsByMethod: this.requestsByMethod,
       requestsByStatus: this.requestsByStatus,
       requestsByPath: this.requestsByPath,
-      averageLatencyMs: this.latencyMsValues.length
-        ? Number((this.latencyMsValues.reduce((sum, value) => sum + value, 0) / this.latencyMsValues.length).toFixed(2))
-        : 0,
-      medianLatencyMs: Number(median.toFixed(2)),
-      p95LatencyMs: Number(p95.toFixed(2)),
+      averageLatencyMs: latencySummary.averageLatencyMs,
+      medianLatencyMs: latencySummary.medianLatencyMs,
+      p95LatencyMs: latencySummary.p95LatencyMs,
+      p99LatencyMs: latencySummary.p99LatencyMs,
+      counters: this.counters,
+      latencyByMetric: Object.fromEntries(
+        Object.entries(this.latencyByMetric).map(([name, values]) => [
+          name,
+          this.summarizeLatencies(values),
+        ]),
+      ),
     };
   }
 
@@ -50,6 +93,8 @@ export class MetricsService {
     this.requestsByMethod = {};
     this.requestsByStatus = {};
     this.requestsByPath = {};
+    this.counters = {};
+    this.latencyByMetric = {};
   }
 }
 

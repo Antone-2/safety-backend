@@ -382,19 +382,30 @@ export async function sendOtpEmail(input) {
             };
         }
     }
-    await createTransporter().sendMail({
-        from: getSenderEmail(),
-        to: input.to,
-        subject,
-        text: message,
-        html,
-    });
-    return {
-        ok: true,
-        delivered: true,
-        mode: "smtp",
-        message: `OTP sent to ${input.to}.`,
-    };
+    try {
+        await createTransporter().sendMail({
+            from: getSenderEmail(),
+            to: input.to,
+            subject,
+            text: message,
+            html,
+        });
+        return {
+            ok: true,
+            delivered: true,
+            mode: "smtp",
+            message: `OTP sent to ${input.to}.`,
+        };
+    }
+    catch (error) {
+        console.error("SMTP OTP delivery failed:", error);
+        return {
+            ok: true,
+            delivered: false,
+            mode: "smtp-fallback",
+            message: "Email delivery failed. OTP generated locally only.",
+        };
+    }
 }
 function hasSmtpConfig() {
     return Boolean(process.env.SMTP_HOST &&

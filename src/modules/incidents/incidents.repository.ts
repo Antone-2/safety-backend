@@ -1,10 +1,99 @@
 import { Pool } from "pg";
 import { Incident, IncidentInput, IncidentType, IncidentSeverity, IncidentStatus } from "./incidents.types.js";
 
+type ColumnMap = Set<string>;
+
+function normalizeColumnName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 export class IncidentsRepository {
+  private readonly columnCache = new Map<string, Promise<ColumnMap>>();
+
   constructor(private pool: Pool) {}
 
+  private async getTableColumns(table: string): Promise<ColumnMap> {
+    let cached = this.columnCache.get(table);
+    if (!cached) {
+      cached = this.pool
+        .query(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = current_schema()
+             AND table_name = $1`,
+          [table],
+        )
+        .then((result) => new Set(result.rows.map((row) => normalizeColumnName(String(row.column_name)))));
+      this.columnCache.set(table, cached);
+    }
+    return cached;
+  }
+
+  private resolveColumn(columns: ColumnMap, ...candidates: string[]): string | null {
+    for (const candidate of candidates) {
+      if (columns.has(normalizeColumnName(candidate))) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private requireColumn(columns: ColumnMap, table: string, ...candidates: string[]): string {
+    const column = this.resolveColumn(columns, ...candidates);
+    if (!column) {
+      throw new Error(`Missing required column on ${table}: ${candidates.join(", ")}`);
+    }
+    return column;
+  }
+
+  private selectColumn(columns: ColumnMap, alias: string, ...candidates: string[]): string {
+    const column = this.requireColumn(columns, "reports", ...candidates);
+    return `${column} AS ${alias}`;
+  }
+
+  private async getReportsSelectSql(whereSql?: string, includeOrder = true): Promise<string> {
+    const columns = await this.getTableColumns("reports");
+    const createdAt = this.requireColumn(columns, "reports", "created_at", "createdAt", "createdat", "date");
+    const updatedAt = this.resolveColumn(columns, "updated_at", "updatedAt", "updatedat", "created_at", "createdAt", "createdat", "date") ?? createdAt;
+
+    return `SELECT
+      ${this.selectColumn(columns, "id", "id")},
+      ${this.selectColumn(columns, "type", "type")},
+      ${this.selectColumn(columns, "severity", "severity")},
+      ${this.selectColumn(columns, "status", "status")},
+      ${this.selectColumn(columns, "location", "location")},
+      ${this.selectColumn(columns, "department", "department")},
+      ${this.selectColumn(columns, "shift", "shift")},
+      ${this.selectColumn(columns, "description", "description")},
+      ${this.selectColumn(columns, "reporter", "reporter")},
+      ${this.selectColumn(columns, "reporter_email", "reporter_email", "reporterEmail", "reporteremail")},
+      ${this.selectColumn(columns, "reporter_phone", "reporter_phone", "reporterPhone", "reporterphone")},
+      ${this.selectColumn(columns, "anonymous", "anonymous")},
+      ${this.selectColumn(columns, "is_near_miss", "is_near_miss", "isNearMiss", "isnearmiss")},
+      ${this.selectColumn(columns, "photo_url", "photo_url", "photoUrl", "photourl")},
+      ${this.selectColumn(columns, "assigned_to", "assigned_to", "assignedTo", "assignedto")},
+      ${this.selectColumn(columns, "assigned_to_copy", "assigned_to_copy", "assignedToCopy", "assignedtocopy")},
+      ${this.selectColumn(columns, "sla_hours", "sla_hours", "slaHours", "slahours")},
+      ${this.selectColumn(columns, "due_at", "due_at", "dueAt", "dueat")},
+      ${this.selectColumn(columns, "resolution_days", "resolution_days", "resolutionDays", "resolutiondays")},
+      ${this.selectColumn(columns, "compliance_required", "compliance_required", "complianceRequired", "compliancerequired")},
+      ${this.selectColumn(columns, "compliance_due_at", "compliance_due_at", "complianceDueAt", "compliancedueat")},
+      ${this.selectColumn(columns, "source", "source")},
+      ${createdAt} AS created_at,
+      ${updatedAt} AS updated_at
+      FROM reports
+      ${whereSql ? `${whereSql} AND ` : "WHERE "}
+        (
+          LOWER(COALESCE(category, '')) LIKE '%incident%'
+          OR LOWER(COALESCE(category, '')) LIKE '%accident%'
+          OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
+          OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
+        )
+      ${includeOrder ? `ORDER BY ${createdAt} DESC` : ""}`;
+  }
+
   async findAll(filters?: Record<string, unknown>): Promise<Incident[]> {
+    const columns = await this.getTableColumns("incidents");
     const where: string[] = [];
     const params: unknown[] = [];
     let idx = 1;
@@ -12,11 +101,13 @@ export class IncidentsRepository {
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
+          const column = this.resolveColumn(columns, key, key.toLowerCase(), key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`));
+          if (!column) return;
           if (key === "location" || key === "department" || key === "reporter" || key === "assignedTo") {
-            where.push(`${key} ILIKE $${idx}`);
+            where.push(`${column} ILIKE $${idx}`);
             params.push(`%${value}%`);
           } else {
-            where.push(`${key} = $${idx}`);
+            where.push(`${column} = $${idx}`);
             params.push(value);
           }
           idx++;
@@ -24,37 +115,19 @@ export class IncidentsRepository {
       });
     }
 
-    const sql = `SELECT * FROM incidents ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC`;
+    const createdAt = this.requireColumn(columns, "incidents", "created_at", "createdAt", "createdat");
+    const sql = `SELECT * FROM incidents ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${createdAt} DESC`;
     const result = await this.pool.query(sql, params);
     return result.rows as Incident[];
   }
 
   async findAllReports(): Promise<Record<string, unknown>[]> {
-    const result = await this.pool.query(
-      `SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
-       FROM reports
-       WHERE LOWER(COALESCE(category, '')) LIKE '%incident%'
-          OR LOWER(COALESCE(category, '')) LIKE '%accident%'
-          OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
-          OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
-       ORDER BY created_at DESC`,
-    );
+    const result = await this.pool.query(await this.getReportsSelectSql());
     return result.rows as Record<string, unknown>[];
   }
 
   async findReportById(id: string): Promise<Record<string, unknown> | null> {
-    const result = await this.pool.query(
-      `SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
-       FROM reports
-       WHERE id = $1
-         AND (
-           LOWER(COALESCE(category, '')) LIKE '%incident%'
-           OR LOWER(COALESCE(category, '')) LIKE '%accident%'
-           OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
-           OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
-         )`,
-      [id],
-    );
+    const result = await this.pool.query(await this.getReportsSelectSql("WHERE id = $1", false), [id]);
     return (result.rows[0] as Record<string, unknown>) || null;
   }
 
@@ -176,6 +249,7 @@ export class IncidentsRepository {
   }
 
   async count(filters?: Record<string, unknown>): Promise<number> {
+    const columns = await this.getTableColumns("incidents");
     const where: string[] = [];
     const params: unknown[] = [];
     let idx = 1;
@@ -183,7 +257,9 @@ export class IncidentsRepository {
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
-          where.push(`${key} = $${idx}`);
+          const column = this.resolveColumn(columns, key, key.toLowerCase(), key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`));
+          if (!column) return;
+          where.push(`${column} = $${idx}`);
           params.push(value);
           idx++;
         }

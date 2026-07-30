@@ -204,7 +204,7 @@ export declare const CreateEquipmentInspectionSchema: z.ZodObject<{
     equipmentId: string;
     inspector: string;
     inspectionDate: string;
-    inspectionType: "Regulatory" | "Routine" | "After Use" | "Annual" | "Special";
+    inspectionType: "Regulatory" | "Annual" | "Routine" | "After Use" | "Special";
     nextInspectionDue: string;
     photoUrl?: string | undefined;
     findings?: string | undefined;
@@ -216,7 +216,7 @@ export declare const CreateEquipmentInspectionSchema: z.ZodObject<{
     equipmentId: string;
     inspector: string;
     inspectionDate: string;
-    inspectionType: "Regulatory" | "Routine" | "After Use" | "Annual" | "Special";
+    inspectionType: "Regulatory" | "Annual" | "Routine" | "After Use" | "Special";
     nextInspectionDue: string;
     photoUrl?: string | undefined;
     findings?: string | undefined;
@@ -243,7 +243,7 @@ export declare const UpdateEquipmentInspectionSchema: z.ZodObject<{
     equipmentId?: string | undefined;
     inspector?: string | undefined;
     inspectionDate?: string | undefined;
-    inspectionType?: "Regulatory" | "Routine" | "After Use" | "Annual" | "Special" | undefined;
+    inspectionType?: "Regulatory" | "Annual" | "Routine" | "After Use" | "Special" | undefined;
     defects?: string | null | undefined;
     nextInspectionDue?: string | undefined;
 }, {
@@ -254,7 +254,7 @@ export declare const UpdateEquipmentInspectionSchema: z.ZodObject<{
     equipmentId?: string | undefined;
     inspector?: string | undefined;
     inspectionDate?: string | undefined;
-    inspectionType?: "Regulatory" | "Routine" | "After Use" | "Annual" | "Special" | undefined;
+    inspectionType?: "Regulatory" | "Annual" | "Routine" | "After Use" | "Special" | undefined;
     defects?: string | null | undefined;
     nextInspectionDue?: string | undefined;
 }>;

@@ -42,6 +42,7 @@ const CREATED_COL = "created_at";
 const UPDATED_COL = "updated_at";
 const REPORT_LOCAL_DATE_SQL = `(date AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE`;
 const CURRENT_REPORT_LOCAL_DATE_SQL = `(CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE`;
+let pgReportColumnsPromise: Promise<Set<string>> | null = null;
 
 export type ReportFilters = {
   status?: string;
@@ -84,6 +85,19 @@ function isPgAvailable(): boolean {
 function readPositiveNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function getPgReportColumns() {
+  if (!pgReportColumnsPromise) {
+    pgReportColumnsPromise = pgPool
+      .query<{ column_name: string }>(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'reports'`,
+      )
+      .then((result) => new Set(result.rows.map((row) => row.column_name)));
+  }
+  return pgReportColumnsPromise;
 }
 
 async function deriveOperationalWorkforceCount(): Promise<{
@@ -593,7 +607,14 @@ export class ReportsService {
       ? 0
       : Math.min(100, Math.max(1, Math.trunc(limit) || 50));
     if (isPgAvailable()) {
-      return this.listPg(filters, page, limit);
+      try {
+        return await this.listPg(filters, page, limit);
+      } catch (error) {
+        console.warn(
+          "Reports list falling back to SQLite:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
     return this.listSqlite(filters, page, limit);
   }
@@ -1550,6 +1571,32 @@ export class ReportsService {
     if (isPgAvailable()) {
       const { whereSql, params } = buildPgFilter(filters);
       const nowParam = `$${params.length + 1}`;
+      const reportColumns = await getPgReportColumns();
+      const hasColumn = (name: string) => reportColumns.has(name);
+      const recordableExpr = hasColumn("is_recordable")
+        ? `COUNT(*) FILTER (WHERE is_recordable = TRUE)::int`
+        : `0::int`;
+      const lostTimeInjuriesExpr = hasColumn("is_lost_time_injury")
+        ? `COUNT(*) FILTER (WHERE is_lost_time_injury = TRUE)::int`
+        : `0::int`;
+      const medicalTreatmentCasesExpr = hasColumn("medical_treatment_case")
+        ? `COUNT(*) FILTER (WHERE medical_treatment_case = TRUE)::int`
+        : `0::int`;
+      const lostWorkDaysExpr = hasColumn("lost_work_days")
+        ? `COALESCE(SUM(lost_work_days), 0)::int`
+        : `0::int`;
+      const restrictedWorkDaysExpr = hasColumn("restricted_work_days")
+        ? `COALESCE(SUM(restricted_work_days), 0)::int`
+        : `0::int`;
+      const unclassifiedExpr = hasColumn("classification_verified_at")
+        ? `COUNT(*) FILTER (WHERE classification_verified_at IS NULL)::int`
+        : `0::int`;
+      const nearMissExpr = hasColumn("is_near_miss")
+        ? `COUNT(*) FILTER (WHERE is_near_miss = TRUE OR LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int`
+        : `COUNT(*) FILTER (WHERE LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int`;
+      const lastLtiDateExpr = hasColumn("is_lost_time_injury")
+        ? `COALESCE(MIN(CASE WHEN is_lost_time_injury = TRUE THEN date END), NULL)::text`
+        : `NULL::text`;
       const result = await pgPool.query(
         `SELECT
           COUNT(*)::int AS total,
@@ -1562,19 +1609,19 @@ export class ReportsService {
           COUNT(*) FILTER (WHERE severity = 'Critical' AND status != 'Closed')::int AS "criticalOpen",
           COUNT(*) FILTER (WHERE status != 'Closed' AND due_at IS NOT NULL AND due_at < ${nowParam})::int AS overdue,
           COALESCE(ROUND(AVG(resolution_days) FILTER (WHERE status = 'Closed' AND resolution_days IS NOT NULL), 1), 0)::float AS "avgResolution",
-          COUNT(*) FILTER (WHERE is_recordable = TRUE)::int AS "recordableIncidents",
-          COUNT(*) FILTER (WHERE is_lost_time_injury = TRUE)::int AS "lostTimeInjuries",
-          COUNT(*) FILTER (WHERE medical_treatment_case = TRUE)::int AS "medicalTreatmentCases",
-          COALESCE(SUM(lost_work_days), 0)::int AS "lostWorkDays",
-          COALESCE(SUM(restricted_work_days), 0)::int AS "restrictedWorkDays",
-          COUNT(*) FILTER (WHERE classification_verified_at IS NULL)::int AS "unclassified",
-          COUNT(*) FILTER (WHERE is_near_miss = TRUE OR LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int AS "nearMissCount",
+          ${recordableExpr} AS "recordableIncidents",
+          ${lostTimeInjuriesExpr} AS "lostTimeInjuries",
+          ${medicalTreatmentCasesExpr} AS "medicalTreatmentCases",
+          ${lostWorkDaysExpr} AS "lostWorkDays",
+          ${restrictedWorkDaysExpr} AS "restrictedWorkDays",
+          ${unclassifiedExpr} AS "unclassified",
+          ${nearMissExpr} AS "nearMissCount",
           COUNT(*) FILTER (WHERE severity = 'Critical')::int AS "severityCritical",
           COUNT(*) FILTER (WHERE severity = 'High')::int AS "severityHigh",
           COUNT(*) FILTER (WHERE severity = 'Medium')::int AS "severityMedium",
           COUNT(*) FILTER (WHERE severity = 'Low')::int AS "severityLow",
           COUNT(*) FILTER (WHERE status = 'Closed')::int AS "closedCount",
-          COALESCE(MIN(CASE WHEN is_lost_time_injury = TRUE THEN date END), NULL)::text AS "lastLtiDate"
+          ${lastLtiDateExpr} AS "lastLtiDate"
         FROM reports WHERE ${whereSql}`,
         [
           ...params,

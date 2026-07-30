@@ -2,6 +2,8 @@ export declare class LlmClient {
     private apiKey;
     private baseUrl;
     private model;
+    private organization;
+    private project;
     constructor();
     generate(systemPrompt: string, userPrompt: string, options?: {
         temperature?: number;

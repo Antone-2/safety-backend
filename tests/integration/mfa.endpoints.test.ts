@@ -315,7 +315,9 @@ describe("MFA Endpoints Integration", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(response.body.ok).toBe(true);
+      expect(response.body.token).toBe("signed-session-token");
+      expect(response.body.user.email).toBe("admin@example.com");
+      expect(typeof response.body.csrfToken).toBe("string");
       expect(mfaMock.verifyMFAEnrollment).toHaveBeenCalledWith("user-1", "123456");
     });
   });
@@ -339,9 +341,15 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should return MFA challenge token after OTP verification for privileged users with MFA", async () => {
+    jwtMock.verify.mockReturnValue({
+      type: "mfa-challenge",
+      userId: "user-1",
+      email: "admin@example.com",
+    });
+
     await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/verify-token", {
-        userId: "user-1",
+        mfaChallengeToken: "challenge-token",
         token: "123456",
       });
 
@@ -355,6 +363,7 @@ describe("MFA Endpoints Integration", () => {
     jwtMock.verify.mockImplementation((token: string) => {
       if (token === "challenge-token") {
         return {
+          type: "mfa-challenge",
           userId: "user-1",
           email: "admin@example.com",
           name: "Admin User",
@@ -362,7 +371,11 @@ describe("MFA Endpoints Integration", () => {
         };
       }
       if (token === "verification-token") {
-        return { userId: "user-1", mfaVerified: true };
+        return {
+          userId: "user-1",
+          challenge: "challenge-token",
+          mfaVerified: true,
+        };
       }
       throw new Error("Unexpected token");
     });
@@ -383,6 +396,7 @@ describe("MFA Endpoints Integration", () => {
     jwtMock.verify.mockImplementation((token: string) => {
       if (token === "challenge-token") {
         return {
+          type: "mfa-challenge",
           userId: "user-1",
           email: "admin@example.com",
           name: "Admin User",
@@ -390,7 +404,11 @@ describe("MFA Endpoints Integration", () => {
         };
       }
       if (token === "verification-token") {
-        return { userId: "user-2", mfaVerified: true };
+        return {
+          userId: "user-2",
+          challenge: "challenge-token",
+          mfaVerified: true,
+        };
       }
       throw new Error("Unexpected token");
     });
@@ -407,9 +425,15 @@ describe("MFA Endpoints Integration", () => {
   });
 
   it("should verify recovery code and return MFA verification token", async () => {
+    jwtMock.verify.mockReturnValue({
+      type: "mfa-challenge",
+      userId: "user-1",
+      email: "admin@example.com",
+    });
+
     await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/recovery-code", {
-        userId: "user-1",
+        mfaChallengeToken: "challenge-token",
         code: "ABCD1234",
       });
 
@@ -422,10 +446,15 @@ describe("MFA Endpoints Integration", () => {
 
   it("should reject already-used recovery codes", async () => {
     mfaMock.verifyRecoveryCode.mockResolvedValueOnce(false);
+    jwtMock.verify.mockReturnValue({
+      type: "mfa-challenge",
+      userId: "user-1",
+      email: "admin@example.com",
+    });
 
     await witEHSrver(async (baseUrl) => {
       const response = await postJson(baseUrl, "/api/auth/mfa/recovery-code", {
-        userId: "user-1",
+        mfaChallengeToken: "challenge-token",
         code: "ABCD1234",
       });
 

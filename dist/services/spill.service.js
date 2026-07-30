@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 import { v4 as uuidv4 } from "uuid";
+import { toUtcIso } from "../shared/utils/date.utils.js";
 export const SpillSeveritySchema = z.enum(["Minor", "Major", "Critical"]);
 export const SpillSchema = z.object({
     id: z.string().optional(),
@@ -33,20 +34,20 @@ function mapRow(row) {
         quantity: Number(row.quantity ?? 0),
         unit: String(row.unit ?? ""),
         location: String(row.location ?? ""),
-        date: row.date ? new Date(String(row.date)).toISOString() : "",
+        date: toUtcIso(row.date),
         time: String(row.time ?? ""),
         severity: String(row.severity ?? "Minor"),
         affectedArea: row.affected_area ? String(row.affected_area) : undefined,
         responseActions: row.response_actions ? String(row.response_actions) : undefined,
         cleanupCompleted: Boolean(row.cleanup_completed),
-        cleanupDate: row.cleanup_date ? new Date(String(row.cleanup_date)).toISOString() : undefined,
+        cleanupDate: row.cleanup_date ? toUtcIso(row.cleanup_date) : undefined,
         reportedToNema: Boolean(row.reported_to_nema),
-        nemaReportDate: row.nema_report_date ? new Date(String(row.nema_report_date)).toISOString() : undefined,
+        nemaReportDate: row.nema_report_date ? toUtcIso(row.nema_report_date) : undefined,
         photoUrl: row.photo_url ? String(row.photo_url) : undefined,
         reportedBy: row.reported_by ? String(row.reported_by) : "",
         createdBy: String(row.created_by ?? "System"),
-        createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : now(),
-        updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : now(),
+        createdAt: row.created_at ? toUtcIso(row.created_at) : now(),
+        updatedAt: row.updated_at ? toUtcIso(row.updated_at) : now(),
     };
 }
 export class SpillService {

@@ -56,7 +56,7 @@ export declare const AuditSchema: z.ZodObject<{
     updatedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     type: "Internal" | "External" | "Regulatory" | "Management Review" | "Surveillance";
-    status: "Completed" | "Closed" | "In Progress" | "Planned";
+    status: "Planned" | "In Progress" | "Completed" | "Closed";
     title: string;
     site: string;
     department: string;
@@ -85,7 +85,7 @@ export declare const AuditSchema: z.ZodObject<{
     endDate: string;
     createdBy: string;
     leadAuditor: string;
-    status?: "Completed" | "Closed" | "In Progress" | "Planned" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Closed" | undefined;
     id?: string | undefined;
     summary?: string | undefined;
     createdAt?: string | undefined;

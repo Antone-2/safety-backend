@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   classifyGoogleFormsError,
+  buildReportRecordFromRow,
   dedupeGoogleSheetReportsById,
   fetchGoogleSheetRows,
   finalizeSuccessfulGoogleSheetsSync,
@@ -136,6 +137,28 @@ test("finalizes sync state before starting background photo sync", async () => {
   assert.equal(result.rows, 2);
   assert.equal(result.sheetName, "Unsafe Acts/ Conditions (Responses)");
   assert.equal(result.startedAt, "2026-07-24T08:33:15.188Z");
+});
+
+test("keeps only the first valid photo URL from a multi-link Google Sheets cell", () => {
+  const report = buildReportRecordFromRow(
+    ["Timestamp", "Location", "Reporter", "Photo"],
+    [
+      "7/24/2026 8:33:15",
+      "Factory",
+      "Alice",
+      "https://drive.google.com/open?id=1RLPMP3JMVyMsZVgELj5hZulwhFqawRU5, https://drive.google.com/open?id=1zx01OX45TjALjTxwtNYBEw291DmXWHnA",
+    ],
+    {
+      locations: ["Factory"],
+      categories: ["Unsafe Condition"],
+      departments: ["Ops"],
+    },
+  );
+
+  assert.equal(
+    report.photoUrl,
+    "https://drive.google.com/uc?export=view&id=1RLPMP3JMVyMsZVgELj5hZulwhFqawRU5",
+  );
 });
 
 test("parses ambiguous Google Sheets timestamps with the default month/day/year order", () => {

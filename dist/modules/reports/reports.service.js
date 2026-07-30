@@ -5,7 +5,7 @@ import { randomBytes } from "crypto";
 import { sendReportAssignmentNotifications, } from "../../lib/email.js";
 import { awardReporterPoints } from "../../services/leaderboard.service.js";
 import { scheduleFollowupsForReport } from "../../services/report-followup.service.js";
-import { sanitizeReportDate, tryParseReportDateWithFallbacks, } from "../../shared/utils/report-date.js";
+import { GOOGLE_SHEETS_TIMEZONE, getStartOfSheetDayUtc, getStartOfSheetMonthUtc, sanitizeReportDate, tryParseReportDateWithFallbacks, } from "../../shared/utils/report-date.js";
 const PHOTO_COL = "photo_url";
 const DATE_COL = "date";
 const LOCATION_COL = "location";
@@ -29,12 +29,25 @@ const SOURCE_COL = "source";
 const RESOLUTION_COL = "resolution_days";
 const CREATED_COL = "created_at";
 const UPDATED_COL = "updated_at";
+const REPORT_LOCAL_DATE_SQL = `(date AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE`;
+const CURRENT_REPORT_LOCAL_DATE_SQL = `(CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE`;
+let pgReportColumnsPromise = null;
 function isPgAvailable() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
 function readPositiveNumber(value, fallback) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+async function getPgReportColumns() {
+    if (!pgReportColumnsPromise) {
+        pgReportColumnsPromise = pgPool
+            .query(`SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'reports'`)
+            .then((result) => new Set(result.rows.map((row) => row.column_name)));
+    }
+    return pgReportColumnsPromise;
 }
 async function deriveOperationalWorkforceCount() {
     if (isPgAvailable()) {
@@ -136,7 +149,7 @@ async function deriveOperationalWorkforceCount() {
     }
 }
 export function buildPgFilter(filters) {
-    const where = ["1=1"];
+    const where = [`${REPORT_LOCAL_DATE_SQL} <= ${CURRENT_REPORT_LOCAL_DATE_SQL}`];
     const params = [];
     const add = (clause, value) => {
         params.push(value);
@@ -150,10 +163,12 @@ export function buildPgFilter(filters) {
         add((p) => `location = ${p}`, filters.location);
     if (filters.category && filters.category !== "All")
         add((p) => `category = ${p}`, filters.category);
-    if (filters.dateFrom)
-        add((p) => `date >= ${p}`, filters.dateFrom);
-    if (filters.dateTo)
-        add((p) => `date < ${p}`, filters.dateTo);
+    if (filters.dateFrom) {
+        add((p) => `date >= ${p}::TIMESTAMPTZ`, filters.dateFrom);
+    }
+    if (filters.dateTo) {
+        add((p) => `date < ${p}::TIMESTAMPTZ`, filters.dateTo);
+    }
     if (!filters.dateFrom && filters.days && String(filters.days) !== "9999") {
         add((p) => `date >= ${p}`, new Date(Date.now() - Number(filters.days) * 86400000).toISOString());
     }
@@ -165,8 +180,8 @@ export function buildPgFilter(filters) {
     return { whereSql: where.join(" AND "), params };
 }
 export function buildSqliteFilter(filters) {
-    const where = ["1=1"];
-    const params = [];
+    const where = ["date < ?"];
+    const params = [getStartOfSheetDayUtc(new Date(), 1).toISOString()];
     const add = (clause, value) => {
         where.push(clause);
         params.push(value);
@@ -452,7 +467,12 @@ export class ReportsService {
             ? 0
             : Math.min(100, Math.max(1, Math.trunc(limit) || 50));
         if (isPgAvailable()) {
-            return this.listPg(filters, page, limit);
+            try {
+                return await this.listPg(filters, page, limit);
+            }
+            catch (error) {
+                console.warn("Reports list falling back to SQLite:", error instanceof Error ? error.message : String(error));
+            }
         }
         return this.listSqlite(filters, page, limit);
     }
@@ -1095,8 +1115,10 @@ export class ReportsService {
           COUNT(*)::int AS total,
           COUNT(*) FILTER (WHERE status = 'Open')::int AS open,
           COUNT(*) FILTER (WHERE status = 'Closed')::int AS closed,
-          COUNT(*) FILTER (WHERE date >= date_trunc('day', NOW()))::int AS today,
-          COUNT(*) FILTER (WHERE date >= NOW() - INTERVAL '7 days')::int AS week,
+          COUNT(*) FILTER (WHERE ${REPORT_LOCAL_DATE_SQL} = ${CURRENT_REPORT_LOCAL_DATE_SQL})::int AS today,
+          COUNT(*) FILTER (
+            WHERE ${REPORT_LOCAL_DATE_SQL} BETWEEN ${CURRENT_REPORT_LOCAL_DATE_SQL} - INTERVAL '6 days' AND ${CURRENT_REPORT_LOCAL_DATE_SQL}
+          )::int AS week,
           COALESCE(ROUND(AVG(resolution_days) FILTER (WHERE status = 'Closed' AND resolution_days IS NOT NULL), 1), 0)::float AS "avgResolution"
         FROM reports
       `);
@@ -1110,14 +1132,15 @@ export class ReportsService {
             });
         }
         const db = await getDb();
-        const now = new Date().toISOString();
-        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-        const today = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+        const today = getStartOfSheetDayUtc().toISOString();
+        const tomorrow = getStartOfSheetDayUtc(new Date(), 1).toISOString();
+        const weekAgo = getStartOfSheetDayUtc(new Date(), -6).toISOString();
         const total = Number(allRows(db, "SELECT COUNT(*) as c FROM reports")[0]?.c ?? 0);
         const open = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE status = 'Open'")[0]?.c ?? 0);
         const closed = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE status = 'Closed'")[0]?.c ?? 0);
-        const todayCount = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE date >= ?", [
+        const todayCount = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE date >= ? AND date < ?", [
             today,
+            tomorrow,
         ])[0]?.c ?? 0);
         const weekCount = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE date >= ?", [
             weekAgo,
@@ -1133,9 +1156,8 @@ export class ReportsService {
         };
     }
     async summary(filters = {}) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const weekAgo = new Date(Date.now() - 7 * 86400000);
+        const todayStart = getStartOfSheetDayUtc();
+        const weekStart = getStartOfSheetDayUtc(new Date(), -6);
         const now = new Date();
         const operationalWorkforce = await deriveOperationalWorkforceCount();
         const configuredWorkforce = readPositiveNumber(process.env.TOTAL_WORKFORCE, 250);
@@ -1149,36 +1171,60 @@ export class ReportsService {
         const totalManhoursWorked = Math.round(totalWorkforce * dailyWorkHours * workDaysPerMonth * periodMultiplier);
         if (isPgAvailable()) {
             const { whereSql, params } = buildPgFilter(filters);
-            const todayParam = `$${params.length + 1}`;
-            const weekParam = `$${params.length + 2}`;
-            const nowParam = `$${params.length + 3}`;
+            const nowParam = `$${params.length + 1}`;
+            const reportColumns = await getPgReportColumns();
+            const hasColumn = (name) => reportColumns.has(name);
+            const recordableExpr = hasColumn("is_recordable")
+                ? `COUNT(*) FILTER (WHERE is_recordable = TRUE)::int`
+                : `0::int`;
+            const lostTimeInjuriesExpr = hasColumn("is_lost_time_injury")
+                ? `COUNT(*) FILTER (WHERE is_lost_time_injury = TRUE)::int`
+                : `0::int`;
+            const medicalTreatmentCasesExpr = hasColumn("medical_treatment_case")
+                ? `COUNT(*) FILTER (WHERE medical_treatment_case = TRUE)::int`
+                : `0::int`;
+            const lostWorkDaysExpr = hasColumn("lost_work_days")
+                ? `COALESCE(SUM(lost_work_days), 0)::int`
+                : `0::int`;
+            const restrictedWorkDaysExpr = hasColumn("restricted_work_days")
+                ? `COALESCE(SUM(restricted_work_days), 0)::int`
+                : `0::int`;
+            const unclassifiedExpr = hasColumn("classification_verified_at")
+                ? `COUNT(*) FILTER (WHERE classification_verified_at IS NULL)::int`
+                : `0::int`;
+            const nearMissExpr = hasColumn("is_near_miss")
+                ? `COUNT(*) FILTER (WHERE is_near_miss = TRUE OR LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int`
+                : `COUNT(*) FILTER (WHERE LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int`;
+            const lastLtiDateExpr = hasColumn("is_lost_time_injury")
+                ? `COALESCE(MIN(CASE WHEN is_lost_time_injury = TRUE THEN date END), NULL)::text`
+                : `NULL::text`;
             const result = await pgPool.query(`SELECT
           COUNT(*)::int AS total,
           COUNT(*) FILTER (WHERE status = 'Open')::int AS open,
           COUNT(*) FILTER (WHERE status = 'Closed')::int AS closed,
-          COUNT(*) FILTER (WHERE date >= ${todayParam})::int AS today,
-          COUNT(*) FILTER (WHERE date >= ${weekParam})::int AS week,
+          COUNT(*) FILTER (WHERE ${REPORT_LOCAL_DATE_SQL} = ${CURRENT_REPORT_LOCAL_DATE_SQL})::int AS today,
+          COUNT(*) FILTER (
+            WHERE ${REPORT_LOCAL_DATE_SQL} BETWEEN ${CURRENT_REPORT_LOCAL_DATE_SQL} - INTERVAL '6 days' AND ${CURRENT_REPORT_LOCAL_DATE_SQL}
+          )::int AS week,
           COUNT(*) FILTER (WHERE severity = 'Critical' AND status != 'Closed')::int AS "criticalOpen",
           COUNT(*) FILTER (WHERE status != 'Closed' AND due_at IS NOT NULL AND due_at < ${nowParam})::int AS overdue,
           COALESCE(ROUND(AVG(resolution_days) FILTER (WHERE status = 'Closed' AND resolution_days IS NOT NULL), 1), 0)::float AS "avgResolution",
-          COUNT(*) FILTER (WHERE is_recordable = TRUE)::int AS "recordableIncidents",
-          COUNT(*) FILTER (WHERE is_lost_time_injury = TRUE)::int AS "lostTimeInjuries",
-          COUNT(*) FILTER (WHERE medical_treatment_case = TRUE)::int AS "medicalTreatmentCases",
-          COALESCE(SUM(lost_work_days), 0)::int AS "lostWorkDays",
-          COALESCE(SUM(restricted_work_days), 0)::int AS "restrictedWorkDays",
-          COUNT(*) FILTER (WHERE classification_verified_at IS NULL)::int AS "unclassified",
-          COUNT(*) FILTER (WHERE is_near_miss = TRUE OR LOWER(description) LIKE '%near miss%' OR LOWER(description) LIKE '%near-miss%' OR LOWER(category) LIKE '%near miss%')::int AS "nearMissCount",
+          ${recordableExpr} AS "recordableIncidents",
+          ${lostTimeInjuriesExpr} AS "lostTimeInjuries",
+          ${medicalTreatmentCasesExpr} AS "medicalTreatmentCases",
+          ${lostWorkDaysExpr} AS "lostWorkDays",
+          ${restrictedWorkDaysExpr} AS "restrictedWorkDays",
+          ${unclassifiedExpr} AS "unclassified",
+          ${nearMissExpr} AS "nearMissCount",
           COUNT(*) FILTER (WHERE severity = 'Critical')::int AS "severityCritical",
           COUNT(*) FILTER (WHERE severity = 'High')::int AS "severityHigh",
           COUNT(*) FILTER (WHERE severity = 'Medium')::int AS "severityMedium",
           COUNT(*) FILTER (WHERE severity = 'Low')::int AS "severityLow",
           COUNT(*) FILTER (WHERE status = 'Closed')::int AS "closedCount",
-          COALESCE(MIN(CASE WHEN is_lost_time_injury = TRUE THEN date END), NULL)::text AS "lastLtiDate"
+          ${lastLtiDateExpr} AS "lastLtiDate"
         FROM reports WHERE ${whereSql}`, [
                 ...params,
-                today.toISOString(),
-                weekAgo.toISOString(),
-                now.toISOString(),
+                new Date().toISOString(),
             ]);
             const row = result.rows[0];
             const lastLtiDate = row?.lastLtiDate ? new Date(row.lastLtiDate) : null;
@@ -1231,8 +1277,8 @@ export class ReportsService {
         SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS closedCount,
         MIN(CASE WHEN isLostTimeInjury = 1 THEN date END) AS lastLtiDate
       FROM reports WHERE ${whereSql}`, [
-            today.toISOString(),
-            weekAgo.toISOString(),
+            todayStart.toISOString(),
+            weekStart.toISOString(),
             now.toISOString(),
             ...params,
         ])[0];
@@ -1279,9 +1325,6 @@ export class ReportsService {
     }
     async topReportersMonthToDate(limit = 6) {
         const safeLimit = Math.min(20, Math.max(1, Math.trunc(limit) || 6));
-        const now = new Date();
-        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-        const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0));
         if (isPgAvailable()) {
             const result = await pgPool.query(`SELECT
            CASE
@@ -1292,11 +1335,11 @@ export class ReportsService {
          FROM reports
          WHERE COALESCE(anonymous, FALSE) = FALSE
            AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
-           AND date >= $1
-           AND date < $2
+           AND ${REPORT_LOCAL_DATE_SQL} >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE
+           AND ${REPORT_LOCAL_DATE_SQL} < (date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE + INTERVAL '1 month')
          GROUP BY 1
          ORDER BY report_count DESC, reporter ASC
-         LIMIT $3`, [monthStart.toISOString(), nextMonthStart.toISOString(), safeLimit]);
+         LIMIT $1`, [safeLimit]);
             return result.rows.map((row) => ({
                 reporter: row.reporter,
                 reportCount: Number(row.report_count ?? 0),
@@ -1316,7 +1359,11 @@ export class ReportsService {
          AND date < ?
        GROUP BY reporter
        ORDER BY reportCount DESC, reporter ASC
-       LIMIT ?`, [monthStart.toISOString(), nextMonthStart.toISOString(), safeLimit]);
+       LIMIT ?`, [
+            getStartOfSheetMonthUtc().toISOString(),
+            getStartOfSheetMonthUtc(new Date(), 1).toISOString(),
+            safeLimit,
+        ]);
         return rows.map((row) => ({
             reporter: String(row.reporter ?? "Unnamed reporter"),
             reportCount: Number(row.reportCount ?? 0),
@@ -1329,8 +1376,10 @@ export class ReportsService {
           COUNT(*)::int AS total,
           COUNT(*) FILTER (WHERE status = 'Open')::int AS open,
           COUNT(*) FILTER (WHERE status = 'Closed')::int AS closed,
-          COUNT(*) FILTER (WHERE date >= date_trunc('day', NOW()))::int AS today,
-          COUNT(*) FILTER (WHERE date >= NOW() - INTERVAL '7 days')::int AS week,
+          COUNT(*) FILTER (WHERE ${REPORT_LOCAL_DATE_SQL} = ${CURRENT_REPORT_LOCAL_DATE_SQL})::int AS today,
+          COUNT(*) FILTER (
+            WHERE ${REPORT_LOCAL_DATE_SQL} BETWEEN ${CURRENT_REPORT_LOCAL_DATE_SQL} - INTERVAL '6 days' AND ${CURRENT_REPORT_LOCAL_DATE_SQL}
+          )::int AS week,
           COUNT(*) FILTER (WHERE severity = 'Critical' AND status != 'Closed')::int AS "criticalOpen",
           COUNT(*) FILTER (WHERE status != 'Closed' AND due_at IS NOT NULL AND due_at < NOW())::int AS overdue,
           COALESCE(ROUND(AVG(resolution_days) FILTER (WHERE status = 'Closed' AND resolution_days IS NOT NULL), 1), 0)::float AS "avgResolution"
@@ -1348,14 +1397,16 @@ export class ReportsService {
             });
         }
         const db = await getDb();
-        const now = new Date().toISOString();
-        const today = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
-        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        const now = new Date();
+        const today = getStartOfSheetDayUtc().toISOString();
+        const tomorrow = getStartOfSheetDayUtc(new Date(), 1).toISOString();
+        const weekAgo = getStartOfSheetDayUtc(new Date(), -6).toISOString();
         const total = Number(allRows(db, "SELECT COUNT(*) as c FROM reports")[0]?.c ?? 0);
         const open = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE status = 'Open'")[0]?.c ?? 0);
         const closed = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE status = 'Closed'")[0]?.c ?? 0);
-        const todayCount = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE date >= ?", [
+        const todayCount = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE date >= ? AND date < ?", [
             today,
+            tomorrow,
         ])[0]?.c ?? 0);
         const weekCount = Number(allRows(db, "SELECT COUNT(*) as c FROM reports WHERE date >= ?", [
             weekAgo,

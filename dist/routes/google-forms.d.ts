@@ -4,7 +4,7 @@ export declare function fetchGoogleSheetRows(formId: string, apiKey: string, req
     rows: string[][];
     sheetName: string;
 }>;
-export declare function parseDate(dateStr?: string): string;
+export declare function parseDate(dateStr?: string, referenceDate?: Date): string;
 export declare function dedupeGoogleSheetReportsById<T extends {
     id: string;
     date?: string;

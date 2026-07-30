@@ -15,6 +15,8 @@ export function getCookieValue(req, name) {
     return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
 }
 const JWT_SECRET = getEnv().JWT_SECRET;
+const SESSION_TOUCH_INTERVAL_MS = 60_000;
+const sessionLastTouchedAt = new Map();
 function isPgConfigured() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
@@ -31,13 +33,29 @@ function sessionFingerprint(req) {
         .update(`${userAgent}:${language}:${platform}`)
         .digest("hex");
 }
+function shouldTouchSession(sessionId, now = Date.now()) {
+    const lastTouchedAt = sessionLastTouchedAt.get(sessionId) ?? 0;
+    if (now - lastTouchedAt < SESSION_TOUCH_INTERVAL_MS) {
+        return false;
+    }
+    sessionLastTouchedAt.set(sessionId, now);
+    if (sessionLastTouchedAt.size > 20_000) {
+        const staleBefore = now - SESSION_TOUCH_INTERVAL_MS * 5;
+        for (const [key, touchedAt] of sessionLastTouchedAt.entries()) {
+            if (touchedAt < staleBefore) {
+                sessionLastTouchedAt.delete(key);
+            }
+        }
+    }
+    return true;
+}
 export async function authenticateUser(req, res, next) {
     if (req.user?.id && req.user?.jti)
         return next();
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith("Bearer ")
         ? authHeader.split(" ")[1]
-        : getCookieValue(req, "ehs_access");
+        : getCookieValue(req, "ehs_access") || (typeof req.query.token === "string" ? req.query.token : "");
     if (!token) {
         return res
             .status(401)
@@ -63,7 +81,10 @@ export async function authenticateUser(req, res, next) {
         let session;
         if (isPgConfigured()) {
             try {
-                const result = await pgPool.query("SELECT id FROM auth_sessions WHERE id = $1 AND revoked_at IS NULL AND expires_at > NOW() LIMIT 1", [decoded.jti]);
+                const result = await pgPool.query(`SELECT id, device_fingerprint, user_agent
+           FROM auth_sessions
+           WHERE id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+           LIMIT 1`, [decoded.jti]);
                 session = result.rows[0];
             }
             catch {
@@ -72,7 +93,7 @@ export async function authenticateUser(req, res, next) {
         }
         if (!session) {
             const db = await getDb();
-            session = allRows(db, "SELECT id FROM auth_sessions WHERE id = ? AND revokedAt IS NULL AND expiresAt > ?", [decoded.jti, new Date().toISOString()])[0];
+            session = allRows(db, "SELECT id, deviceFingerprint AS deviceFingerprint, userAgent AS userAgent FROM auth_sessions WHERE id = ? AND revokedAt IS NULL AND expiresAt > ?", [decoded.jti, new Date().toISOString()])[0];
         }
         if (!session)
             return res
@@ -80,27 +101,23 @@ export async function authenticateUser(req, res, next) {
                 .json({ error: "Session has expired or was revoked" });
         const fingerprint = sessionFingerprint(req);
         const legacyFingerprint = legacySessionFingerprint(req);
-        const storedSession = isPgConfigured()
-            ? (await pgPool
-                .query("SELECT device_fingerprint, user_agent FROM auth_sessions WHERE id = $1 LIMIT 1", [decoded.jti])
-                .catch(() => ({ rows: [] }))).rows[0]
-            : allRows(await getDb(), "SELECT deviceFingerprint AS deviceFingerprint, userAgent AS userAgent FROM auth_sessions WHERE id = ?", [decoded.jti])[0];
-        const storedFingerprint = storedSession?.device_fingerprint ?? storedSession?.deviceFingerprint;
-        const storedUserAgent = storedSession?.user_agent ?? storedSession?.userAgent;
+        const storedFingerprint = session.device_fingerprint ?? session.deviceFingerprint;
+        const storedUserAgent = session.user_agent ?? session.userAgent;
         if (storedFingerprint &&
             storedFingerprint !== fingerprint &&
             storedFingerprint !== legacyFingerprint &&
             storedUserAgent !== (req.get("user-agent") || "")) {
             return res.status(401).json({ error: "Session device changed. Please sign in again." });
         }
-        if (isPgConfigured()) {
+        const touchSession = shouldTouchSession(decoded.jti);
+        if (touchSession && isPgConfigured()) {
             await pgPool
                 .query(`UPDATE auth_sessions
            SET last_seen_at = NOW()
            WHERE id = $1 AND revoked_at IS NULL`, [decoded.jti])
                 .catch(() => undefined);
         }
-        else {
+        else if (touchSession) {
             const db = await getDb();
             db.prepare("UPDATE auth_sessions SET lastSeenAt = ? WHERE id = ? AND revokedAt IS NULL").run([new Date().toISOString(), decoded.jti]);
         }

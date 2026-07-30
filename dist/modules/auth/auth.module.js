@@ -8,7 +8,7 @@ import { getEnv } from "../../config/index.js";
 import { ConflictError, ExternalServiceError, } from "../../shared/domain/errors/index.js";
 import { authenticateUser, getCookieValue, requireRole } from "../../shared/middleware/auth.middleware.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
-import { allRows, getDb, saveDb } from "../../lib/database.js";
+import { allRows, getDb, PostgresOnlyDatabaseError, saveDb, } from "../../lib/database.js";
 import { sendOtpEmail } from "../../lib/email.js";
 const OTP_TTL_MINUTES = Number(process.env.AUTH_OTP_TTL_MINUTES || 10);
 const OTP_MAX_ATTEMPTS = Number(process.env.AUTH_OTP_MAX_ATTEMPTS || 5);
@@ -27,6 +27,14 @@ const ACCOUNT_LOCKOUT_DURATION_MINUTES = Number(process.env.AUTH_ACCOUNT_LOCKOUT
 const PASSWORD_MIN_LENGTH = Number(process.env.AUTH_PASSWORD_MIN_LENGTH || 12);
 function normalizeEmail(email) {
     return email.trim().toLowerCase();
+}
+function isDisabledSqliteFallback(error) {
+    return error instanceof PostgresOnlyDatabaseError;
+}
+function warnDisabledSqliteFallback(context, error) {
+    if (isDisabledSqliteFallback(error)) {
+        console.warn(`${context}: SQLite runtime fallback is disabled; continuing without fallback.`);
+    }
 }
 function validatePasswordComplexity(password) {
     if (password.length < PASSWORD_MIN_LENGTH) {
@@ -249,19 +257,29 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback when Postgres is unavailable.
             }
         }
-        const db = await getDb();
-        db.prepare("INSERT INTO auth_login_audit (id, userId, email, event, successful, ipAddress, userAgent, detail, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run([
-            uuidv4(),
-            userId ?? null,
-            email,
-            event,
-            successful ? 1 : 0,
-            req.ip ?? "",
-            req.get("user-agent") ?? "",
-            detail ?? null,
-            new Date().toISOString(),
-        ]);
-        await saveDb(db);
+        try {
+            const db = await getDb();
+            try {
+                db.prepare("INSERT INTO auth_login_audit (id, userId, email, event, successful, ipAddress, userAgent, detail, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run([
+                    uuidv4(),
+                    userId ?? null,
+                    email,
+                    event,
+                    successful ? 1 : 0,
+                    req.ip ?? "",
+                    req.get("user-agent") ?? "",
+                    detail ?? null,
+                    new Date().toISOString(),
+                ]);
+                await saveDb(db);
+            }
+            catch {
+                // Silently degrade when SQLite is unavailable.
+            }
+        }
+        catch (error) {
+            warnDisabledSqliteFallback("Auth audit skipped", error);
+        }
     }
     async function getOtpChallenge(email) {
         if (isPgConfigured()) {
@@ -277,10 +295,23 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        return allRows(db, "SELECT * FROM auth_otp_challenges WHERE email = ?", [
-            email,
-        ])[0];
+        try {
+            const db = await getDb();
+            try {
+                return allRows(db, "SELECT * FROM auth_otp_challenges WHERE email = ?", [
+                    email,
+                ])[0];
+            }
+            catch {
+                return null;
+            }
+        }
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                return undefined;
+            }
+            throw error;
+        }
     }
     async function saveOtpChallenge(email, codeHash, userId, expiresAt, requestedAt) {
         if (isPgConfigured()) {
@@ -300,9 +331,14 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        db.prepare("INSERT OR REPLACE INTO auth_otp_challenges (email, codeHash, userId, expiresAt, attempts, requestedAt, requestCount) VALUES (?, ?, ?, ?, 0, ?, COALESCE((SELECT requestCount + 1 FROM auth_otp_challenges WHERE email = ?), 1))").run([email, codeHash, userId, expiresAt, requestedAt, email]);
-        await saveDb(db);
+        try {
+            const db = await getDb();
+            db.prepare("INSERT OR REPLACE INTO auth_otp_challenges (email, codeHash, userId, expiresAt, attempts, requestedAt, requestCount) VALUES (?, ?, ?, ?, 0, ?, COALESCE((SELECT requestCount + 1 FROM auth_otp_challenges WHERE email = ?), 1))").run([email, codeHash, userId, expiresAt, requestedAt, email]);
+            await saveDb(db);
+        }
+        catch {
+            // Silently degrade when SQLite is unavailable.
+        }
     }
     async function deleteOtpChallenge(email) {
         if (isPgConfigured()) {
@@ -316,9 +352,14 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        db.prepare("DELETE FROM auth_otp_challenges WHERE email = ?").run([email]);
-        await saveDb(db);
+        try {
+            const db = await getDb();
+            db.prepare("DELETE FROM auth_otp_challenges WHERE email = ?").run([email]);
+            await saveDb(db);
+        }
+        catch {
+            // Silently degrade when SQLite is unavailable.
+        }
     }
     async function incrementOtpAttempts(email) {
         if (isPgConfigured()) {
@@ -331,8 +372,13 @@ export function createAuthRouter() {
             }
         }
         const db = await getDb();
-        db.prepare("UPDATE auth_otp_challenges SET attempts = attempts + 1 WHERE email = ?").run([email]);
-        await saveDb(db);
+        try {
+            db.prepare("UPDATE auth_otp_challenges SET attempts = attempts + 1 WHERE email = ?").run([email]);
+            await saveDb(db);
+        }
+        catch {
+            // Silently degrade when SQLite is unavailable.
+        }
     }
     async function enforceAuthRateLimit(input) {
         const nowDate = new Date();
@@ -378,38 +424,51 @@ export function createAuthRouter() {
                 // Fall through to SQLite fallback.
             }
         }
-        const db = await getDb();
-        const row = allRows(db, "SELECT * FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?", [input.scope, input.identifier, input.action])[0];
-        if (row?.blockedUntil && Date.parse(row.blockedUntil) > Date.now()) {
-            return {
-                allowed: false,
-                retryAfter: Math.ceil((Date.parse(row.blockedUntil) - Date.now()) / 1000),
-            };
+        try {
+            const db = await getDb();
+            try {
+                const row = allRows(db, "SELECT * FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?", [input.scope, input.identifier, input.action])[0];
+                if (row?.blockedUntil && Date.parse(row.blockedUntil) > Date.now()) {
+                    return {
+                        allowed: false,
+                        retryAfter: Math.ceil((Date.parse(row.blockedUntil) - Date.now()) / 1000),
+                    };
+                }
+                const firstSeen = row?.firstSeenAt ? Date.parse(row.firstSeenAt) : 0;
+                const shouldReset = !row || Date.now() - firstSeen > windowMs;
+                const nextCount = shouldReset ? 1 : Number(row.count || 0) + 1;
+                const nextBlockedUntil = nextCount > input.max ? blockedUntil : null;
+                db.prepare(`INSERT OR REPLACE INTO auth_rate_limits
+         (id, scope, identifier, action, count, firstSeenAt, lastSeenAt, blockedUntil)
+         VALUES (COALESCE((SELECT id FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?), ?), ?, ?, ?, ?, ?, ?, ?)`).run([
+                    input.scope,
+                    input.identifier,
+                    input.action,
+                    uuidv4(),
+                    input.scope,
+                    input.identifier,
+                    input.action,
+                    nextCount,
+                    shouldReset || !row ? nowDate.toISOString() : row.firstSeenAt,
+                    nowDate.toISOString(),
+                    nextBlockedUntil,
+                ]);
+                await saveDb(db);
+                return {
+                    allowed: nextCount <= input.max,
+                    retryAfter: nextBlockedUntil ? input.windowMinutes * 60 : 0,
+                };
+            }
+            catch {
+                return { allowed: true, retryAfter: 0 };
+            }
         }
-        const firstSeen = row?.firstSeenAt ? Date.parse(row.firstSeenAt) : 0;
-        const shouldReset = !row || Date.now() - firstSeen > windowMs;
-        const nextCount = shouldReset ? 1 : Number(row.count || 0) + 1;
-        const nextBlockedUntil = nextCount > input.max ? blockedUntil : null;
-        db.prepare(`INSERT OR REPLACE INTO auth_rate_limits
-       (id, scope, identifier, action, count, firstSeenAt, lastSeenAt, blockedUntil)
-       VALUES (COALESCE((SELECT id FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?), ?), ?, ?, ?, ?, ?, ?, ?)`).run([
-            input.scope,
-            input.identifier,
-            input.action,
-            uuidv4(),
-            input.scope,
-            input.identifier,
-            input.action,
-            nextCount,
-            shouldReset || !row ? nowDate.toISOString() : row.firstSeenAt,
-            nowDate.toISOString(),
-            nextBlockedUntil,
-        ]);
-        await saveDb(db);
-        return {
-            allowed: nextCount <= input.max,
-            retryAfter: nextBlockedUntil ? input.windowMinutes * 60 : 0,
-        };
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                return { allowed: true, retryAfter: 0 };
+            }
+            throw error;
+        }
     }
     async function createAutEHSssion(input) {
         if (isPgConfigured()) {
@@ -682,23 +741,39 @@ export function createAuthRouter() {
                 };
             }
             catch {
-                // Fall through to SQLite fallback.
+                return {
+                    preferences: {},
+                    avatarUrl: null,
+                    deactivationRequestedAt: null,
+                };
             }
         }
-        const db = await getDb();
-        const row = allRows(db, "SELECT preferences, avatarUrl, deactivationRequestedAt FROM user_preferences WHERE userId = ?", [userId])[0];
-        let preferences = {};
         try {
-            preferences = row?.preferences ? JSON.parse(row.preferences) : {};
+            const db = await getDb();
+            const row = allRows(db, "SELECT preferences, avatarUrl, deactivationRequestedAt FROM user_preferences WHERE userId = ?", [userId])[0];
+            let preferences = {};
+            try {
+                preferences = row?.preferences ? JSON.parse(row.preferences) : {};
+            }
+            catch {
+                preferences = {};
+            }
+            return {
+                preferences,
+                avatarUrl: row?.avatarUrl ?? null,
+                deactivationRequestedAt: row?.deactivationRequestedAt ?? null,
+            };
         }
-        catch {
-            preferences = {};
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                return {
+                    preferences: {},
+                    avatarUrl: null,
+                    deactivationRequestedAt: null,
+                };
+            }
+            throw error;
         }
-        return {
-            preferences,
-            avatarUrl: row?.avatarUrl ?? null,
-            deactivationRequestedAt: row?.deactivationRequestedAt ?? null,
-        };
     }
     async function saveUserPreferences(userId, preferences, avatarUrl) {
         const now = new Date().toISOString();
@@ -717,13 +792,21 @@ export function createAuthRouter() {
                 };
             }
             catch {
-                // Fall through to SQLite fallback.
+                return { preferences, avatarUrl };
             }
         }
-        const db = await getDb();
-        db.prepare("INSERT INTO user_preferences (userId, preferences, avatarUrl, updatedAt) VALUES (?, ?, ?, ?) ON CONFLICT(userId) DO UPDATE SET preferences = excluded.preferences, avatarUrl = COALESCE(excluded.avatarUrl, user_preferences.avatarUrl), updatedAt = excluded.updatedAt").run([userId, JSON.stringify(preferences), avatarUrl, now]);
-        await saveDb(db);
-        return { preferences, avatarUrl };
+        try {
+            const db = await getDb();
+            db.prepare("INSERT INTO user_preferences (userId, preferences, avatarUrl, updatedAt) VALUES (?, ?, ?, ?) ON CONFLICT(userId) DO UPDATE SET preferences = excluded.preferences, avatarUrl = COALESCE(excluded.avatarUrl, user_preferences.avatarUrl), updatedAt = excluded.updatedAt").run([userId, JSON.stringify(preferences), avatarUrl, now]);
+            await saveDb(db);
+            return { preferences, avatarUrl };
+        }
+        catch (error) {
+            if (isDisabledSqliteFallback(error)) {
+                return { preferences, avatarUrl };
+            }
+            throw error;
+        }
     }
     async function saveEmailChangeChallenge(input) {
         if (isPgConfigured()) {
@@ -915,14 +998,109 @@ export function createAuthRouter() {
             return false;
         }
     }
+    async function findUserByEmailWithPassword(email) {
+        const normalized = normalizeEmail(email);
+        if (isPgConfigured()) {
+            try {
+                const result = await pgPool.query("SELECT id::text, email, name, role, phone, site, department, password_hash FROM users WHERE lower(email) = $1 AND active = TRUE LIMIT 1", [normalized]);
+                const row = result.rows[0];
+                return row
+                    ? { id: row.id, email: row.email, name: row.name, role: row.role, passwordHash: row.password_hash }
+                    : null;
+            }
+            catch {
+                throw new ExternalServiceError("PostgreSQL", "Account lookup is temporarily unavailable. Please try again.");
+            }
+        }
+        try {
+            const db = await getDb();
+            const rows = allRows(db, "SELECT id, email, name, role, phone, passwordHash FROM users WHERE lower(email) = ? AND active = 1 LIMIT 1", [normalized]);
+            const row = rows[0];
+            return row
+                ? {
+                    id: String(row.id),
+                    email: row.email,
+                    name: row.name,
+                    role: row.role,
+                    passwordHash: row.passwordHash,
+                }
+                : null;
+        }
+        catch {
+            return null;
+        }
+    }
     router.post("/login", async (req, res) => {
         const parsed = LoginSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({ error: parsed.error.errors });
         }
-        return res
-            .status(501)
-            .json({ error: "Authentication backend not configured" });
+        const { email, password } = parsed.data;
+        const normalized = normalizeEmail(email);
+        const lockoutCheck = await isAccountLocked(normalized);
+        if (lockoutCheck.locked) {
+            return res.status(423).json({ error: lockoutCheck.reason });
+        }
+        const foundUser = await findUserByEmailWithPassword(normalized);
+        if (!foundUser) {
+            await audit(req, "login", email, false, undefined, "Account not found");
+            await recordFailedLogin(normalized);
+            return res.status(401).json({ error: "Invalid email or password" });
+        }
+        const isPasswordValid = await bcrypt.compare(password, foundUser.passwordHash);
+        if (!isPasswordValid) {
+            await audit(req, "login", email, false, foundUser.id, "Invalid password");
+            await recordFailedLogin(normalized);
+            return res.status(401).json({ error: "Invalid email or password" });
+        }
+        await resetFailedLoginAttempts(normalized);
+        const user = publicUser(foundUser);
+        const sessionId = randomBytes(16).toString("hex");
+        const refreshToken = randomBytes(48).toString("base64url");
+        const token = generateToken(user, sessionId);
+        const decoded = jwt.decode(token);
+        await createAutEHSssion({
+            id: decoded.jti,
+            userId: user.id,
+            email: normalized,
+            expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
+            ipAddress: req.ip ?? "",
+            userAgent: req.get("user-agent") ?? "",
+            refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
+            deviceFingerprint: sessionFingerprint(req),
+        });
+        await enforceSessionLimit(user.id);
+        await audit(req, "login", email, true, user.id, "Password login successful");
+        const currentFingerprint = sessionFingerprint(req);
+        const previousSessions = await listAutEHSssions(user.id);
+        const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
+        if (isNewDevice) {
+            sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(() => undefined);
+        }
+        const csrfToken = randomBytes(24).toString("base64url");
+        const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
+        res.cookie("ehs_access", token, {
+            httpOnly: true,
+            sameSite: cookieSameSite,
+            secure: env.NODE_ENV === "production",
+            maxAge: getAccessCookieMaxAgeMs(),
+            path: "/",
+        });
+        res.cookie("ehs_csrf", csrfToken, {
+            httpOnly: false,
+            sameSite: cookieSameSite,
+            secure: env.NODE_ENV === "production",
+            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+            path: "/",
+        });
+        res.cookie("ehs_refresh", refreshToken, {
+            httpOnly: true,
+            sameSite: cookieSameSite,
+            secure: env.NODE_ENV === "production",
+            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+            path: "/api/auth",
+        });
+        res.json({ token, user, csrfToken });
     });
     router.post("/otp/request", async (req, res) => {
         const parsed = OtpRequestSchema.safeParse(req.body);

@@ -76,7 +76,7 @@ export declare const InvestigationSchema: z.ZodObject<{
     incidentForm: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Completed" | "Closed" | "In Progress" | "Pending";
+    status: "In Progress" | "Completed" | "Closed" | "Pending";
     title: string;
     description: string;
     priority: "Critical" | "Low" | "Medium" | "High";
@@ -112,7 +112,7 @@ export declare const InvestigationSchema: z.ZodObject<{
     createdBy: string;
     incidentId: string;
     investigator: string;
-    status?: "Completed" | "Closed" | "In Progress" | "Pending" | undefined;
+    status?: "In Progress" | "Completed" | "Closed" | "Pending" | undefined;
     id?: string | undefined;
     dueDate?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;

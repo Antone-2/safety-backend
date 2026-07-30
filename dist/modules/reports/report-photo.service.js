@@ -3,6 +3,13 @@ import { getDbClient } from "../../shared/infrastructure/database/postgres.clien
 import { isS3StorageConfigured, uploadToS3, } from "../../shared/infrastructure/storage/s3.service.js";
 import { logger } from "../../shared/utils/logger.js";
 const DRIVE_FILE_RE = /drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]{10,})/i;
+function sanitizeDriveFileId(value) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed)
+        return null;
+    const match = trimmed.match(/[A-Za-z0-9_-]{10,}/);
+    return match?.[0] ?? null;
+}
 function extractDriveFileId(value) {
     const raw = String(value ?? "").trim();
     if (!raw)
@@ -13,7 +20,7 @@ function extractDriveFileId(value) {
             candidate.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i) ||
             candidate.match(/drive\.google\.com\/thumbnail\?id=([^&]+)/i);
         if (match?.[1])
-            return match[1];
+            return sanitizeDriveFileId(match[1]);
     }
     return null;
 }

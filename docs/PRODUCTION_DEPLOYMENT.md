@@ -37,7 +37,7 @@ Enable the Google Sheets API for the API key, make the source sheet readable by 
 GOOGLE_FORM_ID=<spreadsheet id>
 GOOGLE_SHEET_NAME=Unsafe Acts/ Conditions (Responses)
 GOOGLE_API_KEY=<Google API key>
-GOOGLE_SHEETS_DATE_ORDER=mdy
+GOOGLE_SHEETS_DATE_ORDER=dmy
 ```
 
 Sheets reports degraded when PostgreSQL is unavailable because synchronized report state is stored there.

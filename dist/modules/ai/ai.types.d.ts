@@ -140,9 +140,9 @@ export declare const AiQueryInputSchema: z.ZodObject<{
     exportFormat: z.ZodDefault<z.ZodEnum<["json", "html"]>>;
     maxSourceRecords: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    maxSourceRecords: number;
     query: string;
     exportFormat: "html" | "json";
+    maxSourceRecords: number;
     filters?: {
         status?: string | undefined;
         department?: string | undefined;
@@ -164,9 +164,9 @@ export declare const AiQueryInputSchema: z.ZodObject<{
         dateFrom?: string | undefined;
         dateTo?: string | undefined;
     } | undefined;
-    maxSourceRecords?: number | undefined;
     conversationId?: string | undefined;
     exportFormat?: "html" | "json" | undefined;
+    maxSourceRecords?: number | undefined;
 }>;
 export type AiQueryInput = z.infer<typeof AiQueryInputSchema>;
 export declare const ComplianceInputSchema: z.ZodObject<{
@@ -475,29 +475,29 @@ export declare const AiResponseSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         feature: string;
         confidence?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
     }, {
         feature: string;
         confidence?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
     metadata: {
         feature: string;
         confidence?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
     };
     success: boolean;
     data?: any;
@@ -505,11 +505,11 @@ export declare const AiResponseSchema: z.ZodObject<{
     metadata: {
         feature: string;
         confidence?: number | undefined;
-        sources?: string[] | undefined;
-        warnings?: string[] | undefined;
         confidenceLevel?: "high" | "low" | "medium" | "very-high" | undefined;
         modelVersion?: string | undefined;
         processingTimeMs?: number | undefined;
+        sources?: string[] | undefined;
+        warnings?: string[] | undefined;
     };
     success: boolean;
     data?: any;

@@ -1,18 +1,16 @@
+import type { AiActor } from "./infra/query-domain.contract.js";
 import { AiRepository } from "./ai.repository.js";
 import type { AiQueryInput } from "./ai.types.js";
 type Json = Record<string, unknown>;
-type AiActor = {
-    id?: string;
-    email?: string;
-    role?: string;
-    name?: string;
-};
 export declare class AiService {
     private llm;
     private rag;
     private repository;
     private reports;
     private model;
+    private operationalQueryEngine;
+    private reportQueryEngine;
+    private generateEvidenceBoundAnswer;
     private generate;
     private savePredictionBestEffort;
     private savePromptAuditBestEffort;

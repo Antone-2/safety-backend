@@ -9,6 +9,31 @@ function isPgAvailable(): boolean {
   return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
 
+function defaultGuardrailSettings() {
+  return {
+    id: "default",
+    enabled: true,
+    requireCitations: true,
+    allowExports: true,
+    maxSourceRecords: 50,
+    allowedRoles: [
+      "super-admin",
+      "EHS-manager",
+      "EHS-officer",
+      "plant-manager",
+      "factory-manager",
+    ],
+    ragSources: [
+      "policies",
+      "procedures",
+      "reports",
+      "capa",
+      "audits",
+      "training",
+    ],
+  };
+}
+
 function parseJsonArray(value: unknown, fallback: string[]) {
   if (!value || typeof value !== "string") return fallback;
   try {
@@ -366,85 +391,61 @@ export class AiRepository {
 
   async getGuardrailSettings() {
     if (isPgAvailable()) {
-      const result = await pgPool.query("SELECT * FROM ai_guardrail_settings WHERE id = $1 LIMIT 1", ["default"]);
-      const row = result.rows[0];
-      if (!row?.id) {
-        return {
-          id: "default",
-          enabled: true,
-          requireCitations: true,
-          allowExports: true,
-          maxSourceRecords: 50,
-          allowedRoles: [
-            "super-admin",
-            "EHS-manager",
-            "EHS-officer",
-            "plant-manager",
-            "factory-manager",
-          ],
-          ragSources: [
-            "policies",
-            "procedures",
-            "reports",
-            "capa",
-            "audits",
-            "training",
-          ],
-        };
+      try {
+        const result = await pgPool.query(
+          "SELECT * FROM ai_guardrail_settings WHERE id = $1 LIMIT 1",
+          ["default"],
+        );
+        const row = result.rows[0];
+        if (!row?.id) {
+          return defaultGuardrailSettings();
+        }
+        return mapGuardrailRow(row);
+      } catch (error) {
+        console.warn(
+          "AI guardrail settings fallback to SQLite/defaults:",
+          error instanceof Error ? error.message : String(error),
+        );
       }
-      return mapGuardrailRow(row);
     }
 
-    const db = await getDb();
-    const row = db
-      .prepare("SELECT * FROM ai_guardrail_settings WHERE id = ?")
-      .getAsObject(["default"]) as any;
-    if (!row?.id) {
+    try {
+      const db = await getDb();
+      const row = db
+        .prepare("SELECT * FROM ai_guardrail_settings WHERE id = ?")
+        .getAsObject(["default"]) as any;
+      if (!row?.id) {
+        return defaultGuardrailSettings();
+      }
       return {
-        id: "default",
-        enabled: true,
-        requireCitations: true,
-        allowExports: true,
-        maxSourceRecords: 50,
-        allowedRoles: [
+        ...row,
+        enabled: Boolean(row.enabled),
+        requireCitations: Boolean(row.requireCitations),
+        allowExports: Boolean(row.allowExports),
+        maxSourceRecords: Number(row.maxSourceRecords || 50),
+        allowedRoles: parseJsonArray(row.allowedRoles, [
           "super-admin",
           "EHS-manager",
           "EHS-officer",
           "plant-manager",
           "factory-manager",
-        ],
-        ragSources: [
+        ]),
+        ragSources: parseJsonArray(row.ragSources, [
           "policies",
           "procedures",
           "reports",
           "capa",
           "audits",
           "training",
-        ],
+        ]),
       };
+    } catch (error) {
+      console.warn(
+        "AI guardrail settings fallback to defaults:",
+        error instanceof Error ? error.message : String(error),
+      );
+      return defaultGuardrailSettings();
     }
-    return {
-      ...row,
-      enabled: Boolean(row.enabled),
-      requireCitations: Boolean(row.requireCitations),
-      allowExports: Boolean(row.allowExports),
-      maxSourceRecords: Number(row.maxSourceRecords || 50),
-      allowedRoles: parseJsonArray(row.allowedRoles, [
-        "super-admin",
-        "EHS-manager",
-        "EHS-officer",
-        "plant-manager",
-        "factory-manager",
-      ]),
-      ragSources: parseJsonArray(row.ragSources, [
-        "policies",
-        "procedures",
-        "reports",
-        "capa",
-        "audits",
-        "training",
-      ]),
-    };
   }
 
   async updateGuardrailSettings(data: Record<string, any>, updatedBy?: string) {

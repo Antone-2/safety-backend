@@ -1,10 +1,58 @@
 import { BusinessRuleError, NotFoundError } from "../../shared/domain/errors/index.js";
+import { tryParseReportDateWithFallbacks } from "../../shared/utils/report-date.js";
 const now = () => new Date().toISOString();
+function parseJsonArray(value) {
+    if (Array.isArray(value))
+        return value.map(String).filter(Boolean);
+    if (!value)
+        return [];
+    try {
+        const parsed = JSON.parse(String(value));
+        return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+    }
+    catch {
+        return String(value)
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+}
+function normalizeIncidentStatus(value) {
+    const status = String(value ?? "Open").trim();
+    if (status === "In Progress")
+        return "Investigating";
+    if (status === "Open")
+        return "Open";
+    if (status === "Investigating")
+        return "Investigating";
+    if (status === "Root Cause Analysis")
+        return "Root Cause Analysis";
+    if (status === "CAPA Open")
+        return "CAPA Open";
+    if (status === "Closed")
+        return "Closed";
+    return "Open";
+}
+function normalizeIncidentSeverity(value) {
+    const severity = String(value ?? "Medium").trim();
+    if (severity === "Low")
+        return "Low";
+    if (severity === "Medium")
+        return "Medium";
+    if (severity === "High")
+        return "High";
+    if (severity === "Critical")
+        return "Critical";
+    return "Medium";
+}
 function mapReportToIncident(row) {
-    const status = String(row.status ?? "Open");
-    const mappedStatus = status === "In Progress" ? "Investigating" : status;
     const reportType = String(row.type ?? "").toLowerCase();
-    const severity = String(row.severity ?? "Medium");
+    const createdAt = tryParseReportDateWithFallbacks(row.created_at, row.updated_at) ?? now();
+    const updatedAt = tryParseReportDateWithFallbacks(row.updated_at, row.created_at) ?? createdAt;
+    const dueAt = tryParseReportDateWithFallbacks(row.due_at, createdAt, updatedAt);
+    const complianceDueAt = row.compliance_due_at
+        ? tryParseReportDateWithFallbacks(row.compliance_due_at, dueAt, createdAt, updatedAt)
+        : undefined;
     // Map report type to incident type
     const typeMap = {
         "unsafe act": "Unsafe Act",
@@ -21,8 +69,8 @@ function mapReportToIncident(row) {
     return {
         id: String(row.id),
         type: mappedType,
-        severity: severity,
-        status: mappedStatus,
+        severity: normalizeIncidentSeverity(row.severity),
+        status: normalizeIncidentStatus(row.status),
         location: String(row.location ?? ""),
         department: String(row.department ?? ""),
         shift: String(row.shift ?? ""),
@@ -35,9 +83,9 @@ function mapReportToIncident(row) {
         photoUrl: String(row.photo_url ?? ""),
         photos: [],
         assignedTo: row.assigned_to ? String(row.assigned_to) : undefined,
-        assignedToCopy: Array.isArray(row.assigned_to_copy) ? row.assigned_to_copy.map(String) : undefined,
+        assignedToCopy: parseJsonArray(row.assigned_to_copy),
         slaHours: Number(row.sla_hours ?? 24),
-        dueAt: row.due_at ? new Date(row.due_at).toISOString() : undefined,
+        dueAt,
         resolutionDays: row.resolution_days ? Number(row.resolution_days) : undefined,
         rootCause: undefined,
         correctiveAction: undefined,
@@ -47,11 +95,11 @@ function mapReportToIncident(row) {
         regulatoryNotificationRequired: false,
         regulatoryNotificationDate: undefined,
         complianceRequired: Boolean(row.compliance_required),
-        complianceDueAt: row.compliance_due_at ? new Date(row.compliance_due_at).toISOString() : undefined,
+        complianceDueAt,
         source: String(row.source ?? "manual"),
         auditHistory: undefined,
-        createdAt: row.created_at ? new Date(row.created_at).toISOString() : now(),
-        updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : now(),
+        createdAt,
+        updatedAt,
     };
 }
 export class IncidentsService {

@@ -20,6 +20,8 @@ const AUTH_WRITE_EXEMPTIONS = new Set([
   "/auth/mfa/recovery-code",
   "/auth/login/mfa-complete",
   "/auth/users",
+  "/ai/query",
+  "/ai/dashboard-insights",
 ]);
 
 export function normalizeApiPath(path: string): string {

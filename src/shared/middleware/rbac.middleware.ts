@@ -543,6 +543,8 @@ export function requireRole(allowedRoles: string[]) {
 
 export const ROUTE_PERMISSION_MATRIX: Record<string, Permission> = {
   "/api/incidents": "incidents:read",
+  "/api/incidents/stats/summary": "incidents:read",
+  "/api/incidents/overdue/list": "incidents:read",
   "/api/incidents/create": "incidents:create",
   "/api/incidents/transition": "incidents:update",
   "/api/reports": "reports:read",

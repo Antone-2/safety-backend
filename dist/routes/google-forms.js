@@ -4,10 +4,11 @@ import { getDb, saveDb } from "../lib/database.js";
 import { REPORT_SOURCE_GOOGLE_SHEETS } from "../lib/types.js";
 import { getDbClient } from "../shared/infrastructure/database/postgres.client.js";
 import { broadcastReport } from "../modules/reports/reports.module.js";
+import { invalidateReportsCache } from "../modules/reports/reports.cache.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 import { storeReportPhotoFromDrive } from "../modules/reports/report-photo.service.js";
 import { logger } from "../shared/utils/logger.js";
-import { parseReportDate } from "../shared/utils/report-date.js";
+import { GOOGLE_SHEETS_TIMEZONE, parseValidatedReportDate, getSheetLocalDateString, } from "../shared/utils/report-date.js";
 const router = Router();
 const SYNC_STATE_ID = "google_forms";
 const DEFAULT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -285,14 +286,26 @@ function normalizeStatus(status) {
         return "Closed";
     return "Open";
 }
-export function parseDate(dateStr) {
+export function parseDate(dateStr, referenceDate) {
     if (!dateStr?.trim())
         throw new Error("Google Sheets row is missing its report date");
     try {
-        return parseReportDate(dateStr);
+        const parsed = parseValidatedReportDate(dateStr, {
+            referenceDate,
+            label: "Google Sheets report date",
+        });
+        logger.debug({
+            raw: dateStr,
+            parsedUtc: parsed,
+            parsedLocalDate: getSheetLocalDateString(new Date(parsed)),
+            currentLocalDate: getSheetLocalDateString(referenceDate),
+            timezone: GOOGLE_SHEETS_TIMEZONE,
+        }, "google-forms.parseDate");
+        return parsed;
     }
-    catch {
-        throw new Error(`Invalid Google Sheets report date: ${dateStr.trim()}`);
+    catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid Google Sheets report date";
+        throw new Error(`Invalid Google Sheets report date: ${dateStr.trim()} (${message})`);
     }
 }
 function normalizeHeaderKey(value) {
@@ -449,13 +462,14 @@ function toDirectImageUrl(raw) {
     const url = raw.trim();
     if (!url)
         return "";
-    const driveIdMatch = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([^/&?]+)/i) ||
-        url.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i) ||
-        url.match(/docs\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i);
+    const firstUrl = url.match(/https?:\/\/[^\s,]+/i)?.[0] ?? url;
+    const driveIdMatch = firstUrl.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]{10,})/i) ||
+        firstUrl.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([A-Za-z0-9_-]{10,})/i) ||
+        firstUrl.match(/docs\.google\.com\/uc\?export=(?:view|download)&id=([A-Za-z0-9_-]{10,})/i);
     if (driveIdMatch?.[1]) {
         return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(driveIdMatch[1])}`;
     }
-    return url;
+    return firstUrl;
 }
 function extractPhotoUrl(headers, row) {
     const matched = getMatchingCell(headers, row, [
@@ -526,7 +540,7 @@ export function buildReportRecordFromRow(headers, row, defaults) {
     const categoryRaw = getMatchingCell(headers, row, ["category", "hazard", "incident type", "incident category", "hazard category", "type of incident"], 4) || defaults.categories[0];
     const typeRaw = getMatchingCell(headers, row, ["type", "nature", "report type", "unsafe act condition", "unsafe act condition", "incident type"], 4) || "Unsafe Condition";
     const type = typeRaw.toLowerCase().includes("condition") ? "Unsafe Condition" : "Unsafe Act";
-    const description = getMatchingCell(headers, row, ["description", "incident", "incident description", "details", "brief description", "hazard description", "summary", "incident summary", "details of the hazard", "briefly details"], 8) || "";
+    const description = getMatchingCell(headers, row, ["description", "incident description", "details", "brief description", "hazard description", "summary", "incident summary", "details of the hazard", "briefly details"], 8) || "";
     const dateRaw = getMatchingCell(headers, row, ["timestamp", "date", "date submitted", "created at", "submitted at"], 0);
     const date = parseDate(dateRaw);
     const severity = normalizeSeverity(getMatchingCell(headers, row, ["severity", "risk level", "severity level", "priority", "impact"], 7) || "Medium");
@@ -534,6 +548,7 @@ export function buildReportRecordFromRow(headers, row, defaults) {
     const anonymous = reporter.toLowerCase() === "anonymous";
     const slaHours = severity === "Critical" ? 24 : severity === "High" ? 72 : 168;
     const dueAt = new Date(new Date(date).getTime() + slaHours * 3600000).toISOString();
+    logger.debug({ date, dueAt, slaHours, dateRaw }, "google-forms.buildReportRecordFromRow.computedDates");
     const photoUrl = extractPhotoUrl(headers, row);
     const department = defaults.departments[0];
     const shift = "Day";
@@ -771,6 +786,7 @@ export async function finalizeSuccessfulGoogleSheetsSync(params) {
         importedCount: params.reports.length,
         error: null,
     });
+    await invalidateReportsCache();
     params.startPhotoSync(params.reports);
     return {
         imported: params.reports.length,

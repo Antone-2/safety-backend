@@ -8,6 +8,8 @@ import {
   requirePermission,
   type AuthRequest,
 } from "../../shared/middleware/auth.middleware.js";
+import { cacheService } from "../../shared/infrastructure/redis/cache.service.js";
+import { metricsService } from "../../shared/metrics/metrics.service.js";
 import { reportsService } from "./reports.service.js";
 import { isUrlAllowedForFetch, safeFetch } from "../../shared/infrastructure/storage/ssrf.protection.js";
 import {
@@ -26,6 +28,14 @@ import {
   updateCorrectiveActionRequestReview,
 } from "../../services/corrective-action-request.service.js";
 import { auditReportTimestamps } from "./report-timestamp-audit.service.js";
+import {
+  buildReportsCacheKey,
+  invalidateReportsCache,
+  REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
+  REPORTS_DETAIL_CACHE_TTL_SECONDS,
+  REPORTS_LIST_CACHE_TTL_SECONDS,
+  setCachedJsonHeaders,
+} from "./reports.cache.js";
 
 const BulkReportStatusSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100),
@@ -107,6 +117,52 @@ function queryString(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function readReportFilters(req: Request) {
+  return {
+    status: queryString(req.query.status),
+    severity: queryString(req.query.severity),
+    location: queryString(req.query.location),
+    days: queryString(req.query.days),
+    search: queryString(req.query.search),
+    category: queryString(req.query.category),
+    dateFrom: queryString(req.query.dateFrom),
+    dateTo: queryString(req.query.dateTo),
+  };
+}
+
+function readPagination(req: Request) {
+  return {
+    page: Number(String(req.query.page)) || 1,
+    limit: Number(String(req.query.limit)) || 50,
+  };
+}
+
+export function dedupeDashboardReports<T extends { id?: string; updatedAt?: string; createdAt?: string; date?: string }>(
+  rows: T[],
+) {
+  const byId = new Map<string, T>();
+
+  const toTime = (value?: string) => {
+    if (!value) return Number.NEGATIVE_INFINITY;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
+  };
+
+  const getRecency = (row: T) =>
+    Math.max(toTime(row.updatedAt), toTime(row.createdAt), toTime(row.date));
+
+  for (const row of rows) {
+    const id = String(row.id ?? "").trim();
+    if (!id) continue;
+    const existing = byId.get(id);
+    if (!existing || getRecency(row) >= getRecency(existing)) {
+      byId.set(id, row);
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
 function routeParam(req: Request, name: string) {
   const value = req.params[name];
   return Array.isArray(value) ? value[0] : (value ?? "");
@@ -167,7 +223,6 @@ function csvEscape(value: unknown) {
 
 export function createReportsRouter() {
   const router = Router();
-  startCorrectiveActionReminderScheduler();
 
   router.get("/corrective-action-requests/:token", async (req, res) => {
     const token = routeParam(req, "token");
@@ -368,32 +423,22 @@ export function createReportsRouter() {
     "/",
     authenticateUser,
     requirePermission("reports:read"),
-    async (req, res) => {
-      const status = queryString(req.query.status);
-      const severity = queryString(req.query.severity);
-      const location = queryString(req.query.location);
-      const days = queryString(req.query.days);
-      const search = queryString(req.query.search);
-      const category = queryString(req.query.category);
-      const dateFrom = queryString(req.query.dateFrom);
-      const dateTo = queryString(req.query.dateTo);
-      const page = Number(String(req.query.page)) || 1;
-      const limit = Number(String(req.query.limit)) || 50;
+    async (req: AuthRequest, res) => {
+      const filters = readReportFilters(req);
+      const { page, limit } = readPagination(req);
+      const cacheKey = buildReportsCacheKey("list", {
+        role: req.user?.role ?? "unknown",
+        filters,
+        page,
+        limit,
+      });
 
       try {
-        const result = await reportsService.list(
-          {
-            status,
-            severity,
-            location,
-            days,
-            search,
-            category,
-            dateFrom,
-            dateTo,
-          },
-          page,
-          limit,
+        setCachedJsonHeaders(res, REPORTS_LIST_CACHE_TTL_SECONDS);
+        const result = await cacheService.getOrSet(
+          cacheKey,
+          () => reportsService.list(filters, page, limit),
+          REPORTS_LIST_CACHE_TTL_SECONDS,
         );
         res.json(result);
       } catch (error) {
@@ -407,7 +452,7 @@ export function createReportsRouter() {
     "/events",
     authenticateUser,
     requirePermission("reports:read"),
-    async (req, res) => {
+    async (req: AuthRequest, res) => {
       const origin = req.headers.origin;
       const allowedOrigin =
         typeof origin === "string" &&
@@ -442,9 +487,17 @@ export function createReportsRouter() {
     "/stats",
     authenticateUser,
     requirePermission("reports:read"),
-    async (_req, res) => {
+    async (req: AuthRequest, res) => {
+      const cacheKey = buildReportsCacheKey("stats", {
+        role: req.user?.role ?? "unknown",
+      });
       try {
-        const stats = await reportsService.stats();
+        setCachedJsonHeaders(res, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+        const stats = await cacheService.getOrSet(
+          cacheKey,
+          () => reportsService.stats(),
+          REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
+        );
         res.json(stats);
       } catch (error) {
         console.error("Failed to load stats", error);
@@ -457,22 +510,83 @@ export function createReportsRouter() {
     "/summary",
     authenticateUser,
     requirePermission("reports:read"),
-    async (req, res) => {
+    async (req: AuthRequest, res) => {
+      const filters = readReportFilters(req);
+      const cacheKey = buildReportsCacheKey("summary", {
+        role: req.user?.role ?? "unknown",
+        filters,
+      });
       try {
-        const summary = await reportsService.summary({
-          status: queryString(req.query.status),
-          severity: queryString(req.query.severity),
-          location: queryString(req.query.location),
-          days: queryString(req.query.days),
-          search: queryString(req.query.search),
-          category: queryString(req.query.category),
-          dateFrom: queryString(req.query.dateFrom),
-          dateTo: queryString(req.query.dateTo),
-        });
+        setCachedJsonHeaders(res, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+        const summary = await cacheService.getOrSet(
+          cacheKey,
+          () => reportsService.summary(filters),
+          REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
+        );
         res.json(summary);
       } catch (error) {
         console.error("Failed to load summary", error);
         res.status(500).json({ error: "Failed to load summary" });
+      }
+    },
+  );
+
+  router.get(
+    "/dashboard",
+    authenticateUser,
+    requirePermission("reports:read"),
+    async (req: AuthRequest, res) => {
+      const startedAt = Date.now();
+      const filters = readReportFilters(req);
+      const { page, limit } = readPagination(req);
+      const cacheKey = buildReportsCacheKey("dashboard", {
+        role: req.user?.role ?? "unknown",
+        filters,
+        page,
+        limit,
+      });
+
+      try {
+        setCachedJsonHeaders(res, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+        const payload = await cacheService.getOrSetWithMeta(
+          cacheKey,
+          async () => {
+            const [reports, summary, topReporters, analyticsReports] = await Promise.all([
+              reportsService.list(filters, page, limit),
+              reportsService.summary(filters),
+              reportsService.topReportersMonthToDate(6),
+              reportsService.list({ ...filters, all: true }, 1, limit),
+            ]);
+
+            return {
+              reports: {
+                ...reports,
+                data: dedupeDashboardReports(reports.data),
+              },
+              summary,
+              topReporters,
+              analyticsReports: dedupeDashboardReports(analyticsReports.data),
+              analyticsPreview: dedupeDashboardReports(analyticsReports.data),
+              generatedAt: new Date().toISOString(),
+            };
+          },
+          REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
+        );
+        metricsService.recordCacheEvent("reports-dashboard", payload.cacheStatus);
+        metricsService.recordLatency("reports-dashboard", Date.now() - startedAt);
+        res.setHeader(
+          "X-Cache",
+          payload.cacheStatus === "hit"
+            ? "HIT"
+            : payload.cacheStatus === "coalesced"
+              ? "HIT-COALESCED"
+              : payload.cacheStatus.toUpperCase(),
+        );
+        res.json(payload.value);
+      } catch (error) {
+        metricsService.incrementCounter("reports-dashboard.errors");
+        console.error("Failed to load dashboard snapshot", error);
+        res.status(500).json({ error: "Failed to load dashboard snapshot" });
       }
     },
   );
@@ -544,14 +658,23 @@ export function createReportsRouter() {
     "/top-reporters-mtd",
     authenticateUser,
     requirePermission("reports:read"),
-    async (req, res) => {
+    async (req: AuthRequest, res) => {
       const requestedLimit = Number(String(req.query.limit ?? "6"));
       const limit = Number.isFinite(requestedLimit)
         ? Math.min(20, Math.max(1, Math.trunc(requestedLimit)))
         : 6;
+      const cacheKey = buildReportsCacheKey("top-reporters", {
+        role: req.user?.role ?? "unknown",
+        limit,
+      });
 
       try {
-        const topReporters = await reportsService.topReportersMonthToDate(limit);
+        setCachedJsonHeaders(res, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+        const topReporters = await cacheService.getOrSet(
+          cacheKey,
+          () => reportsService.topReportersMonthToDate(limit),
+          REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
+        );
         res.json(topReporters);
       } catch (error) {
         console.error("Failed to load top reporters MTD", error);
@@ -810,10 +933,19 @@ export function createReportsRouter() {
     "/:id",
     authenticateUser,
     requirePermission("reports:read"),
-    async (req, res) => {
+    async (req: AuthRequest, res) => {
       const id = routeParam(req, "id");
-      const report = await reportsService.getById(id);
+      const cacheKey = buildReportsCacheKey("detail", {
+        role: req.user?.role ?? "unknown",
+        id,
+      });
+      const report = await cacheService.getOrSet(
+        cacheKey,
+        () => reportsService.getById(id),
+        REPORTS_DETAIL_CACHE_TTL_SECONDS,
+      );
       if (!report) return res.status(404).json({ error: "Not found" });
+      setCachedJsonHeaders(res, REPORTS_DETAIL_CACHE_TTL_SECONDS);
       res.json(report);
     },
   );
@@ -839,6 +971,7 @@ export function createReportsRouter() {
 
       try {
         const saved = await reportsService.create(parsed.data, req);
+        await invalidateReportsCache();
         res.status(201).json(saved);
       } catch (error) {
         console.error("Failed to create report", error);
@@ -859,6 +992,7 @@ export function createReportsRouter() {
 
       const updated = await reportsService.updateStatus(id, parsed.data, req);
       if (!updated) return res.status(404).json({ error: "Not found" });
+      await invalidateReportsCache();
       res.json(updated);
     },
   );
@@ -875,6 +1009,7 @@ export function createReportsRouter() {
 
       const { ids, status } = parsed.data;
       const result = await reportsService.bulkUpdateStatus(ids, status, req);
+      await invalidateReportsCache();
       res.json({ ...result, status });
     },
   );
@@ -910,6 +1045,7 @@ export function createReportsRouter() {
         req,
       );
       if (!updated) return res.status(404).json({ error: "Not found" });
+      await invalidateReportsCache();
       broadcastReport(updated);
       res.json(updated);
     },
@@ -1116,6 +1252,7 @@ export function createReportsRouter() {
 
       const updated = await reportsService.addComment(id, author, text, req);
       if (!updated) return res.status(404).json({ error: "Not found" });
+      await invalidateReportsCache();
       res.json(updated);
     },
   );
@@ -1128,6 +1265,7 @@ export function createReportsRouter() {
       const id = routeParam(req, "id");
       const updated = await reportsService.update(id, req.body, req);
       if (!updated) return res.status(404).json({ error: "Not found" });
+      await invalidateReportsCache();
       res.json(updated);
     },
   );
@@ -1140,6 +1278,7 @@ export function createReportsRouter() {
       const id = routeParam(req, "id");
       const result = await reportsService.delete(id, req);
       if (!result) return res.status(404).json({ error: "Not found" });
+      await invalidateReportsCache();
       res.json(result);
     },
   );

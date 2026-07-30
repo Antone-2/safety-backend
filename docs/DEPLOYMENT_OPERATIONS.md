@@ -141,3 +141,40 @@ Monitor:
 - worker restarts and failed jobs
 - Google Sheets sync failures
 - SMTP/SMS notification failures
+
+## Release Sign-Off Checklist
+
+Run this checklist for staging before every production release:
+
+Use [RELEASE_SIGNOFF_TEMPLATE.md](D:/crown safety/safety-backend/docs/RELEASE_SIGNOFF_TEMPLATE.md) to record the result for each release.
+Use [RELEASE_TICKET_TEMPLATE.md](D:/crown safety/safety-backend/docs/RELEASE_TICKET_TEMPLATE.md) when you need the same sign-off summarized in a release tracker or deployment ticket.
+
+1. Confirm frontend environment variables point to the real API host:
+   `VITE_API_BASE`, file upload/CDN URLs, and any Google Sheets display config.
+2. Confirm backend environment variables are present and production-safe:
+   `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, `FRONTEND_URL`, `APP_BASE_URL`, SMTP/Brevo, S3, and `GOOGLE_SHEETS_DATE_ORDER=dmy`.
+3. Run database safety checks:
+   `npm run db:migrate:dry`
+   `npm run db:migrate:backup`
+4. Deploy backend, workers, and frontend to staging.
+5. Confirm backend health endpoints:
+   `GET /ready`
+   `GET /health`
+   `GET /api/operations/health/dependencies`
+6. Confirm authentication flow:
+   request OTP, complete login, and verify MFA enrollment/challenge flows for a privileged account.
+7. Create a report in staging and confirm:
+   it persists after API restart, appears in list/detail views, and has correct date/time handling.
+8. Upload evidence and confirm:
+   presigned upload succeeds, the public file URL opens, and the attachment remains linked to the report.
+9. Confirm Google Sheets/report sync:
+   recent rows import correctly, no day/month inversion is visible, and monthly reporting pages show live data.
+10. Run dashboard verification gates:
+    `npm run ops:check-dashboard-metrics -- --base-url=<staging-api>`
+    optional: `npm run bench:reports-dashboard -- --base-url=<staging-api> ...`
+11. Confirm outbound notifications:
+    OTP email, assignment/corrective-action notifications, and any configured internal notifications.
+12. Confirm operational recovery basics:
+    backup job is healthy, restore artifact exists, and the current deploy image/tag is recorded for rollback.
+
+Production release should proceed only after all twelve checks pass in staging.

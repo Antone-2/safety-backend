@@ -58,6 +58,38 @@ vi.mock("../../src/modules/reports/reports.service.js", () => ({
         limit: reports.length,
       };
     }
+
+    async summary() {
+      return {
+        total: reports.length,
+        open: 1,
+        closed: 1,
+        overdue: 1,
+        criticalOpen: 1,
+        avgResolution: 2,
+        recordableIncidents: 1,
+        lostTimeInjuries: 0,
+        medicalTreatmentCases: 1,
+        nearMissCount: 1,
+        daysSinceLastLti: -1,
+        totalManhoursWorked: 52000,
+        totalWorkforce: 250,
+        severityCounts: {
+          Critical: 2,
+          High: 1,
+          Medium: 0,
+          Low: 0,
+        },
+      };
+    }
+
+    async topReportersMonthToDate() {
+      return [
+        { reporter: "Ann", reportCount: 1 },
+        { reporter: "Ben", reportCount: 1 },
+        { reporter: "Cara", reportCount: 1 },
+      ];
+    }
   },
 }));
 

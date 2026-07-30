@@ -6,7 +6,14 @@ export declare class MetricsService {
     private requestsByMethod;
     private requestsByStatus;
     private requestsByPath;
+    private counters;
+    private latencyByMetric;
+    private trimLatencySeries;
+    private summarizeLatencies;
     recordRequest(method: string, path: string, statusCode: number, durationMs: number): void;
+    incrementCounter(name: string, value?: number): void;
+    recordLatency(name: string, durationMs: number): void;
+    recordCacheEvent(scope: string, outcome: string): void;
     getSnapshot(): {
         startedAt: string;
         uptimeSeconds: number;
@@ -18,6 +25,18 @@ export declare class MetricsService {
         averageLatencyMs: number;
         medianLatencyMs: number;
         p95LatencyMs: number;
+        p99LatencyMs: number;
+        counters: Record<string, number>;
+        latencyByMetric: {
+            [k: string]: {
+                count: number;
+                averageLatencyMs: number;
+                medianLatencyMs: number;
+                p95LatencyMs: number;
+                p99LatencyMs: number;
+                maxLatencyMs: number;
+            };
+        };
     };
     reset(): void;
 }

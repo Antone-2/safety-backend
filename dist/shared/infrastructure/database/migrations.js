@@ -2059,6 +2059,226 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
       CREATE INDEX IF NOT EXISTS idx_emergency_contacts_createdAt ON emergency_contacts(createdAt DESC);
     `,
     },
+    {
+        id: "031_timezone_fix",
+        description: "Convert TIMESTAMP to TIMESTAMPTZ and add America/New_York timezone validation",
+        sql: `
+      DO $$
+      DECLARE
+        rec record;
+      BEGIN
+        FOR rec IN
+          SELECT *
+          FROM (
+            VALUES
+              ('reports', 'date', 'America/New_York'),
+              ('reports', 'due_at', 'America/New_York'),
+              ('reports', 'compliance_due_at', 'America/New_York'),
+              ('incidents', 'date', 'America/New_York'),
+              ('incidents', 'due_at', 'America/New_York'),
+              ('incidents', 'regulatory_notification_date', 'America/New_York'),
+              ('incidents', 'compliance_due_at', 'America/New_York'),
+              ('capa', 'due_date', 'America/New_York'),
+              ('capa', 'start_date', 'America/New_York'),
+              ('capa', 'completed_date', 'America/New_York'),
+              ('capa', 'verified_at', 'America/New_York'),
+              ('permits', 'start_date', 'America/New_York'),
+              ('permits', 'end_date', 'America/New_York'),
+              ('training_records', 'scheduled_date', 'America/New_York'),
+              ('training_records', 'completed_date', 'America/New_York'),
+              ('training_records', 'expiry_date', 'America/New_York'),
+              ('investigations', 'due_date', 'America/New_York'),
+              ('investigations', 'completed_date', 'America/New_York'),
+              ('investigations', 'reviewed_at', 'America/New_York'),
+              ('documents', 'review_date', 'America/New_York'),
+              ('documents', 'approval_date', 'America/New_York'),
+              ('documents', 'effective_date', 'America/New_York'),
+              ('documents', 'expiry_date', 'America/New_York'),
+              ('documents', 'next_review_date', 'America/New_York'),
+              ('equipment', 'purchase_date', 'America/New_York'),
+              ('equipment', 'installation_date', 'America/New_York'),
+              ('equipment', 'warranty_expiry', 'America/New_York'),
+              ('equipment', 'last_inspection_date', 'America/New_York'),
+              ('equipment', 'next_inspection_date', 'America/New_York'),
+              ('equipment_inspections', 'inspection_date', 'America/New_York'),
+              ('equipment_inspections', 'next_inspection_due', 'America/New_York'),
+              ('compliance_obligations', 'due_date', 'America/New_York'),
+              ('compliance_obligations', 'last_compliance_date', 'America/New_York'),
+              ('audits', 'start_date', 'America/New_York'),
+              ('audits', 'end_date', 'America/New_York'),
+              ('legal_updates', 'effective_date', 'America/New_York'),
+              ('legal_updates', 'due_date', 'America/New_York'),
+              ('hazard_reports', 'reported_at', 'America/New_York'),
+              ('hazard_reports', 'resolved_at', 'America/New_York'),
+              ('carbon_emissions', 'recorded_date', 'America/New_York'),
+              ('energy_records', 'recorded_date', 'America/New_York'),
+              ('water_records', 'recorded_date', 'America/New_York'),
+              ('waste_records', 'generated_date', 'America/New_York'),
+              ('waste_records', 'disposed_date', 'America/New_York'),
+              ('ppe_equipment', 'issued_date', 'America/New_York'),
+              ('ppe_equipment', 'expiry_date', 'America/New_York'),
+              ('ppe_equipment', 'inspection_date', 'America/New_York'),
+              ('ppe_equipment', 'inspection_due_date', 'America/New_York'),
+              ('contractors', 'insurance_expiry', 'America/New_York'),
+              ('contractors', 'last_audit_date', 'America/New_York'),
+              ('contractors', 'induction_date', 'America/New_York'),
+              ('contractors', 'induction_expiry', 'America/New_York'),
+              ('contractor_incidents', 'date', 'America/New_York'),
+              ('ehs_objectives', 'start_date', 'America/New_York'),
+              ('ehs_objectives', 'end_date', 'America/New_York'),
+              ('ehs_objectives', 'last_reviewed', 'America/New_York'),
+              ('analytics_report_schedules', 'next_run_at', 'UTC'),
+              ('analytics_report_schedules', 'last_run_at', 'UTC'),
+              ('analytics_report_runs', 'period_start', 'UTC'),
+              ('analytics_report_runs', 'period_end', 'UTC')
+          ) AS cols(table_name, column_name, assumed_timezone)
+        LOOP
+          IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = rec.table_name
+              AND column_name = rec.column_name
+              AND data_type = 'timestamp without time zone'
+          ) THEN
+            EXECUTE format(
+              'ALTER TABLE %I ALTER COLUMN %I TYPE TIMESTAMPTZ USING %I AT TIME ZONE %L',
+              rec.table_name,
+              rec.column_name,
+              rec.column_name,
+              rec.assumed_timezone
+            );
+          END IF;
+        END LOOP;
+      END $$;
+
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'reports'
+            AND column_name = 'date'
+        ) THEN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS idx_reports_date_ny ON reports ((CAST(date AT TIME ZONE ''America/New_York'' AS DATE)))';
+        END IF;
+
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'incidents'
+            AND column_name = 'date'
+        ) THEN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS idx_incidents_date_ny ON incidents ((CAST(date AT TIME ZONE ''America/New_York'' AS DATE)))';
+        END IF;
+
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'reports'
+            AND column_name = 'due_at'
+        ) THEN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS idx_reports_due_at_ny ON reports ((CAST(due_at AT TIME ZONE ''America/New_York'' AS DATE)))';
+        END IF;
+      END $$;
+    `,
+    },
+    {
+        id: "032_dashboard_scale_indexes",
+        description: "Add targeted indexes for dashboard reads and auth session validation",
+        sql: `
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_lookup
+        ON auth_sessions (id, expires_at)
+        WHERE revoked_at IS NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_reports_status_date_desc
+        ON reports (status, date DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_reports_severity_date_desc
+        ON reports (severity, date DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_reports_open_due_at
+        ON reports (due_at)
+        WHERE status <> 'Closed' AND due_at IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_reports_location_date_desc
+        ON reports (location, date DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_reports_category_date_desc
+        ON reports (category, date DESC);
+    `,
+    },
+    {
+        id: "033_foundation_risk_registers",
+        description: "Create risk matrices, risk registers, and bow ties tables",
+        sql: `
+      CREATE TABLE IF NOT EXISTS risk_matrices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        description TEXT,
+        likelihood_scale JSONB NOT NULL DEFAULT '{}'::jsonb,
+        severity_scale JSONB NOT NULL DEFAULT '{}'::jsonb,
+        levels JSONB NOT NULL DEFAULT '[]'::jsonb,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_risk_matrices_created_at ON risk_matrices(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_risk_matrices_is_default ON risk_matrices(is_default);
+
+      CREATE TABLE IF NOT EXISTS risk_registers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        location TEXT NOT NULL,
+        department TEXT NOT NULL,
+        activity TEXT NOT NULL,
+        hazard TEXT NOT NULL,
+        existing_controls TEXT NOT NULL,
+        likelihood INTEGER NOT NULL,
+        severity INTEGER NOT NULL,
+        risk_rating INTEGER NOT NULL,
+        risk_level TEXT NOT NULL,
+        additional_controls TEXT,
+        residual_likelihood INTEGER,
+        residual_severity INTEGER,
+        residual_risk_rating INTEGER,
+        residual_risk_level TEXT,
+        review_date TEXT,
+        reviewed_by TEXT,
+        status TEXT NOT NULL DEFAULT 'Active',
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_risk_registers_status ON risk_registers(status);
+      CREATE INDEX IF NOT EXISTS idx_risk_registers_level ON risk_registers(risk_level);
+      CREATE INDEX IF NOT EXISTS idx_risk_registers_location_department ON risk_registers(location, department);
+      CREATE INDEX IF NOT EXISTS idx_risk_registers_created_at ON risk_registers(created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS bow_ties (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        top_event TEXT NOT NULL,
+        threats TEXT,
+        preventive_barriers TEXT,
+        consequences TEXT,
+        recovery_barriers TEXT,
+        location TEXT NOT NULL,
+        department TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_bow_ties_status ON bow_ties(status);
+      CREATE INDEX IF NOT EXISTS idx_bow_ties_location_department ON bow_ties(location, department);
+      CREATE INDEX IF NOT EXISTS idx_bow_ties_created_at ON bow_ties(created_at DESC);
+    `,
+    },
 ];
 async function ensureMigrationsTable(client) {
     await client.query(`

@@ -1,5 +1,7 @@
 import { LlmClient } from "./infra/llm.client.js";
 import { RagEngine } from "./infra/rag.engine.js";
+import { detectAiQueryDomain, OperationalQueryEngine, } from "./infra/operational-query.engine.js";
+import { ReportQueryEngine } from "./infra/report-query.engine.js";
 import { AiRepository } from "./ai.repository.js";
 import { createHash } from "crypto";
 import { ReportsService } from "../reports/reports.service.js";
@@ -123,6 +125,94 @@ function formatPeriod(filters) {
     }
     return `${new Date().getFullYear()} YTD`;
 }
+function isoDate(value) {
+    return value.toISOString().slice(0, 10);
+}
+function startOfYear(value) {
+    return new Date(Date.UTC(value.getUTCFullYear(), 0, 1));
+}
+function startOfMonth(value) {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+function daysAgo(value, days) {
+    const copy = new Date(value);
+    copy.setUTCDate(copy.getUTCDate() - days);
+    return copy;
+}
+function planAiQuery(input, _intent) {
+    const now = new Date();
+    const text = input.query.toLowerCase();
+    const responseFilters = {
+        dateFrom: input.filters?.dateFrom,
+        dateTo: input.filters?.dateTo,
+        location: input.filters?.location,
+        department: input.filters?.department,
+        severity: input.filters?.severity,
+        status: input.filters?.status,
+        category: input.filters?.category,
+    };
+    const inferredConstraints = [];
+    if (!responseFilters.dateFrom && !responseFilters.dateTo) {
+        if (/\btoday\b/.test(text)) {
+            responseFilters.dateFrom = isoDate(now);
+            responseFilters.dateTo = isoDate(now);
+            inferredConstraints.push("Applied 'today' date window from the user question.");
+        }
+        else if (/this week|weekly|last 7 days/.test(text)) {
+            responseFilters.dateFrom = isoDate(daysAgo(now, 6));
+            responseFilters.dateTo = isoDate(now);
+            inferredConstraints.push("Applied a 7-day reporting window from the user question.");
+        }
+        else if (/this month|month to date|mtd/.test(text)) {
+            responseFilters.dateFrom = isoDate(startOfMonth(now));
+            responseFilters.dateTo = isoDate(now);
+            inferredConstraints.push("Applied month-to-date filtering from the user question.");
+        }
+        else {
+            responseFilters.dateFrom = isoDate(startOfYear(now));
+            responseFilters.dateTo = isoDate(now);
+            inferredConstraints.push("Applied year-to-date filtering by default.");
+        }
+    }
+    if (!responseFilters.status) {
+        if (/\bopen\b/.test(text)) {
+            responseFilters.status = "Open";
+            inferredConstraints.push("Filtered to open records from the user question.");
+        }
+        else if (/\bclosed\b/.test(text)) {
+            responseFilters.status = "Closed";
+            inferredConstraints.push("Filtered to closed records from the user question.");
+        }
+    }
+    if (!responseFilters.severity) {
+        if (/\bcritical\b/.test(text)) {
+            responseFilters.severity = "Critical";
+            inferredConstraints.push("Filtered to critical severity from the user question.");
+        }
+        else if (/\bhigh\b/.test(text)) {
+            responseFilters.severity = "High";
+            inferredConstraints.push("Filtered to high severity from the user question.");
+        }
+        else if (/\bmedium\b/.test(text)) {
+            responseFilters.severity = "Medium";
+            inferredConstraints.push("Filtered to medium severity from the user question.");
+        }
+        else if (/\blow\b/.test(text)) {
+            responseFilters.severity = "Low";
+            inferredConstraints.push("Filtered to low severity from the user question.");
+        }
+    }
+    const reportFilters = {
+        all: true,
+        dateFrom: responseFilters.dateFrom,
+        dateTo: responseFilters.dateTo,
+        location: responseFilters.location,
+        severity: responseFilters.severity,
+        status: responseFilters.status,
+        category: responseFilters.category,
+    };
+    return { reportFilters, responseFilters, inferredConstraints };
+}
 function applyAiFilters(reports, input) {
     const query = input.query.toLowerCase();
     const year = new Date().getFullYear();
@@ -174,12 +264,78 @@ function buildHtmlExport(report) {
         .join("");
     return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(report.title)}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#172033}h1,h2{color:#082d63}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kpi{border:1px solid #d0d5dd;border-radius:8px;padding:10px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d0d5dd;padding:8px;text-align:left}th{background:#f2f4f7}</style></head><body><h1>${escapeHtml(report.title)}</h1><p>${escapeHtml(report.executiveSummary)}</p><div class="kpis">${kpis}</div><h2>Trend Explanation</h2>${report.interpretation.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}<h2>Monthly Trend Data</h2><table><thead><tr><th>Month</th><th>Unsafe Acts</th><th>Unsafe Conditions</th><th>Total</th><th>Highest Rated</th><th>Lowest Rated</th></tr></thead><tbody>${rows}</tbody></table>${tables}<h2>Recommended Actions</h2><ol>${report.recommendedActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol><h2>Warnings And Assumptions</h2><ul>${warnings}</ul><h2>Sources</h2><p>${escapeHtml(report.sources.join(", "))}</p></body></html>`;
 }
+function compactReportEvidence(report) {
+    return {
+        id: report.id,
+        date: report.date,
+        location: report.location,
+        department: report.department || "Unspecified",
+        severity: report.severity,
+        status: report.status,
+        category: report.category,
+        type: report.type,
+        dueAt: report.dueAt,
+        isNearMiss: Boolean(report.isNearMiss),
+        description: report.description.slice(0, 240),
+    };
+}
 export class AiService {
     llm = new LlmClient();
     rag = new RagEngine();
     repository = new AiRepository();
     reports = new ReportsService();
     model = process.env.AI_MODEL || "local-fallback";
+    operationalQueryEngine = new OperationalQueryEngine({
+        llm: this.llm,
+        model: this.model,
+        savePrediction: (feature, input, output, confidence, userId) => this.savePredictionBestEffort(feature, input, output, confidence, userId),
+        savePromptAudit: (input) => this.savePromptAuditBestEffort(input),
+    });
+    reportQueryEngine = new ReportQueryEngine({
+        llm: this.llm,
+        model: this.model,
+        savePrediction: (feature, input, output, confidence, userId) => this.savePredictionBestEffort(feature, input, output, confidence, userId),
+        savePromptAudit: (input) => this.savePromptAuditBestEffort(input),
+    });
+    async generateEvidenceBoundAnswer(input) {
+        const trustedContext = {
+            question: input.question,
+            actorRole: input.role,
+            period: input.period,
+            filters: input.filters || {},
+            intent: input.intent,
+            summary: input.summary,
+            topLocations: input.topLocations.map(([location, count]) => ({
+                location,
+                count,
+            })),
+            topCategories: input.topCategories.map(([category, count]) => ({
+                category,
+                count,
+            })),
+            topReportersMonthToDate: input.topReporters,
+            monthlyTrends: input.trends.slice(-12),
+            recommendedActions: input.managementActions,
+            citedReports: input.citedReports.map(compactReportEvidence),
+        };
+        const answer = await this.llm.generate([
+            "You are Crown Safety Data AI.",
+            "Answer only from the trusted analytics context you are given.",
+            "Do not invent KPIs, counts, dates, locations, departments, or incidents.",
+            "If the context is insufficient, say exactly what is missing.",
+            "Use a concise executive tone.",
+            "Cite report IDs inline when making factual claims.",
+        ].join(" "), [
+            `User question: ${input.question}`,
+            `Period: ${input.period}`,
+            `Trusted analytics context JSON: ${JSON.stringify(trustedContext)}`,
+            "Return a short answer with:",
+            "1. direct answer",
+            "2. supporting evidence",
+            "3. immediate actions if relevant",
+        ].join("\n\n"), { temperature: 0.1, maxTokens: 900 });
+        return { answer, trustedContext };
+    }
     async generate(feature, system, user, userId) {
         const text = await this.llm.generate(system, user, {
             temperature: 0.2,
@@ -234,6 +390,7 @@ export class AiService {
             ? settings.allowedRoles
             : [];
         const prompt = JSON.stringify(data);
+        const domain = detectAiQueryDomain(data.query);
         if (!settings.enabled || !allowedRoles.includes(role)) {
             const denialReason = !settings.enabled
                 ? "AI assistant is disabled by admin policy."
@@ -273,523 +430,44 @@ export class AiService {
             exportFormat: settings.allowExports ? data.exportFormat : "json",
             maxSourceRecords: Math.min(data.maxSourceRecords, Number(settings.maxSourceRecords || 50)),
         };
-        const result = await this.reports.list({ all: true }, 1, 10000);
-        const reports = applyAiFilters(result.data, governedInput);
-        const total = reports.length;
-        const intent = detectIntent(governedInput.query);
-        if (total === 0) {
-            const report = {
-                title: `AI EHS Data Intelligence Report - ${formatPeriod(governedInput.filters)}`,
-                query: governedInput.query,
-                generatedAt: new Date().toISOString(),
-                period: formatPeriod(governedInput.filters),
-                executiveSummary: "No matching live backend records were found for this question, so the AI did not generate KPI values or trends.",
-                kpis: [
-                    {
-                        label: "Matching backend records",
-                        value: 0,
-                        note: "No live data found",
-                    },
-                ],
-                interpretation: [
-                    "The assistant only answers from authenticated backend records.",
-                    "No report IDs matched the selected question and filters.",
-                    "Adjust the time period, location, department, severity, status or category, then run the question again.",
-                ],
-                dataExplanations: [
-                    "No matching live backend records were found.",
-                    "No mock data was used.",
-                    "No frontend-only fallback data was used.",
-                    "The assistant cannot calculate KPIs, trends, charts or management actions without matching source records.",
-                ],
-                trends: [],
-                tables: [
-                    {
-                        title: "Data Availability",
-                        headers: ["Check", "Result"],
-                        rows: [["Live backend records", "0 matching records"]],
-                    },
-                ],
-                recommendedActions: [
-                    "Confirm the backend is connected to the local database or PostgreSQL.",
-                    "Confirm Google Sheets sync has imported the latest reports.",
-                    "Review filters and retry with a wider period if needed.",
-                ],
-                managementActions: [
-                    "Do not use this response for management decisions until live source records are available.",
-                    "Confirm the database and Google Sheets sync status, then regenerate the report.",
-                ],
-                sources: [],
-                citations: {
-                    dataset: [],
-                    kpis: {},
-                    tables: {},
-                    managementActions: [],
-                },
-                assumptions: [
-                    "No mock data was used.",
-                    "No frontend-only fallback data was used.",
-                    "The answer is limited to live backend records available to the authenticated user.",
-                    "Permission-aware AI guardrails were applied.",
-                ],
-            };
-            const output = {
-                success: true,
-                data: {
-                    ...report,
-                    export: governedInput.exportFormat === "html"
-                        ? { format: "html", content: buildHtmlExport(report) }
-                        : undefined,
-                },
-                metadata: {
-                    feature: "ai-query",
-                    confidence: 1,
-                    confidenceLevel: "high",
-                    modelVersion: this.model,
-                    processingTimeMs: Date.now() - startedAt,
-                    sources: [],
-                    warnings: report.assumptions,
-                    guardrails: {
-                        permissionAware: true,
-                        role,
-                        requireCitations: requireCitations(settings),
-                        ragSources: settings.ragSources,
-                        exportsAllowed: Boolean(settings.allowExports),
-                    },
-                },
-            };
-            await this.savePredictionBestEffort("ai-query", governedInput, output, 1, user?.id);
-            await this.savePromptAuditBestEffort({
-                feature: "ai-query",
-                prompt,
-                output,
-                confidence: 1,
+        if (domain === "training") {
+            return this.operationalQueryEngine.executeDomainQuery("training", {
+                governedInput,
                 user,
+                role,
+                settings,
+                startedAt,
+                prompt,
             });
-            return output;
         }
-        const unsafeActs = reports.filter((report) => report.type === "Unsafe Act").length;
-        const unsafeConditions = reports.filter((report) => report.type === "Unsafe Condition").length;
-        const open = reports.filter((report) => report.status === "Open").length;
-        const closed = reports.filter((report) => report.status === "Closed").length;
-        const pending = reports.filter(isPending).length;
-        const overdue = reports.filter(isOverdue).length;
-        const recurring = reports.filter((report) => isRecurringCandidate(report, reports)).length;
-        const recordable = reports.filter(isRecordable).length;
-        const lti = reports.filter(isLikelyLti).length;
-        const nearMiss = reports.filter((report) => report.isNearMiss).length;
-        const topLocations = countBy(reports.map((report) => report.location)).slice(0, 5);
-        const topCategories = countBy(reports.map((report) => report.category)).slice(0, 5);
-        const severityCounts = countBy(reports.map((report) => report.severity));
-        const statusCounts = countBy(reports.map((report) => (isOverdue(report) ? "Overdue" : report.status)));
-        const departmentCounts = countBy(reports.map((report) => report.department || "Unspecified")).slice(0, 10);
-        const months = new Map();
-        for (const report of reports) {
-            const date = reportDate(report);
-            if (!date)
-                continue;
-            const key = monthKey(date);
-            months.set(key, [...(months.get(key) ?? []), report]);
+        if (domain === "capa") {
+            return this.operationalQueryEngine.executeDomainQuery("capa", {
+                governedInput,
+                user,
+                role,
+                settings,
+                startedAt,
+                prompt,
+            });
         }
-        const trends = [...months.entries()]
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([month, rows]) => {
-            const locations = countBy(rows.map((report) => report.location)).map(([location, count]) => ({
-                location,
-                count,
-                score: locationScore(rows, location),
-            }));
-            const ranked = locations.sort((left, right) => left.score - right.score || right.count - left.count);
-            const lowest = ranked[0];
-            const highest = ranked[ranked.length - 1];
-            return {
-                month,
-                unsafeActs: rows.filter((report) => report.type === "Unsafe Act")
-                    .length,
-                unsafeConditions: rows.filter((report) => report.type === "Unsafe Condition").length,
-                total: rows.length,
-                highestRatedLocation: highest?.location,
-                highestRatedScore: highest?.score,
-                lowestRatedLocation: lowest?.location,
-                lowestRatedScore: lowest?.score,
-            };
-        });
-        const latest = trends[trends.length - 1];
-        const previous = trends[trends.length - 2];
-        const direction = latest && previous
-            ? latest.total > previous.total
-                ? "increasing"
-                : latest.total < previous.total
-                    ? "decreasing"
-                    : "stable"
-            : "stable";
-        const peak = [...trends].sort((left, right) => right.total - left.total)[0];
-        const closureRate = total ? Math.round((closed / total) * 100) : 0;
-        const severityTable = {
-            title: "Incidents By Severity",
-            headers: ["Severity", "Reports", "Share"],
-            rows: severityCounts.map(([severity, count]) => [
-                severity,
-                count,
-                percentage(count, total),
-            ]),
-        };
-        const statusTable = {
-            title: "Actions By Status",
-            headers: ["Status", "Reports", "Share"],
-            rows: [
-                ["Open", open, percentage(open, total)],
-                ["Pending / In Progress", pending, percentage(pending, total)],
-                ["Recurring risk candidates", recurring, percentage(recurring, total)],
-                ["Closed", closed, percentage(closed, total)],
-                ["Overdue", overdue, percentage(overdue, total)],
-                ...statusCounts
-                    .filter(([status]) => !["open", "closed", "overdue"].includes(status.toLowerCase()))
-                    .map(([status, count]) => [status, count, percentage(count, total)]),
-            ],
-        };
-        const locationTable = {
-            title: "Location Hotspots And Rated Locations",
-            headers: ["Location", "Reports", "Rating", "Critical", "Open", "Overdue"],
-            rows: topLocations.map(([location, count]) => {
-                const scoped = reports.filter((report) => report.location === location);
-                return [
-                    location,
-                    count,
-                    `${locationScore(reports, location)}%`,
-                    scoped.filter((report) => report.severity === "Critical").length,
-                    scoped.filter((report) => isStatus(report, "Open")).length,
-                    scoped.filter(isOverdue).length,
-                ];
-            }),
-        };
-        const departmentTable = {
-            title: "Department Exposure",
-            headers: ["Department", "Reports", "Share"],
-            rows: departmentCounts.map(([department, count]) => [
-                department,
-                count,
-                percentage(count, total),
-            ]),
-        };
-        const recordableTable = {
-            title: "Recordable / LTI Screening",
-            headers: ["Screen", "Count", "Important note"],
-            rows: [
-                [
-                    "Potential recordable incidents",
-                    recordable,
-                    "Screened from severity and injury/illness wording; validate before statutory reporting.",
-                ],
-                [
-                    "Possible LTI cases",
-                    lti,
-                    "Screened from criticality and lost-time/medical-treatment wording.",
-                ],
-                [
-                    "Near misses",
-                    nearMiss,
-                    "Leading indicator for proactive intervention.",
-                ],
-            ],
-        };
-        const categoryTable = {
-            title: "Top Hazard Categories",
-            headers: ["Category", "Reports", "Share"],
-            rows: topCategories.map(([category, count]) => [
-                category,
-                count,
-                percentage(count, total),
-            ]),
-        };
-        const sourceRecords = sourceIds(reports, undefined, governedInput.maxSourceRecords);
-        const kpiCitations = {
-            totalReports: sourceIds(reports),
-            unsafeActs: sourceIds(reports, (report) => report.type === "Unsafe Act"),
-            unsafeConditions: sourceIds(reports, (report) => report.type === "Unsafe Condition"),
-            openActions: sourceIds(reports, (report) => isStatus(report, "Open")),
-            overdueActions: sourceIds(reports, isOverdue),
-            closedActions: sourceIds(reports, (report) => isStatus(report, "Closed")),
-            recordableScreen: sourceIds(reports, isRecordable),
-            possibleLti: sourceIds(reports, isLikelyLti),
-            nearMisses: sourceIds(reports, (report) => Boolean(report.isNearMiss)),
-        };
-        const trendExplanation = latest && previous
-            ? `${latest.month} changed from ${previous.total} to ${latest.total} reports compared with ${previous.month}, so the selected trend is ${direction}.`
-            : "There is not enough monthly history in the filtered live data to calculate a reliable month-on-month direction.";
-        const managementActions = [
-            overdue > 0
-                ? `Escalate ${overdue} overdue action${overdue === 1 ? "" : "s"} today, assign named owners, and require closure evidence.`
-                : "Maintain closure discipline; no overdue actions were detected in the selected dataset.",
-            open > 0
-                ? `Review ${open} open report${open === 1 ? "" : "s"} by severity and due date during the next EHS meeting.`
-                : "Keep current closure controls in place; no open reports were detected.",
-            recurring > 0
-                ? `Launch a recurring-risk review for ${recurring} report${recurring === 1 ? "" : "s"} sharing repeated location/category patterns.`
-                : "No repeated location/category pattern reached the recurring-risk threshold in this dataset.",
-            topLocations[0]
-                ? `Run a focused site walk at ${topLocations[0][0]}, which contributes ${topLocations[0][1]} report${topLocations[0][1] === 1 ? "" : "s"}.`
-                : "No location hotspot was available from the selected records.",
-            recordable > 0 || lti > 0
-                ? "Validate recordable and LTI screening results with EHS before management or statutory publication."
-                : "Continue monitoring recordable and LTI screens; no likely cases were detected from current wording.",
-        ];
-        const dataExplanations = [
-            `The assistant analyzed ${total} live backend report${total === 1 ? "" : "s"} for ${formatPeriod(governedInput.filters)}. No mock or frontend fallback data was used.`,
-            `The dataset contains ${unsafeActs} unsafe act${unsafeActs === 1 ? "" : "s"} and ${unsafeConditions} unsafe condition${unsafeConditions === 1 ? "" : "s"}.`,
-            `Closure performance is ${closureRate}% based on ${closed} closed report${closed === 1 ? "" : "s"} out of ${total}.`,
-            trendExplanation,
-            topLocations[0]
-                ? `${topLocations[0][0]} is the leading hotspot by report count.`
-                : "No location hotspot could be calculated.",
-            topCategories[0]
-                ? `${topCategories[0][0]} is the most frequent hazard category.`
-                : "No category hotspot could be calculated.",
-            requireCitations(settings)
-                ? `Every numeric finding is backed by source report IDs. ${sourceNote(sourceRecords)}.`
-                : "Source citations are optional under current admin guardrail settings.",
-        ];
-        const selectedTables = [
-            ...(intent.wantsTrend || intent.wantsExecutiveReport
-                ? [
-                    {
-                        title: "Monthly Unsafe Acts / Conditions",
-                        headers: ["Month", "Unsafe Acts", "Unsafe Conditions", "Total"],
-                        rows: trends.map((row) => [
-                            row.month,
-                            row.unsafeActs,
-                            row.unsafeConditions,
-                            row.total,
-                        ]),
-                    },
-                ]
-                : []),
-            ...(intent.wantsTrend || intent.wantsExecutiveReport
-                ? (() => {
-                    const byYear = {};
-                    for (const row of trends) {
-                        const year = row.month.slice(-4);
-                        if (!byYear[year])
-                            byYear[year] = {};
-                        if (row.highestRatedScore !== undefined && row.highestRatedLocation) {
-                            if (!byYear[year].highest ||
-                                row.highestRatedScore > byYear[year].highest.score) {
-                                byYear[year].highest = {
-                                    location: row.highestRatedLocation,
-                                    score: row.highestRatedScore,
-                                };
-                            }
-                        }
-                        if (row.lowestRatedScore !== undefined && row.lowestRatedLocation) {
-                            if (!byYear[year].lowest ||
-                                row.lowestRatedScore < byYear[year].lowest.score) {
-                                byYear[year].lowest = {
-                                    location: row.lowestRatedLocation,
-                                    score: row.lowestRatedScore,
-                                };
-                            }
-                        }
-                    }
-                    return [
-                        {
-                            title: "Rated Locations by Year",
-                            headers: ["Year", "Highest Rated Location", "Lowest Rated Location"],
-                            rows: Object.entries(byYear).map(([year, data]) => [
-                                year,
-                                data.highest
-                                    ? `${data.highest.location} (${data.highest.score}%)`
-                                    : "none",
-                                data.lowest
-                                    ? `${data.lowest.location} (${data.lowest.score}%)`
-                                    : "none",
-                            ]),
-                        },
-                    ];
-                })()
-                : []),
-            ...(intent.wantsKpis || intent.wantsStatus || intent.wantsExecutiveReport
-                ? [statusTable]
-                : []),
-            ...(intent.wantsLocations || intent.wantsExecutiveReport
-                ? [locationTable, departmentTable]
-                : []),
-            ...(intent.wantsSeverity || intent.wantsExecutiveReport
-                ? [severityTable]
-                : []),
-            ...(intent.wantsRecordable || intent.wantsNearMiss || intent.wantsKpis
-                ? [recordableTable]
-                : []),
-            categoryTable,
-        ];
-        const tableCitations = Object.fromEntries(selectedTables.map((table) => {
-            if (table.title.includes("Monthly"))
-                return [table.title, sourceRecords];
-            if (table.title.includes("Status"))
-                return [
-                    table.title,
-                    sourceIds(reports, (report) => report.status !== ""),
-                ];
-            if (table.title.includes("Location"))
-                return [
-                    table.title,
-                    sourceIds(reports, (report) => topLocations.some(([location]) => location === report.location)),
-                ];
-            if (table.title.includes("Department"))
-                return [
-                    table.title,
-                    sourceIds(reports, (report) => departmentCounts.some(([department]) => department === (report.department || "Unspecified"))),
-                ];
-            if (table.title.includes("Severity"))
-                return [table.title, sourceRecords];
-            if (table.title.includes("Recordable"))
-                return [
-                    table.title,
-                    sourceIds(reports, (report) => isRecordable(report) ||
-                        isLikelyLti(report) ||
-                        Boolean(report.isNearMiss)),
-                ];
-            return [table.title, sourceRecords];
-        }));
-        const actionCitations = managementActions.map((action, index) => ({
-            action,
-            sources: index === 0
-                ? sourceIds(reports, isOverdue)
-                : index === 1
-                    ? sourceIds(reports, (report) => !isStatus(report, "Closed"))
-                    : index === 2
-                        ? sourceIds(reports, (report) => isRecurringCandidate(report, reports))
-                        : index === 3 && topLocations[0]
-                            ? sourceIds(reports, (report) => report.location === topLocations[0]?.[0])
-                            : sourceIds(reports, (report) => isRecordable(report) || isLikelyLti(report)),
-        }));
-        const dataQualityWarnings = [
-            "Recordable and LTI values are screening indicators and must be validated by EHS.",
-            "Location ratings are calculated from critical reports, open actions and overdue actions in each month.",
-            "The answer uses backend records available to the authenticated user at generation time.",
-            "Permission-aware AI guardrails were applied.",
-            reports.length > sourceRecords.length
-                ? `Source list is capped at ${sourceRecords.length} report IDs by the maxSourceRecords guardrail.`
-                : "",
-            trends.length < 3
-                ? "Monthly trend confidence is reduced because fewer than three months of matching data were available."
-                : "",
-            requireCitations(settings)
-                ? "Every answer includes backend source report IDs where records are available."
-                : "Source citations are optional under current admin policy.",
-        ].filter(Boolean);
-        const confidence = confidenceFromData(total, trends.length);
-        const report = {
-            title: `AI EHS Data Intelligence Report - ${formatPeriod(governedInput.filters)}`,
-            query: governedInput.query,
-            generatedAt: new Date().toISOString(),
-            period: formatPeriod(governedInput.filters),
-            executiveSummary: intent.wantsExecutiveReport || intent.wantsTrend || intent.wantsKpis
-                ? `The selected live dataset contains ${total} reports for ${formatPeriod(governedInput.filters)}. The monthly trend is ${direction}, with ${unsafeActs} unsafe acts, ${unsafeConditions} unsafe conditions, ${open} open actions, ${pending} pending/in-progress actions, ${recurring} recurring-risk candidates, and ${overdue} overdue actions.`
-                : `Based on live backend records, ${total} reports matched your question. The strongest signals are ${topLocations[0]?.[0] ?? "no clear location hotspot"}, ${topCategories[0]?.[0] ?? "no clear hazard category"}, ${open} open actions, and ${overdue} overdue actions.`,
-            kpis: [
-                {
-                    label: "Total reports",
-                    value: total,
-                    note: "Filtered backend records",
-                },
-                {
-                    label: "Unsafe acts",
-                    value: unsafeActs,
-                    note: "Behaviour/procedure deviations",
-                },
-                {
-                    label: "Unsafe conditions",
-                    value: unsafeConditions,
-                    note: "Physical workplace defects",
-                },
-                { label: "Open actions", value: open, note: "Awaiting closure" },
-                {
-                    label: "Overdue actions",
-                    value: overdue,
-                    note: "Escalation candidates",
-                },
-                {
-                    label: "Closure rate",
-                    value: `${closureRate}%`,
-                    note: "Closed / total",
-                },
-                {
-                    label: "Recordable screen",
-                    value: recordable,
-                    note: "Requires EHS validation",
-                },
-                { label: "Possible LTI", value: lti, note: "Screening only" },
-                { label: "Near misses", value: nearMiss, note: "Leading indicator" },
-            ],
-            interpretation: [
-                ...dataExplanations,
-                unsafeConditions > unsafeActs
-                    ? "Unsafe conditions are higher than unsafe acts, so engineering controls, inspections, maintenance and housekeeping should receive priority."
-                    : unsafeActs > unsafeConditions
-                        ? "Unsafe acts are higher than unsafe conditions, so supervision, coaching, task planning and procedural discipline should receive priority."
-                        : "Unsafe acts and unsafe conditions are balanced, so behavioural controls and workplace-condition controls need equal management attention.",
-                latest && previous
-                    ? `${latest.month} changed from ${previous.total} to ${latest.total} reports compared with ${previous.month}.`
-                    : "There is not enough monthly history in the filtered data to calculate movement.",
-                peak
-                    ? `${peak.month} is the peak month with ${peak.total} reports. Highest rated: ${peak.highestRatedLocation ?? "none"} (${peak.highestRatedScore ?? 0}%). Lowest rated: ${peak.lowestRatedLocation ?? "none"} (${peak.lowestRatedScore ?? 0}%).`
-                    : "No peak month can be calculated from the filtered data.",
-                topLocations.length
-                    ? `Top reporting locations are ${topLocations.map(([location, count]) => `${location} (${count})`).join(", ")}.`
-                    : "No location hotspot is visible from the filtered data.",
-                topCategories.length
-                    ? `Top hazard categories are ${topCategories.map(([category, count]) => `${category} (${count})`).join(", ")}.`
-                    : "No category concentration is visible from the filtered data.",
-            ],
-            dataExplanations,
-            trends,
-            tables: selectedTables,
-            citations: {
-                dataset: sourceRecords,
-                kpis: kpiCitations,
-                tables: tableCitations,
-                managementActions: actionCitations,
-            },
-            managementActions,
-            recommendedActions: managementActions,
-            sources: sourceRecords,
-            assumptions: dataQualityWarnings,
-        };
-        const output = {
-            success: true,
-            data: {
-                ...report,
-                export: governedInput.exportFormat === "html"
-                    ? { format: "html", content: buildHtmlExport(report) }
-                    : undefined,
-            },
-            metadata: {
-                feature: "ai-query",
-                confidence: confidence.score,
-                confidenceLevel: confidence.level,
-                modelVersion: this.model,
-                processingTimeMs: Date.now() - startedAt,
-                sources: report.sources,
-                warnings: report.assumptions,
-                guardrails: {
-                    permissionAware: true,
-                    role,
-                    requireCitations: requireCitations(settings),
-                    ragSources: settings.ragSources,
-                    exportsAllowed: Boolean(settings.allowExports),
-                    maxSourceRecords: governedInput.maxSourceRecords,
-                },
-            },
-        };
-        await this.savePredictionBestEffort("ai-query", governedInput, output, confidence.score, user?.id);
-        await this.savePromptAuditBestEffort({
-            feature: "ai-query",
-            prompt,
-            output,
-            confidence: confidence.score,
+        if (domain === "permits") {
+            return this.operationalQueryEngine.executeDomainQuery("permits", {
+                governedInput,
+                user,
+                role,
+                settings,
+                startedAt,
+                prompt,
+            });
+        }
+        return this.reportQueryEngine.executeReportQuery({
+            governedInput,
             user,
+            role,
+            settings,
+            startedAt,
+            prompt,
         });
-        return output;
     }
     async investigationAssistant(data, userId) {
         const user = `Incident: ${JSON.stringify(data)}`;

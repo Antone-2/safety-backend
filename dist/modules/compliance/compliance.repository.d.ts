@@ -3,6 +3,8 @@ import type { ComplianceObligation, ComplianceAudit, LegalUpdate, CreateComplian
 export declare class ComplianceRepository {
     private pool;
     constructor(pool?: Pool);
+    private shouldUseFallback;
+    private withFallback;
     findObligations(filters?: Record<string, unknown>): Promise<ComplianceObligation[]>;
     findObligationById(id: string): Promise<ComplianceObligation | null>;
     createObligation(data: CreateComplianceObligationInput): Promise<ComplianceObligation>;

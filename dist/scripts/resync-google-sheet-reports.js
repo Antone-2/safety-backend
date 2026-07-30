@@ -2,6 +2,7 @@ import "dotenv/config";
 import { runGoogleSheetsSync } from "../routes/google-forms.js";
 import { logger } from "../shared/utils/logger.js";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { GOOGLE_SHEETS_TIMEZONE } from "../shared/utils/report-date.js";
 async function main() {
     const spreadsheetId = process.env.GOOGLE_FORM_ID;
     const apiKey = process.env.GOOGLE_API_KEY;
@@ -16,7 +17,7 @@ async function main() {
         spreadsheetId,
         sheetName,
         dateOrder: process.env.GOOGLE_SHEETS_DATE_ORDER ?? "dmy",
-        utcOffsetMinutes: process.env.GOOGLE_SHEETS_UTC_OFFSET_MINUTES ?? "180",
+        timezone: GOOGLE_SHEETS_TIMEZONE,
     }, "Re-syncing Google Sheets reports with current parser settings.");
     const result = await runGoogleSheetsSync({
         spreadsheetId,

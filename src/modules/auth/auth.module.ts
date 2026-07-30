@@ -16,7 +16,12 @@ import {
 } from "../../shared/domain/errors/index.js";
 import { AuthRequest, authenticateUser, getCookieValue, requireRole } from "../../shared/middleware/auth.middleware.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
-import { allRows, getDb, saveDb } from "../../lib/database.js";
+import {
+  allRows,
+  getDb,
+  PostgresOnlyDatabaseError,
+  saveDb,
+} from "../../lib/database.js";
 import { sendOtpEmail } from "../../lib/email.js";
 
 type AuthUserRecord = {
@@ -67,6 +72,18 @@ const PASSWORD_MIN_LENGTH = Number(process.env.AUTH_PASSWORD_MIN_LENGTH || 12);
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function isDisabledSqliteFallback(error: unknown) {
+  return error instanceof PostgresOnlyDatabaseError;
+}
+
+function warnDisabledSqliteFallback(context: string, error: unknown) {
+  if (isDisabledSqliteFallback(error)) {
+    console.warn(
+      `${context}: SQLite runtime fallback is disabled; continuing without fallback.`,
+    );
+  }
 }
 
 function validatePasswordComplexity(password: string): void {
@@ -361,21 +378,29 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    db.prepare(
-      "INSERT INTO auth_login_audit (id, userId, email, event, successful, ipAddress, userAgent, detail, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run([
-      uuidv4(),
-      userId ?? null,
-      email,
-      event,
-      successful ? 1 : 0,
-      req.ip ?? "",
-      req.get("user-agent") ?? "",
-      detail ?? null,
-      new Date().toISOString(),
-    ]);
-    await saveDb(db);
+    try {
+const db = await getDb();
+    try {
+      db.prepare(
+        "INSERT INTO auth_login_audit (id, userId, email, event, successful, ipAddress, userAgent, detail, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run([
+        uuidv4(),
+        userId ?? null,
+        email,
+        event,
+        successful ? 1 : 0,
+        req.ip ?? "",
+        req.get("user-agent") ?? "",
+        detail ?? null,
+        new Date().toISOString(),
+      ]);
+      await saveDb(db);
+    } catch {
+      // Silently degrade when SQLite is unavailable.
+    }
+    } catch (error) {
+      warnDisabledSqliteFallback("Auth audit skipped", error);
+    }
   }
 
   async function getOtpChallenge(email: string) {
@@ -395,10 +420,21 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    return allRows(db, "SELECT * FROM auth_otp_challenges WHERE email = ?", [
-      email,
-    ])[0];
+    try {
+const db = await getDb();
+    try {
+      return allRows(db, "SELECT * FROM auth_otp_challenges WHERE email = ?", [
+        email,
+      ])[0];
+    } catch {
+      return null;
+    }
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async function saveOtpChallenge(
@@ -428,11 +464,15 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    db.prepare(
-      "INSERT OR REPLACE INTO auth_otp_challenges (email, codeHash, userId, expiresAt, attempts, requestedAt, requestCount) VALUES (?, ?, ?, ?, 0, ?, COALESCE((SELECT requestCount + 1 FROM auth_otp_challenges WHERE email = ?), 1))",
-    ).run([email, codeHash, userId, expiresAt, requestedAt, email]);
-    await saveDb(db);
+    try {
+      const db = await getDb();
+      db.prepare(
+        "INSERT OR REPLACE INTO auth_otp_challenges (email, codeHash, userId, expiresAt, attempts, requestedAt, requestCount) VALUES (?, ?, ?, ?, 0, ?, COALESCE((SELECT requestCount + 1 FROM auth_otp_challenges WHERE email = ?), 1))",
+      ).run([email, codeHash, userId, expiresAt, requestedAt, email]);
+      await saveDb(db);
+    } catch {
+      // Silently degrade when SQLite is unavailable.
+    }
   }
 
   async function deleteOtpChallenge(email: string) {
@@ -447,9 +487,13 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    db.prepare("DELETE FROM auth_otp_challenges WHERE email = ?").run([email]);
-    await saveDb(db);
+    try {
+      const db = await getDb();
+      db.prepare("DELETE FROM auth_otp_challenges WHERE email = ?").run([email]);
+      await saveDb(db);
+    } catch {
+      // Silently degrade when SQLite is unavailable.
+    }
   }
 
   async function incrementOtpAttempts(email: string) {
@@ -466,10 +510,14 @@ export function createAuthRouter() {
     }
 
     const db = await getDb();
-    db.prepare(
-      "UPDATE auth_otp_challenges SET attempts = attempts + 1 WHERE email = ?",
-    ).run([email]);
-    await saveDb(db);
+    try {
+      db.prepare(
+        "UPDATE auth_otp_challenges SET attempts = attempts + 1 WHERE email = ?",
+      ).run([email]);
+      await saveDb(db);
+    } catch {
+      // Silently degrade when SQLite is unavailable.
+    }
   }
 
   async function enforceAuthRateLimit(input: {
@@ -531,46 +579,57 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    const row = allRows(
-      db,
-      "SELECT * FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?",
-      [input.scope, input.identifier, input.action],
-    )[0];
-    if (row?.blockedUntil && Date.parse(row.blockedUntil) > Date.now()) {
+    try {
+const db = await getDb();
+    try {
+      const row = allRows(
+        db,
+        "SELECT * FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?",
+        [input.scope, input.identifier, input.action],
+      )[0];
+      if (row?.blockedUntil && Date.parse(row.blockedUntil) > Date.now()) {
+        return {
+          allowed: false,
+          retryAfter: Math.ceil(
+            (Date.parse(row.blockedUntil) - Date.now()) / 1000,
+          ),
+        };
+      }
+      const firstSeen = row?.firstSeenAt ? Date.parse(row.firstSeenAt) : 0;
+      const shouldReset = !row || Date.now() - firstSeen > windowMs;
+      const nextCount = shouldReset ? 1 : Number(row.count || 0) + 1;
+      const nextBlockedUntil = nextCount > input.max ? blockedUntil : null;
+      db.prepare(
+        `INSERT OR REPLACE INTO auth_rate_limits
+         (id, scope, identifier, action, count, firstSeenAt, lastSeenAt, blockedUntil)
+         VALUES (COALESCE((SELECT id FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?), ?), ?, ?, ?, ?, ?, ?, ?)`,
+      ).run([
+        input.scope,
+        input.identifier,
+        input.action,
+        uuidv4(),
+        input.scope,
+        input.identifier,
+        input.action,
+        nextCount,
+        shouldReset || !row ? nowDate.toISOString() : row.firstSeenAt,
+        nowDate.toISOString(),
+        nextBlockedUntil,
+      ]);
+      await saveDb(db);
       return {
-        allowed: false,
-        retryAfter: Math.ceil(
-          (Date.parse(row.blockedUntil) - Date.now()) / 1000,
-        ),
+        allowed: nextCount <= input.max,
+        retryAfter: nextBlockedUntil ? input.windowMinutes * 60 : 0,
       };
+    } catch {
+      return { allowed: true, retryAfter: 0 };
     }
-    const firstSeen = row?.firstSeenAt ? Date.parse(row.firstSeenAt) : 0;
-    const shouldReset = !row || Date.now() - firstSeen > windowMs;
-    const nextCount = shouldReset ? 1 : Number(row.count || 0) + 1;
-    const nextBlockedUntil = nextCount > input.max ? blockedUntil : null;
-    db.prepare(
-      `INSERT OR REPLACE INTO auth_rate_limits
-       (id, scope, identifier, action, count, firstSeenAt, lastSeenAt, blockedUntil)
-       VALUES (COALESCE((SELECT id FROM auth_rate_limits WHERE scope = ? AND identifier = ? AND action = ?), ?), ?, ?, ?, ?, ?, ?, ?)`,
-    ).run([
-      input.scope,
-      input.identifier,
-      input.action,
-      uuidv4(),
-      input.scope,
-      input.identifier,
-      input.action,
-      nextCount,
-      shouldReset || !row ? nowDate.toISOString() : row.firstSeenAt,
-      nowDate.toISOString(),
-      nextBlockedUntil,
-    ]);
-    await saveDb(db);
-    return {
-      allowed: nextCount <= input.max,
-      retryAfter: nextBlockedUntil ? input.windowMinutes * 60 : 0,
-    };
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        return { allowed: true, retryAfter: 0 };
+      }
+      throw error;
+    }
   }
 
   async function createAutEHSssion(input: {
@@ -611,21 +670,31 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    db.prepare(
-      "INSERT INTO auth_sessions (id, userId, email, createdAt, expiresAt, ipAddress, userAgent, refreshHash, deviceFingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run([
-      input.id,
-      input.userId,
-      input.email,
-      new Date().toISOString(),
-      input.expiresAt,
-      input.ipAddress,
-      input.userAgent,
-      input.refreshHash,
-      input.deviceFingerprint,
-    ]);
-    await saveDb(db);
+    try {
+      const db = await getDb();
+      db.prepare(
+        "INSERT INTO auth_sessions (id, userId, email, createdAt, expiresAt, ipAddress, userAgent, refreshHash, deviceFingerprint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run([
+        input.id,
+        input.userId,
+        input.email,
+        new Date().toISOString(),
+        input.expiresAt,
+        input.ipAddress,
+        input.userAgent,
+        input.refreshHash,
+        input.deviceFingerprint,
+      ]);
+      await saveDb(db);
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        throw new ExternalServiceError(
+          "PostgreSQL",
+          "Session persistence is temporarily unavailable. Please try again.",
+        );
+      }
+      throw error;
+    }
   }
 
   async function getSessionByRefreshHash(refreshHash: string) {
@@ -646,12 +715,20 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    return allRows(
-      db,
-      "SELECT * FROM auth_sessions WHERE refreshHash = ? AND revokedAt IS NULL AND expiresAt > ?",
-      [refreshHash, new Date().toISOString()],
-    )[0];
+    try {
+      const db = await getDb();
+      return allRows(
+        db,
+        "SELECT * FROM auth_sessions WHERE refreshHash = ? AND revokedAt IS NULL AND expiresAt > ?",
+        [refreshHash, new Date().toISOString()],
+      )[0];
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        warnDisabledSqliteFallback("Refresh session lookup skipped", error);
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async function getTrustedMfaSession(userId: string, fingerprint: string) {
@@ -765,11 +842,19 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    db.prepare(
-      "UPDATE auth_sessions SET revokedAt = ? WHERE id = ? AND userId = ?",
-    ).run([now, sessionId, userId]);
-    await saveDb(db);
+    try {
+      const db = await getDb();
+      db.prepare(
+        "UPDATE auth_sessions SET revokedAt = ? WHERE id = ? AND userId = ?",
+      ).run([now, sessionId, userId]);
+      await saveDb(db);
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        warnDisabledSqliteFallback("Session revocation skipped", error);
+        return;
+      }
+      throw error;
+    }
   }
 
   async function revokeUserSessions(userId: string) {
@@ -786,11 +871,19 @@ export function createAuthRouter() {
       }
     }
 
-    const db = await getDb();
-    db.prepare(
-      "UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL",
-    ).run([now, userId]);
-    await saveDb(db);
+    try {
+      const db = await getDb();
+      db.prepare(
+        "UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL",
+      ).run([now, userId]);
+      await saveDb(db);
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        warnDisabledSqliteFallback("User session revocation skipped", error);
+        return;
+      }
+      throw error;
+    }
   }
 
   async function enforceSessionLimit(userId: string) {
@@ -943,27 +1036,42 @@ export function createAuthRouter() {
           deactivationRequestedAt: row?.deactivationRequestedAt ?? null,
         };
       } catch {
-        // Fall through to SQLite fallback.
+        return {
+          preferences: {},
+          avatarUrl: null,
+          deactivationRequestedAt: null,
+        };
       }
     }
 
-    const db = await getDb();
-    const row = allRows(
-      db,
-      "SELECT preferences, avatarUrl, deactivationRequestedAt FROM user_preferences WHERE userId = ?",
-      [userId],
-    )[0];
-    let preferences = {};
     try {
-      preferences = row?.preferences ? JSON.parse(row.preferences) : {};
-    } catch {
-      preferences = {};
+      const db = await getDb();
+      const row = allRows(
+        db,
+        "SELECT preferences, avatarUrl, deactivationRequestedAt FROM user_preferences WHERE userId = ?",
+        [userId],
+      )[0];
+      let preferences = {};
+      try {
+        preferences = row?.preferences ? JSON.parse(row.preferences) : {};
+      } catch {
+        preferences = {};
+      }
+      return {
+        preferences,
+        avatarUrl: row?.avatarUrl ?? null,
+        deactivationRequestedAt: row?.deactivationRequestedAt ?? null,
+      };
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        return {
+          preferences: {},
+          avatarUrl: null,
+          deactivationRequestedAt: null,
+        };
+      }
+      throw error;
     }
-    return {
-      preferences,
-      avatarUrl: row?.avatarUrl ?? null,
-      deactivationRequestedAt: row?.deactivationRequestedAt ?? null,
-    };
   }
 
   async function saveUserPreferences(
@@ -989,16 +1097,23 @@ export function createAuthRouter() {
           avatarUrl: result.rows[0]?.avatarUrl ?? avatarUrl,
         };
       } catch {
-        // Fall through to SQLite fallback.
+        return { preferences, avatarUrl };
       }
     }
 
-    const db = await getDb();
-    db.prepare(
-      "INSERT INTO user_preferences (userId, preferences, avatarUrl, updatedAt) VALUES (?, ?, ?, ?) ON CONFLICT(userId) DO UPDATE SET preferences = excluded.preferences, avatarUrl = COALESCE(excluded.avatarUrl, user_preferences.avatarUrl), updatedAt = excluded.updatedAt",
-    ).run([userId, JSON.stringify(preferences), avatarUrl, now]);
-    await saveDb(db);
-    return { preferences, avatarUrl };
+    try {
+      const db = await getDb();
+      db.prepare(
+        "INSERT INTO user_preferences (userId, preferences, avatarUrl, updatedAt) VALUES (?, ?, ?, ?) ON CONFLICT(userId) DO UPDATE SET preferences = excluded.preferences, avatarUrl = COALESCE(excluded.avatarUrl, user_preferences.avatarUrl), updatedAt = excluded.updatedAt",
+      ).run([userId, JSON.stringify(preferences), avatarUrl, now]);
+      await saveDb(db);
+      return { preferences, avatarUrl };
+    } catch (error) {
+      if (isDisabledSqliteFallback(error)) {
+        return { preferences, avatarUrl };
+      }
+      throw error;
+    }
   }
 
   async function saveEmailChangeChallenge(input: {
@@ -1265,15 +1380,134 @@ export function createAuthRouter() {
     }
   }
 
+  async function findUserByEmailWithPassword(
+    email: string,
+  ): Promise<AuthUserRecord & { passwordHash: string } | null> {
+    const normalized = normalizeEmail(email);
+
+    if (isPgConfigured()) {
+      try {
+        const result = await pgPool.query(
+          "SELECT id::text, email, name, role, phone, site, department, password_hash FROM users WHERE lower(email) = $1 AND active = TRUE LIMIT 1",
+          [normalized],
+        );
+        const row = result.rows[0];
+        return row
+          ? { id: row.id, email: row.email, name: row.name, role: row.role, passwordHash: row.password_hash }
+          : null;
+      } catch {
+        throw new ExternalServiceError(
+          "PostgreSQL",
+          "Account lookup is temporarily unavailable. Please try again.",
+        );
+      }
+    }
+
+    try {
+      const db = await getDb();
+      const rows = allRows(
+        db,
+        "SELECT id, email, name, role, phone, passwordHash FROM users WHERE lower(email) = ? AND active = 1 LIMIT 1",
+        [normalized],
+      );
+      const row = rows[0];
+      return row
+        ? {
+            id: String(row.id),
+            email: row.email,
+            name: row.name,
+            role: row.role,
+            passwordHash: row.passwordHash,
+          }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   router.post("/login", async (req: Request, res: Response) => {
     const parsed = LoginSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.errors });
     }
 
-    return res
-      .status(501)
-      .json({ error: "Authentication backend not configured" });
+    const { email, password } = parsed.data;
+    const normalized = normalizeEmail(email);
+
+    const lockoutCheck = await isAccountLocked(normalized);
+    if (lockoutCheck.locked) {
+      return res.status(423).json({ error: lockoutCheck.reason });
+    }
+
+    const foundUser = await findUserByEmailWithPassword(normalized);
+    if (!foundUser) {
+      await audit(req, "login", email, false, undefined, "Account not found");
+      await recordFailedLogin(normalized);
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, foundUser.passwordHash);
+    if (!isPasswordValid) {
+      await audit(req, "login", email, false, foundUser.id, "Invalid password");
+      await recordFailedLogin(normalized);
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    await resetFailedLoginAttempts(normalized);
+
+    const user = publicUser(foundUser);
+    const sessionId = randomBytes(16).toString("hex");
+    const refreshToken = randomBytes(48).toString("base64url");
+    const token = generateToken(user, sessionId);
+    const decoded = jwt.decode(token) as { jti: string; exp: number };
+
+    await createAutEHSssion({
+      id: decoded.jti,
+      userId: user.id,
+      email: normalized,
+      expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
+      ipAddress: req.ip ?? "",
+      userAgent: req.get("user-agent") ?? "",
+      refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
+      deviceFingerprint: sessionFingerprint(req),
+    });
+    await enforceSessionLimit(user.id);
+    await audit(req, "login", email, true, user.id, "Password login successful");
+
+    const currentFingerprint = sessionFingerprint(req);
+    const previousSessions = await listAutEHSssions(user.id);
+    const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
+    if (isNewDevice) {
+      sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(
+        () => undefined,
+      );
+    }
+
+    const csrfToken = randomBytes(24).toString("base64url");
+    const cookieSameSite: "none" | "lax" =
+      env.NODE_ENV === "production" ? "none" : "lax";
+    res.cookie("ehs_access", token, {
+      httpOnly: true,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: getAccessCookieMaxAgeMs(),
+      path: "/",
+    });
+    res.cookie("ehs_csrf", csrfToken, {
+      httpOnly: false,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+      path: "/",
+    });
+    res.cookie("ehs_refresh", refreshToken, {
+      httpOnly: true,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+      path: "/api/auth",
+    });
+    res.json({ token, user, csrfToken });
   });
 
   router.post("/otp/request", async (req: Request, res: Response) => {
@@ -1360,6 +1594,18 @@ export function createAuthRouter() {
         expiresMinutes: OTP_TTL_MINUTES,
       });
     } catch {
+      if (process.env.NODE_ENV !== "production") {
+        return res.json({
+          ok: true,
+          delivered: false,
+          mode: "development",
+          message:
+            "Email delivery unavailable in development. Use the fallback login code shown below.",
+          expiresMinutes: OTP_TTL_MINUTES,
+          devCode: code,
+        });
+      }
+
       return res.status(502).json({
         error:
           "Could not send login code. Check SMTP configuration and try again.",
@@ -1644,74 +1890,82 @@ export function createAuthRouter() {
   });
 
   router.post("/refresh", async (req: Request, res: Response) => {
-    const cookie = req.headers.cookie
-      ?.split(";")
-      .map((part) => part.trim())
-      .find((part) => part.startsWith("ehs_refresh="))
-      ?.slice("ehs_refresh=".length);
-    if (!cookie)
-      return res.status(401).json({ error: "Refresh session is missing" });
-    const hash = createHash("sha256")
-      .update(decodeURIComponent(cookie))
-      .digest("hex");
-    const session = await getSessionByRefreshHash(hash);
-    if (!session)
-      return res
-        .status(401)
-        .json({ error: "Refresh session is invalid or expired" });
-    const user = await findUserByEmail(session.email);
-    if (!user)
-      return res.status(401).json({ error: "Account is no longer active" });
+    try {
+      const cookie = req.headers.cookie
+        ?.split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("ehs_refresh="))
+        ?.slice("ehs_refresh=".length);
+      if (!cookie)
+        return res.status(401).json({ error: "Refresh session is missing" });
+      const hash = createHash("sha256")
+        .update(decodeURIComponent(cookie))
+        .digest("hex");
+      const session = await getSessionByRefreshHash(hash);
+      if (!session)
+        return res
+          .status(401)
+          .json({ error: "Refresh session is invalid or expired" });
+      const user = await findUserByEmail(session.email);
+      if (!user)
+        return res.status(401).json({ error: "Account is no longer active" });
 
-    const oldSessionId = String(session.id);
-    await revokeSession(oldSessionId, user.id);
+      const oldSessionId = String(session.id);
+      await revokeSession(oldSessionId, user.id);
 
-    const newSessionId = randomBytes(16).toString("hex");
-    const newRefreshToken = randomBytes(48).toString("base64url");
-    const token = generateToken(publicUser(user), newSessionId);
+      const newSessionId = randomBytes(16).toString("hex");
+      const newRefreshToken = randomBytes(48).toString("base64url");
+      const token = generateToken(publicUser(user), newSessionId);
 
-    await createAutEHSssion({
-      id: newSessionId,
-      userId: user.id,
-      email: session.email,
-      expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
-      ipAddress: req.ip ?? "",
-      userAgent: req.get("user-agent") ?? "",
-      refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
-      deviceFingerprint: sessionFingerprint(req),
-      mfaVerifiedAt: session.mfaVerifiedAt ?? null,
-      mfaTrustedUntil: session.mfaTrustedUntil ?? null,
-    });
+      await createAutEHSssion({
+        id: newSessionId,
+        userId: user.id,
+        email: session.email,
+        expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
+        ipAddress: req.ip ?? "",
+        userAgent: req.get("user-agent") ?? "",
+        refreshHash: createHash("sha256").update(newRefreshToken).digest("hex"),
+        deviceFingerprint: sessionFingerprint(req),
+        mfaVerifiedAt: session.mfaVerifiedAt ?? null,
+        mfaTrustedUntil: session.mfaTrustedUntil ?? null,
+      });
 
-    const cookieSameSite: "none" | "lax" =
-      env.NODE_ENV === "production" ? "none" : "lax";
-    res.cookie("ehs_access", token, {
-      httpOnly: true,
-      sameSite: cookieSameSite,
-      secure: env.NODE_ENV === "production",
-      maxAge: getAccessCookieMaxAgeMs(),
-      path: "/",
-    });
-    res.cookie("ehs_refresh", newRefreshToken, {
-      httpOnly: true,
-      sameSite: cookieSameSite,
-      secure: env.NODE_ENV === "production",
-      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-      path: "/api/auth",
-    });
-    const csrfToken = randomBytes(24).toString("base64url");
-    res.cookie("ehs_csrf", csrfToken, {
-      httpOnly: false,
-      sameSite: cookieSameSite,
-      secure: env.NODE_ENV === "production",
-      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-      path: "/",
-    });
-    res.json({
-      token,
-      user: publicUser(user),
-      csrfToken,
-    });
+      const cookieSameSite: "none" | "lax" =
+        env.NODE_ENV === "production" ? "none" : "lax";
+      res.cookie("ehs_access", token, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: getAccessCookieMaxAgeMs(),
+        path: "/",
+      });
+      res.cookie("ehs_refresh", newRefreshToken, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+        path: "/api/auth",
+      });
+      const csrfToken = randomBytes(24).toString("base64url");
+      res.cookie("ehs_csrf", csrfToken, {
+        httpOnly: false,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+        path: "/",
+      });
+      res.json({
+        token,
+        user: publicUser(user),
+        csrfToken,
+      });
+    } catch (error) {
+      if (error instanceof ExternalServiceError) {
+        return res.status(503).json({ error: error.message });
+      }
+      console.error("Refresh session error:", error);
+      return res.status(500).json({ error: "Failed to refresh session" });
+    }
   });
 
   router.post("/register", async (req: Request, res: Response) => {

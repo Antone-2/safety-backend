@@ -26,3 +26,59 @@ jobs:
       - name: Push image
         run: |
           docker push ghcr.io/${{ github.repository_owner }}/safety-backend:latest
+
+  verify-dashboard:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: ${{ secrets.DASHBOARD_BENCH_TOKEN != '' && vars.STAGING_API_BASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: safety-backend/package-lock.json
+      - name: Install dependencies
+        working-directory: safety-backend
+        run: npm ci
+      - name: Verify dashboard cache and latency
+        working-directory: safety-backend
+        env:
+          DASHBOARD_BENCH_TOKEN: ${{ secrets.DASHBOARD_BENCH_TOKEN }}
+        run: >
+          npm run ops:check-dashboard-metrics --
+          --base-url=${{ vars.STAGING_API_BASE_URL }}
+          --min-hit-rate=${{ vars.DASHBOARD_METRICS_MIN_HIT_RATE || '80' }}
+          --max-degraded=${{ vars.DASHBOARD_METRICS_MAX_DEGRADED || '0' }}
+          --max-errors=${{ vars.DASHBOARD_METRICS_MAX_ERRORS || '0' }}
+          --max-p95-ms=${{ vars.DASHBOARD_METRICS_MAX_P95_MS || '750' }}
+
+  benchmark-dashboard:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: ${{ secrets.DASHBOARD_BENCH_TOKEN != '' && vars.STAGING_API_BASE_URL != '' && vars.ENABLE_DASHBOARD_POST_DEPLOY_BENCHMARK == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: safety-backend/package-lock.json
+      - name: Install dependencies
+        working-directory: safety-backend
+        run: npm ci
+      - name: Run dashboard post-deploy benchmark gate
+        working-directory: safety-backend
+        env:
+          DASHBOARD_BENCH_TOKEN: ${{ secrets.DASHBOARD_BENCH_TOKEN }}
+        run: >
+          npm run bench:reports-dashboard --
+          --base-url=${{ vars.STAGING_API_BASE_URL }}
+          --requests=${{ vars.DASHBOARD_BENCH_REQUESTS || '5000' }}
+          --concurrency=${{ vars.DASHBOARD_BENCH_CONCURRENCY || '100' }}
+          --warmup=${{ vars.DASHBOARD_BENCH_WARMUP || '200' }}
+          --query=${{ vars.DASHBOARD_BENCH_QUERY || 'limit=50' }}
+          --min-success-rate=${{ vars.DASHBOARD_BENCH_MIN_SUCCESS_RATE || '99.5' }}
+          --max-p95-ms=${{ vars.DASHBOARD_BENCH_MAX_P95_MS || '750' }}
+          --max-p99-ms=${{ vars.DASHBOARD_BENCH_MAX_P99_MS || '1500' }}
+          --min-rps=${{ vars.DASHBOARD_BENCH_MIN_RPS || '100' }}

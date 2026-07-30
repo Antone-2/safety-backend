@@ -336,8 +336,8 @@ export declare const CreateAccessLinkSchema: z.ZodObject<{
     ttlHours: number;
     expiresAt?: string | undefined;
 }, {
+    expiresAt?: string | undefined;
     purpose?: string | undefined;
     ttlHours?: number | undefined;
-    expiresAt?: string | undefined;
 }>;
 export type CreateAccessLinkInput = z.infer<typeof CreateAccessLinkSchema>;

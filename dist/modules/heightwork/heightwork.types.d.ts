@@ -47,7 +47,7 @@ export declare const CreateHeightWorkSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Completed" | "In Progress" | "Cancelled" | "Planned" | "Permit Issued";
+    status: "Planned" | "In Progress" | "Completed" | "Cancelled" | "Permit Issued";
     supervisor: string;
     location: string;
     photos: string[];
@@ -75,7 +75,7 @@ export declare const CreateHeightWorkSchema: z.ZodObject<{
     building: string;
     taskDescription: string;
     height: number;
-    status?: "Completed" | "In Progress" | "Cancelled" | "Planned" | "Permit Issued" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Cancelled" | "Permit Issued" | undefined;
     photos?: string[] | undefined;
     notes?: string | undefined;
     floor?: string | undefined;
@@ -108,7 +108,7 @@ export declare const UpdateHeightWorkSchema: z.ZodObject<{
     photos: z.ZodNullable<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Completed" | "In Progress" | "Cancelled" | "Planned" | "Permit Issued" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Cancelled" | "Permit Issued" | undefined;
     supervisor?: string | undefined;
     location?: string | undefined;
     photos?: string[] | null | undefined;
@@ -127,7 +127,7 @@ export declare const UpdateHeightWorkSchema: z.ZodObject<{
     workers?: string | null | undefined;
     incidentReport?: string | null | undefined;
 }, {
-    status?: "Completed" | "In Progress" | "Cancelled" | "Planned" | "Permit Issued" | undefined;
+    status?: "Planned" | "In Progress" | "Completed" | "Cancelled" | "Permit Issued" | undefined;
     supervisor?: string | undefined;
     location?: string | undefined;
     photos?: string[] | null | undefined;

@@ -44,7 +44,7 @@ export declare const ReportSchema: z.ZodObject<{
     lastGenerated: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    type: "Environmental" | "Incident" | "Custom" | "CAPA" | "Compliance" | "Training" | "Financial";
+    type: "Incident" | "Environmental" | "Custom" | "CAPA" | "Compliance" | "Training" | "Financial";
     name: string;
     createdBy: string;
     format: "PDF" | "Excel" | "CSV" | "JSON";
@@ -54,7 +54,7 @@ export declare const ReportSchema: z.ZodObject<{
     recipients?: string | undefined;
     lastGenerated?: string | undefined;
 }, {
-    type: "Environmental" | "Incident" | "Custom" | "CAPA" | "Compliance" | "Training" | "Financial";
+    type: "Incident" | "Environmental" | "Custom" | "CAPA" | "Compliance" | "Training" | "Financial";
     name: string;
     createdBy: string;
     id?: string | undefined;

@@ -10,6 +10,14 @@ import { logger } from "../../shared/utils/logger.js";
 const DRIVE_FILE_RE =
   /drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]{10,})/i;
 
+function sanitizeDriveFileId(value: string): string | null {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/[A-Za-z0-9_-]{10,}/);
+  return match?.[0] ?? null;
+}
+
 function extractDriveFileId(value: string): string | null {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -20,7 +28,7 @@ function extractDriveFileId(value: string): string | null {
       candidate.match(DRIVE_FILE_RE) ||
       candidate.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i) ||
       candidate.match(/drive\.google\.com\/thumbnail\?id=([^&]+)/i);
-    if (match?.[1]) return match[1];
+    if (match?.[1]) return sanitizeDriveFileId(match[1]);
   }
   return null;
 }

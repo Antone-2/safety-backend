@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { redisClient } from "../infrastructure/redis/redis.client.js";
 import { RATE_LIMIT } from "../../config/constants.js";
 import { getEnv } from "../../config/index.js";
@@ -29,6 +30,34 @@ function clientIp(req) {
     }
     return req.ip || req.socket.remoteAddress || "unknown";
 }
+function getCookieValue(req, name) {
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader)
+        return "";
+    const cookie = cookieHeader
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${name}=`));
+    return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
+}
+function authIdentityHash(req) {
+    const authHeader = req.headers.authorization;
+    const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+        ? authHeader.slice("Bearer ".length).trim()
+        : "";
+    const cookieToken = getCookieValue(req, "ehs_access");
+    const raw = bearerToken || cookieToken;
+    if (!raw)
+        return null;
+    return createHash("sha256").update(raw).digest("hex").slice(0, 24);
+}
+function rateLimitIdentity(req) {
+    const authHash = authIdentityHash(req);
+    if (authHash) {
+        return { scope: "user", value: authHash };
+    }
+    return { scope: "ip", value: clientIp(req) };
+}
 export async function rateLimitMiddleware(req, res, next) {
     // In development, honor SKIP_LOCALHOST so local/frontend traffic is never
     // throttled. This avoids the dashboard blowing past the limit during active dev.
@@ -46,7 +75,9 @@ export async function rateLimitMiddleware(req, res, next) {
             return next();
         }
     }
-    const key = `rate-limit:${clientIp(req)}`;
+    const identity = rateLimitIdentity(req);
+    const routeKey = req.baseUrl || req.path || req.originalUrl || "global";
+    const key = `rate-limit:${identity.scope}:${identity.value}:${routeKey}`;
     const windowMs = RATE_LIMIT.WINDOW_MS;
     const maxRequests = RATE_LIMIT.MAX_REQUESTS;
     const ttlSeconds = Math.ceil(windowMs / 1000);
@@ -69,6 +100,7 @@ export async function rateLimitMiddleware(req, res, next) {
         const remaining = Math.max(0, maxRequests - count);
         res.setHeader("X-RateLimit-Limit", String(maxRequests));
         res.setHeader("X-RateLimit-Remaining", String(remaining));
+        res.setHeader("X-RateLimit-Scope", identity.scope);
         if (count > maxRequests) {
             res.setHeader("Retry-After", String(ttlSeconds));
             return res.status(429).json({ error: "Too many requests. Please try again later." });

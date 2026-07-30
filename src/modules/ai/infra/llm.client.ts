@@ -2,24 +2,46 @@ export class LlmClient {
   private apiKey: string | undefined;
   private baseUrl: string | undefined;
   private model: string | undefined;
+  private organization: string | undefined;
+  private project: string | undefined;
 
   constructor() {
     this.apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
-    this.baseUrl = process.env.AI_API_BASE_URL;
-    this.model = process.env.AI_MODEL;
+    this.baseUrl =
+      process.env.AI_API_BASE_URL ||
+      (this.apiKey ? "https://api.openai.com/v1" : undefined);
+    this.model = process.env.OPENAI_MODEL || process.env.AI_MODEL;
+    this.organization = process.env.OPENAI_ORG_ID;
+    this.project = process.env.OPENAI_PROJECT_ID;
   }
 
   async generate(systemPrompt: string, userPrompt: string, options?: { temperature?: number; maxTokens?: number }): Promise<string> {
-    if (!this.apiKey || !this.baseUrl || !this.model) {
+    if (
+      process.env.NODE_ENV === "test" ||
+      process.env.VITEST === "true" ||
+      !this.apiKey ||
+      !this.baseUrl ||
+      !this.model
+    ) {
       return this.fallbackGenerate(userPrompt);
     }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      };
+      if (this.organization) {
+        headers["OpenAI-Organization"] = this.organization;
+      }
+      if (this.project) {
+        headers["OpenAI-Project"] = this.project;
+      }
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-        },
+        headers,
+        signal: controller.signal,
         body: JSON.stringify({
           model: this.model,
           messages: [
@@ -31,13 +53,18 @@ export class LlmClient {
         }),
       });
       if (!response.ok) {
-        throw new Error(`LLM API error: ${response.status}`);
+        const errorBody = await response.text().catch(() => "");
+        throw new Error(
+          `LLM API error: ${response.status}${errorBody ? ` - ${errorBody.slice(0, 300)}` : ""}`,
+        );
       }
       const data = await response.json() as any;
       return data.choices?.[0]?.message?.content || this.fallbackGenerate(userPrompt);
     } catch (error) {
       console.warn("LLM generation failed, using fallback:", error);
       return this.fallbackGenerate(userPrompt);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

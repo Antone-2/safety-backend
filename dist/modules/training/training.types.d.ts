@@ -98,7 +98,7 @@ export declare const TrainingRecordSchema: z.ZodEffects<z.ZodEffects<z.ZodEffect
     feedback: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Completed" | "In Progress" | "Cancelled" | "Scheduled" | "Expired";
+    status: "In Progress" | "Completed" | "Cancelled" | "Scheduled" | "Expired";
     site: string;
     department: string;
     createdBy: string;
@@ -123,7 +123,7 @@ export declare const TrainingRecordSchema: z.ZodEffects<z.ZodEffects<z.ZodEffect
     employeeId: string;
     employeeName: string;
     scheduledDate: string;
-    status?: "Completed" | "In Progress" | "Cancelled" | "Scheduled" | "Expired" | undefined;
+    status?: "In Progress" | "Completed" | "Cancelled" | "Scheduled" | "Expired" | undefined;
     id?: string | undefined;
     completedDate?: string | undefined;
     recordNo?: string | undefined;
@@ -158,7 +158,7 @@ export declare const TrainingRecordInputSchema: z.ZodEffects<z.ZodEffects<z.ZodE
     feedback: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "id" | "recordNo">, "strip", z.ZodTypeAny, {
-    status: "Completed" | "In Progress" | "Cancelled" | "Scheduled" | "Expired";
+    status: "In Progress" | "Completed" | "Cancelled" | "Scheduled" | "Expired";
     site: string;
     department: string;
     createdBy: string;
@@ -181,7 +181,7 @@ export declare const TrainingRecordInputSchema: z.ZodEffects<z.ZodEffects<z.ZodE
     employeeId: string;
     employeeName: string;
     scheduledDate: string;
-    status?: "Completed" | "In Progress" | "Cancelled" | "Scheduled" | "Expired" | undefined;
+    status?: "In Progress" | "Completed" | "Cancelled" | "Scheduled" | "Expired" | undefined;
     completedDate?: string | undefined;
     trainer?: string | undefined;
     score?: number | undefined;

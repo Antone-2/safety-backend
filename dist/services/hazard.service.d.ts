@@ -31,11 +31,11 @@ export declare const HazardReportSchema: z.ZodObject<{
     category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
     reportedBy: string;
     id?: string | undefined;
+    immediateActionTaken?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
     existingControls?: string | undefined;
     riskLevel?: string | undefined;
-    immediateActionTaken?: string | undefined;
     reportNo?: string | undefined;
     recommendedActions?: string | undefined;
     reportedAt?: string | undefined;
@@ -51,11 +51,11 @@ export declare const HazardReportSchema: z.ZodObject<{
     reportedBy: string;
     status?: string | undefined;
     id?: string | undefined;
+    immediateActionTaken?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
     existingControls?: string | undefined;
     riskLevel?: string | undefined;
-    immediateActionTaken?: string | undefined;
     reportNo?: string | undefined;
     recommendedActions?: string | undefined;
     reportedAt?: string | undefined;

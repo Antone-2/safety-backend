@@ -12,6 +12,9 @@ function parseJson(value, fallback) {
         return fallback;
     }
 }
+function normalizeColumnName(name) {
+    return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 function asMatrix(row) {
     return {
         id: String(row.id),
@@ -71,8 +74,36 @@ function asBowTie(row) {
 }
 export class RiskRepository {
     pool;
+    columnCache = new Map();
     constructor(pool) {
         this.pool = pool;
+    }
+    async getTableColumns(table) {
+        let cached = this.columnCache.get(table);
+        if (!cached) {
+            cached = this.pool
+                .query(`SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = current_schema()
+             AND table_name = $1`, [table])
+                .then((result) => new Set(result.rows.map((row) => normalizeColumnName(String(row.column_name)))));
+            this.columnCache.set(table, cached);
+        }
+        return cached;
+    }
+    resolveColumn(columns, ...candidates) {
+        for (const candidate of candidates) {
+            if (columns.has(normalizeColumnName(candidate)))
+                return candidate;
+        }
+        return null;
+    }
+    requireColumn(columns, table, ...candidates) {
+        const column = this.resolveColumn(columns, ...candidates);
+        if (!column) {
+            throw new Error(`Missing required column on ${table}: ${candidates.join(", ")}`);
+        }
+        return column;
     }
     // Risk Matrices
     async getMatrices() {
@@ -108,24 +139,35 @@ export class RiskRepository {
     }
     // Risk Registers
     async getRegisters(filters) {
+        const columns = await this.getTableColumns("risk_registers");
+        if (columns.size === 0) {
+            return [];
+        }
         const where = [];
         const params = [];
         let idx = 1;
         if (filters) {
             Object.entries(filters).forEach(([key, value]) => {
                 if (value !== undefined && value !== null && value !== "") {
-                    const pgKey = toSnake(key);
+                    const pgKey = this.resolveColumn(columns, toSnake(key), key, key.toLowerCase());
+                    if (!pgKey)
+                        return;
                     where.push(`${pgKey} = $${idx}`);
                     params.push(value);
                     idx++;
                 }
             });
         }
-        const sql = `SELECT * FROM risk_registers ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC`;
+        const createdAt = this.requireColumn(columns, "risk_registers", "created_at", "createdAt", "createdat");
+        const sql = `SELECT * FROM risk_registers ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${createdAt} DESC`;
         const result = await this.pool.query(sql, params);
         return result.rows.map((row) => asRegister(row));
     }
     async getRegisterById(id) {
+        const columns = await this.getTableColumns("risk_registers");
+        if (columns.size === 0) {
+            return null;
+        }
         const result = await this.pool.query(`SELECT * FROM risk_registers WHERE id = $1`, [id]);
         return result.rows[0] ? asRegister(result.rows[0]) : null;
     }

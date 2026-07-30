@@ -4,6 +4,7 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { StatusSchema, CreateReportSchema } from "../lib/types.js";
 import { sendIncidentNotification, sendAssignmentNotification } from "../lib/email.js";
 import { tryParseReportDate } from "../shared/utils/report-date.js";
+import { authenticateUser, requirePermission, } from "../shared/middleware/auth.middleware.js";
 async function findUserByIdentifier(_identifier) {
     return null;
 }
@@ -178,7 +179,7 @@ router.get("/stats", async (_req, res) => {
         : 0;
     res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
 });
-router.get("/events", async (req, res) => {
+router.get("/events", authenticateUser, requirePermission("reports:read"), async (req, res) => {
     const origin = req.headers.origin;
     const allowedOrigin = typeof origin === "string" &&
         /^(https?:\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?$/i.test(origin)

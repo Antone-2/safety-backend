@@ -2,7 +2,13 @@ import { Pool } from "pg";
 import { Incident, IncidentInput } from "./incidents.types.js";
 export declare class IncidentsRepository {
     private pool;
+    private readonly columnCache;
     constructor(pool: Pool);
+    private getTableColumns;
+    private resolveColumn;
+    private requireColumn;
+    private selectColumn;
+    private getReportsSelectSql;
     findAll(filters?: Record<string, unknown>): Promise<Incident[]>;
     findAllReports(): Promise<Record<string, unknown>[]>;
     findReportById(id: string): Promise<Record<string, unknown> | null>;

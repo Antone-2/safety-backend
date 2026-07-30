@@ -4,12 +4,14 @@ import { allRows, getDb, saveDb } from "../lib/database.js";
 import { REPORT_SOURCE_GOOGLE_SHEETS } from "../lib/types.js";
 import { getDbClient } from "../shared/infrastructure/database/postgres.client.js";
 import { broadcastReport } from "../modules/reports/reports.module.js";
+import { invalidateReportsCache } from "../modules/reports/reports.cache.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
 import { storeReportPhotoFromDrive } from "../modules/reports/report-photo.service.js";
 import { logger } from "../shared/utils/logger.js";
 import {
   GOOGLE_SHEETS_TIMEZONE,
   parseValidatedReportDate,
+  getSheetLocalDateString,
 } from "../shared/utils/report-date.js";
 
 const router = Router();
@@ -348,6 +350,8 @@ export function parseDate(dateStr?: string, referenceDate?: Date): string {
       {
         raw: dateStr,
         parsedUtc: parsed,
+        parsedLocalDate: getSheetLocalDateString(new Date(parsed)),
+        currentLocalDate: getSheetLocalDateString(referenceDate),
         timezone: GOOGLE_SHEETS_TIMEZONE,
       },
       "google-forms.parseDate",
@@ -556,14 +560,15 @@ function toDirectImageUrl(raw: string): string {
   const url = raw.trim();
   if (!url) return "";
 
+  const firstUrl = url.match(/https?:\/\/[^\s,]+/i)?.[0] ?? url;
   const driveIdMatch =
-    url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([^/&?]+)/i) ||
-    url.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i) ||
-    url.match(/docs\.google\.com\/uc\?export=(?:view|download)&id=([^&]+)/i);
+    firstUrl.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]{10,})/i) ||
+    firstUrl.match(/drive\.google\.com\/uc\?export=(?:view|download)&id=([A-Za-z0-9_-]{10,})/i) ||
+    firstUrl.match(/docs\.google\.com\/uc\?export=(?:view|download)&id=([A-Za-z0-9_-]{10,})/i);
   if (driveIdMatch?.[1]) {
     return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(driveIdMatch[1])}`;
   }
-  return url;
+  return firstUrl;
 }
 
 function extractPhotoUrl(headers: string[], row: string[]): string {
@@ -659,7 +664,7 @@ export function buildReportRecordFromRow(
   const categoryRaw = getMatchingCell(headers, row, ["category", "hazard", "incident type", "incident category", "hazard category", "type of incident"], 4) || defaults.categories[0];
   const typeRaw = getMatchingCell(headers, row, ["type", "nature", "report type", "unsafe act condition", "unsafe act condition", "incident type"], 4) || "Unsafe Condition";
   const type = typeRaw.toLowerCase().includes("condition") ? "Unsafe Condition" : "Unsafe Act";
-  const description = getMatchingCell(headers, row, ["description", "incident", "incident description", "details", "brief description", "hazard description", "summary", "incident summary", "details of the hazard", "briefly details"], 8) || "";
+  const description = getMatchingCell(headers, row, ["description", "incident description", "details", "brief description", "hazard description", "summary", "incident summary", "details of the hazard", "briefly details"], 8) || "";
   const dateRaw = getMatchingCell(headers, row, ["timestamp", "date", "date submitted", "created at", "submitted at"], 0);
   const date = parseDate(dateRaw);
   const severity = normalizeSeverity(getMatchingCell(headers, row, ["severity", "risk level", "severity level", "priority", "impact"], 7) || "Medium");
@@ -980,6 +985,7 @@ export async function finalizeSuccessfulGoogleSheetsSync(params: {
     importedCount: params.reports.length,
     error: null,
   });
+  await invalidateReportsCache();
   params.startPhotoSync(params.reports);
   return {
     imported: params.reports.length,

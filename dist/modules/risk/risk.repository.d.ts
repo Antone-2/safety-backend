@@ -2,7 +2,11 @@ import { Pool } from "pg";
 import type { RiskMatrix, RiskRegister, BowTie, CreateRiskMatrixInput, CreateRiskRegisterInput, CreateBowTieInput, RiskDashboard } from "./risk.types.js";
 export declare class RiskRepository {
     private pool;
+    private readonly columnCache;
     constructor(pool: Pool);
+    private getTableColumns;
+    private resolveColumn;
+    private requireColumn;
     getMatrices(): Promise<RiskMatrix[]>;
     getMatrixById(id: string): Promise<RiskMatrix | null>;
     getDefaultMatrix(): Promise<RiskMatrix | null>;

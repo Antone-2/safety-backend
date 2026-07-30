@@ -16,6 +16,7 @@ import { metricsService } from "./shared/metrics/metrics.service.js";
 import { logger } from "./shared/utils/logger.js";
 import { startMonthlyLeaderboardScheduler } from "./services/leaderboard.service.js";
 import { startDatabaseMaintenanceScheduler } from "./services/maintenance.service.js";
+import { startCorrectiveActionReminderScheduler } from "./services/corrective-action-request.service.js";
 import * as Sentry from "@sentry/node";
 import { createAuthRouter } from "./modules/auth/auth.module.js";
 import { createUsersRouter } from "./modules/users/users.module.js";
@@ -243,8 +244,11 @@ async function bootstrap() {
         setGoogleSheetsPostgresAvailability(postgresReady);
         startServer();
         startGoogleSheetsScheduler();
-        startMonthlyLeaderboardScheduler();
-        startDatabaseMaintenanceScheduler();
+        if (postgresReady) {
+            startMonthlyLeaderboardScheduler();
+            startDatabaseMaintenanceScheduler();
+            startCorrectiveActionReminderScheduler();
+        }
         if (bullMqReady) {
             await import("./jobs/scheduler.js");
         }

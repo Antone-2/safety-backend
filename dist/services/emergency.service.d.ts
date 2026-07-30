@@ -19,8 +19,8 @@ export declare const EmergencyPlanSchema: z.ZodEffects<z.ZodObject<{
     site: string;
     department: string;
     createdBy: string;
-    procedures: string;
     scenario: string;
+    procedures: string;
     emergencyContacts: string;
     id?: string | undefined;
     assemblyPoints?: string | undefined;
@@ -32,8 +32,8 @@ export declare const EmergencyPlanSchema: z.ZodEffects<z.ZodObject<{
     site: string;
     department: string;
     createdBy: string;
-    procedures: string;
     scenario: string;
+    procedures: string;
     emergencyContacts: string;
     status?: string | undefined;
     id?: string | undefined;
@@ -47,8 +47,8 @@ export declare const EmergencyPlanSchema: z.ZodEffects<z.ZodObject<{
     site: string;
     department: string;
     createdBy: string;
-    procedures: string;
     scenario: string;
+    procedures: string;
     emergencyContacts: string;
     id?: string | undefined;
     assemblyPoints?: string | undefined;
@@ -60,8 +60,8 @@ export declare const EmergencyPlanSchema: z.ZodEffects<z.ZodObject<{
     site: string;
     department: string;
     createdBy: string;
-    procedures: string;
     scenario: string;
+    procedures: string;
     emergencyContacts: string;
     status?: string | undefined;
     id?: string | undefined;

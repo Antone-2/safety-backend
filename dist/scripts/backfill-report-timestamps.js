@@ -19,6 +19,7 @@ async function main() {
         for (const row of result.rows) {
             const normalizedDate = tryParseReportDateWithFallbacks(row.date, row.created_at, row.updated_at);
             if (!normalizedDate) {
+                logger.warn({ id: row.id, date: row.date }, "report-backfill.skipped.invalidDate");
                 skipped += 1;
                 skippedIds.push(row.id);
                 continue;
@@ -33,6 +34,7 @@ async function main() {
                 (row.compliance_due_at ?? null) !== normalizedComplianceDueAt;
             if (!needsUpdate)
                 continue;
+            logger.debug({ id: row.id, oldDate: row.date, newDate: normalizedDate, oldDueAt: row.due_at, newDueAt: normalizedDueAt }, "report-backfill.updating");
             if (!DRY_RUN) {
                 await client.query(`UPDATE reports
            SET date = $2,

@@ -1,6 +1,7 @@
 import { allRows, getDb } from "../../lib/database.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import { tryParseReportDateWithFallbacks } from "../../shared/utils/report-date.js";
+import { logger } from "../../shared/utils/logger.js";
 function isPgAvailable() {
     return Boolean(process.env.DATABASE_URL || process.env.DB_HOST);
 }
@@ -29,6 +30,7 @@ export async function auditReportTimestamps(sampleLimit = 25) {
         const normalizedDate = tryParseReportDateWithFallbacks(row.date, row.created_at, row.updated_at);
         if (!normalizedDate) {
             unrecoverable += 1;
+            logger.warn({ id: row.id, date: row.date }, "report-audit.unrecoverable");
             if (unrecoverableSamples.length < sampleLimit) {
                 unrecoverableSamples.push({
                     id: row.id,
@@ -53,6 +55,7 @@ export async function auditReportTimestamps(sampleLimit = 25) {
             (row.compliance_due_at ?? null) !== normalizedComplianceDueAt;
         if (needsRepair) {
             repairable += 1;
+            logger.debug({ id: row.id, storedDate: row.date, normalizedDate, storedDueAt: row.due_at, normalizedDueAt }, "report-audit.repairable");
             if (repairableSamples.length < sampleLimit) {
                 repairableSamples.push({
                     id: row.id,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { IncidentsService } from "./incidents.service.js";
 import { IncidentsRepository } from "./incidents.repository.js";
 import { authenticateUser, requireRole, type AuthRequest } from "../../shared/middleware/auth.middleware.js";
+import { rbacMiddleware } from "../../shared/middleware/rbac.middleware.js";
 import { validate } from "../../shared/middleware/validation.middleware.js";
 import { IncidentInputSchema } from "./incidents.types.js";
 import { NotFoundError, BusinessRuleError } from "../../shared/domain/errors/index.js";
@@ -125,10 +126,10 @@ export function createIncidentsRouter() {
 
   router.use(authenticateUser);
 
-  router.get("/", controller.getAll);
-  router.get("/stats/summary", controller.getStats);
-  router.get("/overdue/list", controller.getOverdue);
-  router.get("/:id", controller.getById);
+  router.get("/", rbacMiddleware("incidents:read"), controller.getAll);
+  router.get("/stats/summary", rbacMiddleware("incidents:read"), controller.getStats);
+  router.get("/overdue/list", rbacMiddleware("incidents:read"), controller.getOverdue);
+  router.get("/:id", rbacMiddleware("incidents:read"), controller.getById);
   router.post("/", requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), validate(createIncidentSchema), controller.create);
   router.post("/:id/transition", requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), controller.transition);
   router.patch("/:id", requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin"]), controller.update);

@@ -9,6 +9,7 @@ const CSRF_EXEMPT_PATHS = new Set([
     "/auth/mfa/verify-token",
     "/auth/mfa/recovery-code",
     "/auth/login/mfa-complete",
+    "/auth/refresh",
 ]);
 function hasRefreshCookie(req) {
     return Boolean(req.headers.cookie

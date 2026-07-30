@@ -5,6 +5,11 @@ import { SeveritySchema, StatusSchema, CreateReportSchema } from "../lib/types.j
 import { sendIncidentNotification, sendAssignmentNotification } from "../lib/email.js";
 import { describeFieldChanges } from "../lib/audit.js";
 import { tryParseReportDate } from "../shared/utils/report-date.js";
+import {
+  authenticateUser,
+  requirePermission,
+  type AuthRequest,
+} from "../shared/middleware/auth.middleware.js";
 // import { authMiddleware } from "./auth.js";
 
 
@@ -241,7 +246,7 @@ router.get("/stats", async (_req: Request, res: Response) => {
   res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
 });
 
-router.get("/events", async (req: Request, res: Response) => {
+router.get("/events", authenticateUser, requirePermission("reports:read"), async (req: AuthRequest, res: Response) => {
   const origin = req.headers.origin;
   const allowedOrigin =
     typeof origin === "string" &&

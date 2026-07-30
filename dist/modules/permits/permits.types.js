@@ -47,7 +47,7 @@ export const CreatePermitSchema = z
     comments: z.array(z.any()).optional().default([]),
     linkedJsaId: z.string().optional(),
     linkedIncidentId: z.string().optional(),
-    createdBy: z.string().min(1).max(200),
+    createdBy: z.string().min(1).max(200).optional(),
 })
     .refine((data) => {
     const start = new Date(data.startDate);

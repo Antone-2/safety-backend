@@ -1,51 +1,117 @@
+function normalizeColumnName(name) {
+    return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 export class IncidentsRepository {
     pool;
+    columnCache = new Map();
     constructor(pool) {
         this.pool = pool;
     }
+    async getTableColumns(table) {
+        let cached = this.columnCache.get(table);
+        if (!cached) {
+            cached = this.pool
+                .query(`SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = current_schema()
+             AND table_name = $1`, [table])
+                .then((result) => new Set(result.rows.map((row) => normalizeColumnName(String(row.column_name)))));
+            this.columnCache.set(table, cached);
+        }
+        return cached;
+    }
+    resolveColumn(columns, ...candidates) {
+        for (const candidate of candidates) {
+            if (columns.has(normalizeColumnName(candidate))) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+    requireColumn(columns, table, ...candidates) {
+        const column = this.resolveColumn(columns, ...candidates);
+        if (!column) {
+            throw new Error(`Missing required column on ${table}: ${candidates.join(", ")}`);
+        }
+        return column;
+    }
+    selectColumn(columns, alias, ...candidates) {
+        const column = this.requireColumn(columns, "reports", ...candidates);
+        return `${column} AS ${alias}`;
+    }
+    async getReportsSelectSql(whereSql, includeOrder = true) {
+        const columns = await this.getTableColumns("reports");
+        const createdAt = this.requireColumn(columns, "reports", "created_at", "createdAt", "createdat", "date");
+        const updatedAt = this.resolveColumn(columns, "updated_at", "updatedAt", "updatedat", "created_at", "createdAt", "createdat", "date") ?? createdAt;
+        return `SELECT
+      ${this.selectColumn(columns, "id", "id")},
+      ${this.selectColumn(columns, "type", "type")},
+      ${this.selectColumn(columns, "severity", "severity")},
+      ${this.selectColumn(columns, "status", "status")},
+      ${this.selectColumn(columns, "location", "location")},
+      ${this.selectColumn(columns, "department", "department")},
+      ${this.selectColumn(columns, "shift", "shift")},
+      ${this.selectColumn(columns, "description", "description")},
+      ${this.selectColumn(columns, "reporter", "reporter")},
+      ${this.selectColumn(columns, "reporter_email", "reporter_email", "reporterEmail", "reporteremail")},
+      ${this.selectColumn(columns, "reporter_phone", "reporter_phone", "reporterPhone", "reporterphone")},
+      ${this.selectColumn(columns, "anonymous", "anonymous")},
+      ${this.selectColumn(columns, "is_near_miss", "is_near_miss", "isNearMiss", "isnearmiss")},
+      ${this.selectColumn(columns, "photo_url", "photo_url", "photoUrl", "photourl")},
+      ${this.selectColumn(columns, "assigned_to", "assigned_to", "assignedTo", "assignedto")},
+      ${this.selectColumn(columns, "assigned_to_copy", "assigned_to_copy", "assignedToCopy", "assignedtocopy")},
+      ${this.selectColumn(columns, "sla_hours", "sla_hours", "slaHours", "slahours")},
+      ${this.selectColumn(columns, "due_at", "due_at", "dueAt", "dueat")},
+      ${this.selectColumn(columns, "resolution_days", "resolution_days", "resolutionDays", "resolutiondays")},
+      ${this.selectColumn(columns, "compliance_required", "compliance_required", "complianceRequired", "compliancerequired")},
+      ${this.selectColumn(columns, "compliance_due_at", "compliance_due_at", "complianceDueAt", "compliancedueat")},
+      ${this.selectColumn(columns, "source", "source")},
+      ${createdAt} AS created_at,
+      ${updatedAt} AS updated_at
+      FROM reports
+      ${whereSql ? `${whereSql} AND ` : "WHERE "}
+        (
+          LOWER(COALESCE(category, '')) LIKE '%incident%'
+          OR LOWER(COALESCE(category, '')) LIKE '%accident%'
+          OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
+          OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
+        )
+      ${includeOrder ? `ORDER BY ${createdAt} DESC` : ""}`;
+    }
     async findAll(filters) {
+        const columns = await this.getTableColumns("incidents");
         const where = [];
         const params = [];
         let idx = 1;
         if (filters) {
             Object.entries(filters).forEach(([key, value]) => {
                 if (value !== undefined && value !== null && value !== "") {
+                    const column = this.resolveColumn(columns, key, key.toLowerCase(), key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`));
+                    if (!column)
+                        return;
                     if (key === "location" || key === "department" || key === "reporter" || key === "assignedTo") {
-                        where.push(`${key} ILIKE $${idx}`);
+                        where.push(`${column} ILIKE $${idx}`);
                         params.push(`%${value}%`);
                     }
                     else {
-                        where.push(`${key} = $${idx}`);
+                        where.push(`${column} = $${idx}`);
                         params.push(value);
                     }
                     idx++;
                 }
             });
         }
-        const sql = `SELECT * FROM incidents ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC`;
+        const createdAt = this.requireColumn(columns, "incidents", "created_at", "createdAt", "createdat");
+        const sql = `SELECT * FROM incidents ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${createdAt} DESC`;
         const result = await this.pool.query(sql, params);
         return result.rows;
     }
     async findAllReports() {
-        const result = await this.pool.query(`SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
-       FROM reports
-       WHERE LOWER(COALESCE(category, '')) LIKE '%incident%'
-          OR LOWER(COALESCE(category, '')) LIKE '%accident%'
-          OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
-          OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
-       ORDER BY created_at DESC`);
+        const result = await this.pool.query(await this.getReportsSelectSql());
         return result.rows;
     }
     async findReportById(id) {
-        const result = await this.pool.query(`SELECT id, type, severity, status, location, department, shift, description, reporter, reporter_email, reporter_phone, anonymous, is_near_miss, photo_url, assigned_to, assigned_to_copy, sla_hours, due_at, resolution_days, compliance_required, compliance_due_at, source, created_at, updated_at
-       FROM reports
-       WHERE id = $1
-         AND (
-           LOWER(COALESCE(category, '')) LIKE '%incident%'
-           OR LOWER(COALESCE(category, '')) LIKE '%accident%'
-           OR LOWER(COALESCE(category, '')) LIKE '%near miss%'
-           OR LOWER(COALESCE(type, '')) IN ('near miss', 'first aid', 'medical treatment', 'lost time', 'fatality', 'property damage', 'environmental')
-         )`, [id]);
+        const result = await this.pool.query(await this.getReportsSelectSql("WHERE id = $1", false), [id]);
         return result.rows[0] || null;
     }
     async findById(id) {
@@ -157,13 +223,17 @@ export class IncidentsRepository {
         return (result.rowCount ?? 0) > 0;
     }
     async count(filters) {
+        const columns = await this.getTableColumns("incidents");
         const where = [];
         const params = [];
         let idx = 1;
         if (filters) {
             Object.entries(filters).forEach(([key, value]) => {
                 if (value !== undefined && value !== null && value !== "") {
-                    where.push(`${key} = $${idx}`);
+                    const column = this.resolveColumn(columns, key, key.toLowerCase(), key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`));
+                    if (!column)
+                        return;
+                    where.push(`${column} = $${idx}`);
                     params.push(value);
                     idx++;
                 }

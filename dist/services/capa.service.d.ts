@@ -40,7 +40,7 @@ export declare const CapaSchema: z.ZodObject<{
     updatedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     type: "Corrective" | "Preventive" | "Improvement";
-    status: "Completed" | "Open" | "In Progress" | "Overdue" | "Cancelled";
+    status: "In Progress" | "Completed" | "Open" | "Overdue" | "Cancelled";
     dueDate: string;
     owner: string;
     title: string;
@@ -53,9 +53,9 @@ export declare const CapaSchema: z.ZodObject<{
     priority: "Critical" | "Low" | "Medium" | "High";
     createdBy: string;
     id?: string | undefined;
-    rootCause?: string | undefined;
     createdAt?: string | undefined;
     updatedAt?: string | undefined;
+    rootCause?: string | undefined;
     startDate?: string | undefined;
     linkedIncidentId?: string | undefined;
     sourceRef?: string | undefined;
@@ -81,13 +81,13 @@ export declare const CapaSchema: z.ZodObject<{
     description: string;
     createdBy: string;
     type?: "Corrective" | "Preventive" | "Improvement" | undefined;
-    status?: "Completed" | "Open" | "In Progress" | "Overdue" | "Cancelled" | undefined;
+    status?: "In Progress" | "Completed" | "Open" | "Overdue" | "Cancelled" | undefined;
     id?: string | undefined;
     attachments?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
-    rootCause?: string | undefined;
     createdAt?: string | undefined;
     updatedAt?: string | undefined;
+    rootCause?: string | undefined;
     startDate?: string | undefined;
     linkedIncidentId?: string | undefined;
     sourceRef?: string | undefined;

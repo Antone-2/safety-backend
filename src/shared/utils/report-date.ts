@@ -1,6 +1,6 @@
 import { logger } from "./logger.js";
 
-export const GOOGLE_SHEETS_TIMEZONE = "America/New_York";
+export const GOOGLE_SHEETS_TIMEZONE = "Africa/Nairobi";
 
 type TimeZoneDateParts = {
   year: number;
@@ -54,10 +54,10 @@ export function getSheetTimeZoneOffsetMinutes(date: Date): number {
 }
 
 export function getDateOrder(): "dmy" | "mdy" {
-  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "mdy").toLowerCase().trim();
+  const configured = String(process.env.GOOGLE_SHEETS_DATE_ORDER ?? "dmy").toLowerCase().trim();
   if (configured === "mdy") return "mdy";
   if (configured === "dmy") return "dmy";
-  return "mdy";
+  return "dmy";
 }
 
 function fromSheetLocalTime(
@@ -110,39 +110,6 @@ export function getStartOfSheetMonthUtc(
     shifted.getUTCFullYear(),
     shifted.getUTCMonth() + 1,
     shifted.getUTCDate(),
-  );
-}
-
-export function isReportDateInFuture(
-  isoDate: string,
-  referenceDate: Date = new Date(),
-): boolean {
-  const parsed = new Date(isoDate);
-  if (!Number.isFinite(parsed.getTime())) return true;
-  const reportDate = getSheetLocalDateString(parsed);
-  const currentDate = getSheetLocalDateString(referenceDate);
-  return reportDate > currentDate;
-}
-
-export function assertReportDateIsNotFuture(
-  isoDate: string,
-  referenceDate: Date = new Date(),
-  label = "report date",
-): void {
-  if (!isReportDateInFuture(isoDate, referenceDate)) return;
-
-  logger.warn(
-    {
-      label,
-      parsedUtc: isoDate,
-      parsedLocalDate: getSheetLocalDateString(new Date(isoDate)),
-      currentLocalDate: getSheetLocalDateString(referenceDate),
-      timezone: GOOGLE_SHEETS_TIMEZONE,
-    },
-    "report-date.futureDateRejected",
-  );
-  throw new Error(
-    `Invalid ${label}: ${new Date(isoDate).toISOString()} is after the current ${GOOGLE_SHEETS_TIMEZONE} date ${getSheetLocalDateString(referenceDate)}`,
   );
 }
 
@@ -272,31 +239,6 @@ export function parseReportDate(value: unknown): string {
   return parsed;
 }
 
-export function parseValidatedReportDate(
-  value: unknown,
-  options?: {
-    referenceDate?: Date;
-    label?: string;
-  },
-): string {
-  const parsed = parseReportDate(value);
-  assertReportDateIsNotFuture(
-    parsed,
-    options?.referenceDate,
-    options?.label ?? "report date",
-  );
-  logger.debug(
-    {
-      raw: String(value ?? ""),
-      parsedUtc: parsed,
-      parsedLocalDate: getSheetLocalDateString(new Date(parsed)),
-      timezone: GOOGLE_SHEETS_TIMEZONE,
-    },
-    "report-date.parseValidatedReportDate",
-  );
-  return parsed;
-}
-
 export function tryParseReportDateWithFallbacks(
   value: unknown,
   ...fallbacks: unknown[]
@@ -318,4 +260,45 @@ export function sanitizeReportDate(value: unknown, ...fallbacks: unknown[]): str
     logger.warn({ rawValue: value, fallbacks }, "report-date.sanitizeReportDate.fallbackToNow");
   }
   return parsed ?? new Date().toISOString();
+}
+
+export function parseValidatedReportDate(
+  value: unknown,
+  options?: {
+    referenceDate?: Date;
+    label?: string;
+  },
+): string {
+  const parsed = parseReportDate(value);
+  const referenceDate = options?.referenceDate ?? new Date();
+  const parsedLocalDate = getSheetLocalDateString(new Date(parsed));
+  const currentLocalDate = getSheetLocalDateString(referenceDate);
+
+  if (parsedLocalDate > currentLocalDate) {
+    logger.warn(
+      {
+        label: options?.label ?? "report date",
+        parsedUtc: parsed,
+        parsedLocalDate,
+        currentLocalDate,
+        timezone: GOOGLE_SHEETS_TIMEZONE,
+      },
+      "report-date.futureDateRejected",
+    );
+    throw new Error(
+      `Invalid ${options?.label ?? "report date"}: ${parsed} is after the current ${GOOGLE_SHEETS_TIMEZONE} date ${currentLocalDate}`,
+    );
+  }
+
+  logger.debug(
+    {
+      raw: String(value ?? ""),
+      parsedUtc: parsed,
+      parsedLocalDate,
+      timezone: GOOGLE_SHEETS_TIMEZONE,
+    },
+    "report-date.parseValidatedReportDate",
+  );
+
+  return parsed;
 }

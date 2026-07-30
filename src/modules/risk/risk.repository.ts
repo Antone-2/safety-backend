@@ -24,6 +24,10 @@ function parseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
+function normalizeColumnName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function asMatrix(row: Record<string, unknown>): RiskMatrix {
   return {
     id: String(row.id),
@@ -85,7 +89,41 @@ function asBowTie(row: Record<string, unknown>): BowTie {
 }
 
 export class RiskRepository {
+  private readonly columnCache = new Map<string, Promise<Set<string>>>();
+
   constructor(private pool: Pool) {}
+
+  private async getTableColumns(table: string): Promise<Set<string>> {
+    let cached = this.columnCache.get(table);
+    if (!cached) {
+      cached = this.pool
+        .query(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = current_schema()
+             AND table_name = $1`,
+          [table],
+        )
+        .then((result) => new Set(result.rows.map((row) => normalizeColumnName(String(row.column_name)))));
+      this.columnCache.set(table, cached);
+    }
+    return cached;
+  }
+
+  private resolveColumn(columns: Set<string>, ...candidates: string[]): string | null {
+    for (const candidate of candidates) {
+      if (columns.has(normalizeColumnName(candidate))) return candidate;
+    }
+    return null;
+  }
+
+  private requireColumn(columns: Set<string>, table: string, ...candidates: string[]): string {
+    const column = this.resolveColumn(columns, ...candidates);
+    if (!column) {
+      throw new Error(`Missing required column on ${table}: ${candidates.join(", ")}`);
+    }
+    return column;
+  }
 
   // Risk Matrices
   async getMatrices(): Promise<RiskMatrix[]> {
@@ -128,6 +166,11 @@ export class RiskRepository {
 
   // Risk Registers
   async getRegisters(filters?: Record<string, any>): Promise<RiskRegister[]> {
+    const columns = await this.getTableColumns("risk_registers");
+    if (columns.size === 0) {
+      return [];
+    }
+
     const where: string[] = [];
     const params: unknown[] = [];
     let idx = 1;
@@ -135,7 +178,8 @@ export class RiskRepository {
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== "") {
-          const pgKey = toSnake(key);
+          const pgKey = this.resolveColumn(columns, toSnake(key), key, key.toLowerCase());
+          if (!pgKey) return;
           where.push(`${pgKey} = $${idx}`);
           params.push(value);
           idx++;
@@ -143,12 +187,17 @@ export class RiskRepository {
       });
     }
 
-    const sql = `SELECT * FROM risk_registers ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC`;
+    const createdAt = this.requireColumn(columns, "risk_registers", "created_at", "createdAt", "createdat");
+    const sql = `SELECT * FROM risk_registers ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${createdAt} DESC`;
     const result = await this.pool.query(sql, params);
     return result.rows.map((row) => asRegister(row as Record<string, unknown>));
   }
 
   async getRegisterById(id: string): Promise<RiskRegister | null> {
+    const columns = await this.getTableColumns("risk_registers");
+    if (columns.size === 0) {
+      return null;
+    }
     const result = await this.pool.query(`SELECT * FROM risk_registers WHERE id = $1`, [id]);
     return result.rows[0] ? asRegister(result.rows[0] as Record<string, unknown>) : null;
   }
