@@ -184,7 +184,14 @@ export async function authenticateUser(
     }
 
     if (storedIp && storedIp !== currentIp) {
-      return res.status(401).json({ error: "Session IP changed. Please sign in again." });
+      logger.warn(
+        {
+          sessionId: decoded.jti,
+          storedIp,
+          currentIp,
+        },
+        "Authenticated session IP changed",
+      );
     }
 
     const touchSession = shouldTouchSession(decoded.jti);
