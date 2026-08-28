@@ -442,12 +442,12 @@ export function createAuthRouter() {
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
         maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-        path: "/api/auth",
+        path: "/",
       });
       return;
     }
 
-    res.clearCookie("ehs_refresh", { path: "/api/auth" });
+    res.clearCookie("ehs_refresh", { path: "/" });
   }
 
   function issueOfflineDevLogin(req: Request, res: Response, email: string) {
@@ -595,8 +595,12 @@ const db = await getDb();
           "auth OTP challenge save",
         );
         return;
-      } catch {
-        // Fall through to SQLite fallback.
+      } catch (error) {
+        console.error("Failed to save OTP challenge to PostgreSQL:", error);
+        throw new ExternalServiceError(
+          "auth-storage",
+          "Authentication storage is temporarily unavailable. Please try again.",
+        );
       }
     }
 
@@ -1996,7 +2000,7 @@ const db = await getDb();
       sameSite: cookieSameSite,
       secure: env.NODE_ENV === "production",
       maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-      path: "/api/auth",
+      path: "/",
     });
     res.json({ data: { token, user, csrfToken } });
   });
@@ -2101,7 +2105,7 @@ const db = await getDb();
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
         maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-        path: "/api/auth",
+        path: "/",
       });
 
       res.json({ data: { token, user, csrfToken } });
@@ -2166,7 +2170,7 @@ const db = await getDb();
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
         maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-        path: "/api/auth",
+        path: "/",
       });
       const csrfToken = randomBytes(24).toString("base64url");
       res.cookie("ehs_csrf", csrfToken, {
@@ -2637,7 +2641,7 @@ const db = await getDb();
         return res.status(401).json({ error: "Invalid verification code" });
       }
       await completeEmailChange(req.user!.id, change.newEmail);
-      res.clearCookie("ehs_refresh", { path: "/api/auth" });
+      res.clearCookie("ehs_refresh", { path: "/" });
       res.json({ data: { ok: true, email: change.newEmail, requiresLogin: true } });
     },
   );
@@ -2829,7 +2833,7 @@ const db = await getDb();
       await revokeSession(String((req.user as any).jti), req.user!.id);
       await audit(req, "logout", req.user!.email, true, req.user!.id);
       res.clearCookie("ehs_access", { path: "/" });
-      res.clearCookie("ehs_refresh", { path: "/api/auth" });
+      res.clearCookie("ehs_refresh", { path: "/" });
       res.clearCookie("ehs_csrf", { path: "/" });
       res.json({ data: { ok: true } });
     },
@@ -3048,7 +3052,7 @@ const db = await getDb();
         sameSite: cookieSameSite,
         secure: env.NODE_ENV === "production",
         maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-        path: "/api/auth",
+        path: "/",
       });
 
       res.json({ data: { token: accessToken, user, csrfToken } });
