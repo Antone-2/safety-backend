@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildLeaderboardFilter,
   buildPgFilter,
   buildSqliteFilter,
 } from "../../src/modules/reports/reports.service.js";
@@ -48,5 +49,12 @@ describe("report query contract", () => {
       "2026-07-01T00:00:00.000Z",
       "2026-08-01T00:00:00.000Z",
     ]);
+  });
+
+  it("builds leaderboard filters for a specific month and reporter", () => {
+    const query = buildLeaderboardFilter({ month: "2026-08", reporter: "Alice Johnson" });
+    expect(query.whereSql).toContain("month = $1");
+    expect(query.whereSql).toContain("LOWER(TRIM(reporter)) = LOWER(TRIM($2))");
+    expect(query.params).toEqual(["2026-08", "Alice Johnson"]);
   });
 });

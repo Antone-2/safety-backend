@@ -48,8 +48,8 @@ export declare const CreateFireEquipmentSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector";
     status: "Operational" | "Under Maintenance" | "Retired" | "Defective";
-    location: string;
     createdBy: string;
+    location: string;
     assetTag: string;
     building: string;
     photoUrl?: string | undefined;
@@ -65,8 +65,8 @@ export declare const CreateFireEquipmentSchema: z.ZodObject<{
     room?: string | undefined;
 }, {
     type: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector";
-    location: string;
     createdBy: string;
+    location: string;
     assetTag: string;
     building: string;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;

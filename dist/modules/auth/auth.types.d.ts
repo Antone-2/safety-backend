@@ -4,12 +4,9 @@ export type { LoginInput, CreateUserInput, UserRole, AuthToken };
 export declare const UserRoleSchema: z.ZodEnum<["super-admin", "EHS-manager", "EHS-officer", "she-committee-member", "supervisor", "gm", "plant-manager", "factory-manager", "depot-admin", "maintenance-manager", "issuer"]>;
 export declare const LoginSchema: z.ZodObject<{
     email: z.ZodString;
-    password: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    password: string;
     email: string;
 }, {
-    password: string;
     email: string;
 }>;
 export declare const CreateUserSchema: z.ZodObject<{

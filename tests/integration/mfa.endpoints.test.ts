@@ -1,6 +1,7 @@
 import express from "express";
 import type { AddressInfo } from "net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExternalServiceError } from "../../src/shared/domain/errors/index.js";
 
 const jwtMock = {
   verify: vi.fn(),
@@ -247,6 +248,24 @@ describe("MFA Endpoints Integration", () => {
 
   afterEach(() => {
     delete process.env.DATABASE_URL;
+  });
+
+  it("returns a safe not-found response when the OTP account lookup fails", async () => {
+    pgQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM users WHERE lower(email)")) {
+        throw new ExternalServiceError("PostgreSQL", "Account lookup is temporarily unavailable. Please try again.");
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await witEHSrver(async (baseUrl) => {
+      const response = await postJson(baseUrl, "/api/auth/otp/request", {
+        email: "user@example.com",
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toMatch(/No active account/i);
+    });
   });
 
   it("should fail MFA enrollment for non-privileged role", async () => {

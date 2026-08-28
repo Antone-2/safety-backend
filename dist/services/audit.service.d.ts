@@ -60,9 +60,9 @@ export declare const AuditSchema: z.ZodObject<{
     title: string;
     site: string;
     department: string;
+    createdBy: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     leadAuditor: string;
     reportPublished: boolean;
     id?: string | undefined;
@@ -81,9 +81,9 @@ export declare const AuditSchema: z.ZodObject<{
     title: string;
     site: string;
     department: string;
+    createdBy: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     leadAuditor: string;
     status?: "Planned" | "In Progress" | "Completed" | "Closed" | undefined;
     id?: string | undefined;

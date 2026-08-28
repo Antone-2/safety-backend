@@ -3,6 +3,7 @@ import { IncidentsRepository } from "./incidents.repository.js";
 export declare class IncidentsService {
     private repository;
     constructor(repository: IncidentsRepository);
+    private getCombinedIncidents;
     getAll(filters?: Record<string, unknown>): Promise<Incident[]>;
     getById(id: string): Promise<Incident | null>;
     create(data: IncidentInput): Promise<Incident>;
@@ -11,9 +12,11 @@ export declare class IncidentsService {
     getStats(): Promise<{
         total: number;
         open: number;
+        investigating: number;
+        capaOpen: number;
         closed: number;
-        today: number;
-        week: number;
+        critical: number;
+        overdue: number;
     }>;
     getOverdue(): Promise<Incident[]>;
 }

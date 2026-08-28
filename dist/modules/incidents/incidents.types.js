@@ -49,6 +49,12 @@ export const IncidentSchema = z.object({
     complianceRequired: z.boolean().default(false),
     complianceDueAt: z.string().optional(),
     source: z.string().default("manual"),
+    sourceKind: z.enum(["database", "report-sync"]).optional(),
+    readonly: z.boolean().optional(),
     auditHistory: z.string().optional(),
 });
-export const IncidentInputSchema = IncidentSchema.omit({ id: true });
+export const IncidentInputSchema = IncidentSchema.omit({
+    id: true,
+    sourceKind: true,
+    readonly: true,
+});

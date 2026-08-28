@@ -21,7 +21,7 @@ router.get("/dashboards", authenticateUser, async (req, res) => {
         if (String(req.query.role))
             filters.role = String(String(req.query.role));
         const dashboards = await analyticsService.getDashboards(filters);
-        res.json(dashboards);
+        res.json({ data: dashboards });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch dashboards" });
@@ -30,7 +30,7 @@ router.get("/dashboards", authenticateUser, async (req, res) => {
 router.post("/dashboards", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const dashboard = await analyticsService.createDashboard(req.body);
-        res.status(201).json(dashboard);
+        res.status(201).json({ data: dashboard });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to create dashboard" });
@@ -39,7 +39,7 @@ router.post("/dashboards", authenticateUser, requireRole(["super-admin", "EHS-ma
 router.patch("/dashboards/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const dashboard = await analyticsService.updateDashboard(String(req.params.id), req.body);
-        res.json(dashboard);
+        res.json({ data: dashboard });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to update dashboard" });
@@ -48,7 +48,7 @@ router.patch("/dashboards/:id", authenticateUser, requireRole(["super-admin", "E
 router.delete("/dashboards/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const dashboard = await analyticsService.deleteDashboard(String(req.params.id));
-        res.json({ ok: true, deleted: dashboard.id });
+        res.json({ data: { ok: true, deleted: dashboard.id } });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to delete dashboard" });
@@ -57,7 +57,7 @@ router.delete("/dashboards/:id", authenticateUser, requireRole(["super-admin", "
 router.get("/reports", authenticateUser, async (req, res) => {
     try {
         const reports = await analyticsService.getReports();
-        res.json(reports);
+        res.json({ data: reports });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch reports" });
@@ -66,7 +66,7 @@ router.get("/reports", authenticateUser, async (req, res) => {
 router.post("/reports", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const report = await analyticsService.createReport(req.body);
-        res.status(201).json(report);
+        res.status(201).json({ data: report });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to create report" });
@@ -75,7 +75,7 @@ router.post("/reports", authenticateUser, requireRole(["super-admin", "EHS-manag
 router.patch("/reports/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const report = await analyticsService.updateReport(String(req.params.id), req.body);
-        res.json(report);
+        res.json({ data: report });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to update report" });
@@ -84,7 +84,7 @@ router.patch("/reports/:id", authenticateUser, requireRole(["super-admin", "EHS-
 router.delete("/reports/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const report = await analyticsService.deleteReport(String(req.params.id));
-        res.json({ ok: true, deleted: report.id });
+        res.json({ data: { ok: true, deleted: report.id } });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to delete report" });
@@ -93,7 +93,7 @@ router.delete("/reports/:id", authenticateUser, requireRole(["super-admin", "EHS
 router.post("/reports/:id/generate", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const report = await analyticsService.generateReport(String(req.params.id));
-        res.json(report);
+        res.json({ data: report });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to generate report" });
@@ -102,7 +102,7 @@ router.post("/reports/:id/generate", authenticateUser, requireRole(["super-admin
 router.get("/templates", authenticateUser, async (_req, res) => {
     try {
         const templates = await governanceService.listTemplates();
-        res.json(templates);
+        res.json({ data: templates });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch report templates" });
@@ -111,7 +111,7 @@ router.get("/templates", authenticateUser, async (_req, res) => {
 router.post("/templates", authenticateUser, requireRole(analyticsManagers), async (req, res) => {
     try {
         const template = await governanceService.createTemplate(req.body, req.user);
-        res.status(201).json(template);
+        res.status(201).json({ data: template });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to create report template" });
@@ -120,7 +120,7 @@ router.post("/templates", authenticateUser, requireRole(analyticsManagers), asyn
 router.get("/schedules", authenticateUser, requireRole(analyticsManagers), async (_req, res) => {
     try {
         const schedules = await governanceService.listSchedules();
-        res.json(schedules);
+        res.json({ data: schedules });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch report schedules" });
@@ -129,7 +129,7 @@ router.get("/schedules", authenticateUser, requireRole(analyticsManagers), async
 router.post("/schedules", authenticateUser, requireRole(analyticsManagers), async (req, res) => {
     try {
         const schedule = await governanceService.createSchedule(req.body, req.user);
-        res.status(201).json(schedule);
+        res.status(201).json({ data: schedule });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to create report schedule" });
@@ -138,7 +138,7 @@ router.post("/schedules", authenticateUser, requireRole(analyticsManagers), asyn
 router.post("/runs", authenticateUser, requireRole(analyticsManagers), async (req, res) => {
     try {
         const run = await governanceService.generateRun(req.body, req.user);
-        res.status(201).json(run);
+        res.status(201).json({ data: run });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to generate governed report run" });
@@ -147,7 +147,7 @@ router.post("/runs", authenticateUser, requireRole(analyticsManagers), async (re
 router.post("/runs/:id/signoff", authenticateUser, requireRole(analyticsManagers), async (req, res) => {
     try {
         const signoff = await governanceService.signoff(String(req.params.id), req.body, req.user);
-        res.status(201).json(signoff);
+        res.status(201).json({ data: signoff });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to sign off report" });
@@ -156,7 +156,7 @@ router.post("/runs/:id/signoff", authenticateUser, requireRole(analyticsManagers
 router.post("/management-review-pack", authenticateUser, requireRole(analyticsManagers), async (req, res) => {
     try {
         const pack = await governanceService.managementPack("management-review", req.user);
-        res.status(201).json(pack);
+        res.status(201).json({ data: pack });
     }
     catch (error) {
         res
@@ -167,7 +167,7 @@ router.post("/management-review-pack", authenticateUser, requireRole(analyticsMa
 router.post("/board-kpi-pack", authenticateUser, requireRole(analyticsManagers), async (_req, res) => {
     try {
         const pack = await governanceService.managementPack("board-kpi", _req.user);
-        res.status(201).json(pack);
+        res.status(201).json({ data: pack });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to generate board KPI pack" });
@@ -176,7 +176,7 @@ router.post("/board-kpi-pack", authenticateUser, requireRole(analyticsManagers),
 router.post("/regulatory-reports", authenticateUser, requireRole(analyticsManagers), async (_req, res) => {
     try {
         const pack = await governanceService.managementPack("regulatory", _req.user);
-        res.status(201).json(pack);
+        res.status(201).json({ data: pack });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to generate regulatory report" });
@@ -185,7 +185,7 @@ router.post("/regulatory-reports", authenticateUser, requireRole(analyticsManage
 router.get("/data-quality/warnings", authenticateUser, requireRole(analyticsManagers), async (_req, res) => {
     try {
         const warnings = await governanceService.dataQualityWarnings();
-        res.json({ warnings });
+        res.json({ data: { warnings } });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch data quality warnings" });
@@ -206,7 +206,7 @@ router.get("/exports/reports", authenticateUser, requireRole(analyticsManagers),
 router.get("/stats", authenticateUser, async (req, res) => {
     try {
         const stats = await analyticsService.getAnalyticsStats();
-        res.json(stats);
+        res.json({ data: stats });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch analytics stats" });

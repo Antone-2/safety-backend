@@ -41,6 +41,26 @@ export async function runMonthlyLeaderboard(now = new Date(), topN = 3) {
        WHERE month = $1
        ORDER BY points DESC, report_count DESC, reporter ASC
        LIMIT $2`, [month, topN]);
+        const reporterKeys = Array.from(new Set(winners.rows
+            .map((winner) => winner.reporter.trim().toLowerCase())
+            .filter(Boolean)));
+        const userEmailByReporter = new Map();
+        if (reporterKeys.length > 0) {
+            const usersResult = await client.query(`SELECT name, email
+         FROM users
+         WHERE active = TRUE
+           AND (lower(email) = ANY($1::text[]) OR lower(name) = ANY($1::text[]))`, [reporterKeys]);
+            for (const user of usersResult.rows) {
+                const emailKey = user.email.trim().toLowerCase();
+                const nameKey = user.name.trim().toLowerCase();
+                if (emailKey && !userEmailByReporter.has(emailKey)) {
+                    userEmailByReporter.set(emailKey, user.email);
+                }
+                if (nameKey && !userEmailByReporter.has(nameKey)) {
+                    userEmailByReporter.set(nameKey, user.email);
+                }
+            }
+        }
         const awarded = [];
         for (const [index, winner] of winners.rows.entries()) {
             const rank = index + 1;
@@ -53,15 +73,13 @@ export async function runMonthlyLeaderboard(now = new Date(), topN = 3) {
             awarded.push({ reporter: winner.reporter, rank, points: winner.points });
             const subject = `Crown EHS monthly safety award - Rank #${rank}`;
             const message = `Congratulations ${winner.reporter}! You ranked #${rank} for ${month} with ${winner.points} points from ${winner.report_count} safety reports. Thank you for helping make every workplace safer.`;
-            const userResult = await client.query(`SELECT email FROM users
-         WHERE active = TRUE AND (lower(email) = lower($1) OR lower(name) = lower($1))
-         LIMIT 1`, [winner.reporter]);
+            const recipientEmail = userEmailByReporter.get(winner.reporter.trim().toLowerCase());
             await client.query(`INSERT INTO notification_jobs
          (id, event_key, workflow, resource_type, resource_id, payload, status, created_by)
          VALUES ($1, 'leaderboard.monthly_award', 'monthly-leaderboard', 'leaderboard', $2, $3, 'completed', 'system')`, [randomUUID(), `${month}:${rank}`, JSON.stringify({ month, rank, ...winner, subject, message })]);
-            if (userResult.rows[0]?.email) {
+            if (recipientEmail) {
                 try {
-                    await sendTestEmail({ to: userResult.rows[0].email, subject, message });
+                    await sendTestEmail({ to: recipientEmail, subject, message });
                 }
                 catch (error) {
                     logger.warn({ err: error, reporter: winner.reporter }, "Leaderboard award email failed");

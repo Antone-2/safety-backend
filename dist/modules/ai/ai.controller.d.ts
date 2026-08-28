@@ -7,6 +7,12 @@ export declare function createAiController(service: AiService): {
     hazardDetection(req: AuthRequest, res: Response): Promise<void>;
     riskPrediction(req: AuthRequest, res: Response): Promise<void>;
     chatbot(req: AuthRequest, res: Response): Promise<void>;
+    latestChatbotSession(req: AuthRequest, res: Response): Promise<void>;
+    listChatbotSessions(req: AuthRequest, res: Response): Promise<void>;
+    getChatbotSession(req: AuthRequest, res: Response): Promise<void>;
+    deleteChatbotSession(req: AuthRequest, res: Response): Promise<void>;
+    renameChatbotSession(req: AuthRequest, res: Response): Promise<void>;
+    pinChatbotSession(req: AuthRequest, res: Response): Promise<void>;
     query(req: AuthRequest, res: Response): Promise<void>;
     complianceAssistant(req: AuthRequest, res: Response): Promise<void>;
     trainingRecommendation(req: AuthRequest, res: Response): Promise<void>;

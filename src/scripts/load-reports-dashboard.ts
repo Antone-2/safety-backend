@@ -17,7 +17,7 @@ type BenchmarkThresholds = {
 
 type DashboardAuthResponse = {
   token?: string;
-  error?: string;
+  error?: string | { message?: string; code?: string; details?: unknown };
   requiresMfa?: boolean;
   mfaRequired?: boolean;
   [key: string]: unknown;
@@ -98,6 +98,17 @@ function formatThresholdResult(label: string, passed: boolean, actual: number, e
   };
 }
 
+function formatAuthError(error: DashboardAuthResponse["error"], status: number): string {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object") {
+    if (typeof error.message === "string" && error.message.trim()) {
+      return error.message;
+    }
+    return JSON.stringify(error);
+  }
+  return `Login failed with status ${status}.`;
+}
+
 async function resolveToken(baseUrl: string): Promise<string> {
   const directToken = process.env.DASHBOARD_BENCH_TOKEN?.trim();
   if (directToken) return directToken;
@@ -119,7 +130,7 @@ async function resolveToken(baseUrl: string): Promise<string> {
   const payload = (await response.json().catch(() => ({}))) as DashboardAuthResponse;
 
   if (!response.ok) {
-    throw new Error(payload.error || `Login failed with status ${response.status}.`);
+    throw new Error(formatAuthError(payload.error, response.status));
   }
 
   if (payload.requiresMfa || payload.mfaRequired) {

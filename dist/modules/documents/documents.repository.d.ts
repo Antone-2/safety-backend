@@ -14,6 +14,10 @@ export declare class DocumentsRepository {
     findApprovals(documentId: string): Promise<DocumentApproval[]>;
     createAcknowledgement(ack: Omit<DocumentAcknowledgement, "id" | "acknowledgedAt">): Promise<DocumentAcknowledgement>;
     findAcknowledgements(documentId: string): Promise<DocumentAcknowledgement[]>;
+    findAcknowledgementSummaryByDocumentIds(documentIds: string[]): Promise<Map<string, {
+        acknowledgements: number;
+        lastAcknowledgedAt?: string;
+    }>>;
     createAccessLink(link: Omit<DocumentAccessLink, "id" | "createdAt" | "downloadCount">): Promise<DocumentAccessLink>;
     getStats(): Promise<DocumentStats>;
 }

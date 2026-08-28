@@ -47,9 +47,9 @@ export declare const CreateScaffoldSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type: string;
     status: "Erected" | "In Use" | "Under Inspection" | "Dismantled" | "Tagged Out";
+    createdBy: string;
     location: string;
     photos: string[];
-    createdBy: string;
     building: string;
     height: number;
     erectedBy: string;
@@ -65,8 +65,8 @@ export declare const CreateScaffoldSchema: z.ZodObject<{
     tagNumber?: string | undefined;
 }, {
     type: string;
-    location: string;
     createdBy: string;
+    location: string;
     building: string;
     height: number;
     erectedBy: string;

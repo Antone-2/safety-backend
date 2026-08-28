@@ -224,8 +224,8 @@ export declare const CreateEmissionSchema: z.ZodObject<{
     value: number;
     type: "Air" | "Water" | "Noise" | "Vibration";
     status: "Within Limit" | "Exceedance" | "Under Investigation";
-    location: string;
     createdBy: string;
+    location: string;
     unit: string;
     parameter: string;
     monitoredDate: string;
@@ -236,8 +236,8 @@ export declare const CreateEmissionSchema: z.ZodObject<{
 }, {
     value: number;
     type: "Air" | "Water" | "Noise" | "Vibration";
-    location: string;
     createdBy: string;
+    location: string;
     unit: string;
     parameter: string;
     monitoredDate: string;
@@ -420,9 +420,9 @@ export declare const CreateSpillSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     date: string;
+    createdBy: string;
     severity: "Critical" | "Minor" | "Major";
     location: string;
-    createdBy: string;
     quantity: number;
     unit: string;
     chemical: string;
@@ -436,9 +436,9 @@ export declare const CreateSpillSchema: z.ZodObject<{
     nemaReportDate?: string | undefined;
 }, {
     date: string;
+    createdBy: string;
     severity: "Critical" | "Minor" | "Major";
     location: string;
-    createdBy: string;
     quantity: number;
     unit: string;
     chemical: string;

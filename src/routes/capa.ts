@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { authenticateUser, requireRole, type AuthRequest } from "../middleware/auth.js";
-import { CapaService } from "../services/capa.service.js";
+import { authenticateUser, requirePermission, type AuthRequest } from "../shared/middleware/auth.middleware.js";
+import { CapaService, CapaSchema } from "../services/capa.service.js";
+import { validate } from "../shared/middleware/validation.middleware.js";
 
 const router = Router();
 const capaService = new CapaService();
 
-router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
+router.get("/", authenticateUser, requirePermission("capa:read"), async (_req: AuthRequest, res) => {
   try {
     const records = await capaService.getAll();
     res.json(records);
@@ -14,7 +15,7 @@ router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/dashboard", authenticateUser, async (_req: AuthRequest, res) => {
+router.get("/dashboard", authenticateUser, requirePermission("capa:read"), async (_req: AuthRequest, res) => {
   try {
     const dashboard = await capaService.getCapaDashboard();
     res.json(dashboard);
@@ -23,7 +24,7 @@ router.get("/dashboard", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
+router.get("/stats", authenticateUser, requirePermission("capa:read"), async (_req: AuthRequest, res) => {
   try {
     const stats = await capaService.getStats();
     res.json(stats);
@@ -32,7 +33,7 @@ router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/overdue", authenticateUser, async (_req: AuthRequest, res) => {
+router.get("/overdue", authenticateUser, requirePermission("capa:read"), async (_req: AuthRequest, res) => {
   try {
     const records = await capaService.getOverdue();
     res.json(records);
@@ -41,7 +42,7 @@ router.get("/overdue", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/:id", authenticateUser, requirePermission("capa:read"), async (req: AuthRequest, res) => {
   try {
     const record = await capaService.getById(String(req.params.id));
     if (!record) return res.status(404).json({ error: "CAPA not found" });
@@ -51,7 +52,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.post("/", authenticateUser, requirePermission("capa:create"), validate(CapaSchema), async (req: AuthRequest, res) => {
   try {
     const record = await capaService.createCapa({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);
@@ -60,7 +61,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
   }
 });
 
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.patch("/:id", authenticateUser, requirePermission("capa:update"), validate(CapaSchema.partial()), async (req: AuthRequest, res) => {
   try {
     const record = await capaService.update(String(req.params.id), req.body);
     res.json(record);
@@ -69,7 +70,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
   }
 });
 
-router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+router.delete("/:id", authenticateUser, requirePermission("capa:delete"), async (req: AuthRequest, res) => {
   try {
     const result = await capaService.delete(String(req.params.id));
     res.json({ success: result });
@@ -78,7 +79,7 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
   }
 });
 
-router.post("/:id/verify", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.post("/:id/verify", authenticateUser, requirePermission("capa:verify"), async (req: AuthRequest, res) => {
   try {
     const { verificationNote, verifiedBy } = req.body;
     const record = await capaService.update(String(req.params.id), {

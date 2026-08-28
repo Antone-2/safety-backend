@@ -5,6 +5,8 @@ import { operationalMonitoringService } from "../services/operational-monitoring
 import { notificationCenterService } from "../services/notification-center.service.js";
 import { metricsService } from "../shared/metrics/metrics.service.js";
 import { runMonthlyLeaderboard } from "../services/leaderboard.service.js";
+import { getQueueStats } from "../shared/infrastructure/redis/queue.service.js";
+import { connectRedis } from "../shared/infrastructure/redis/redis.client.js";
 const router = Router();
 router.get("/dashboard", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
     const [operations, notifications] = await Promise.all([
@@ -76,5 +78,50 @@ router.post("/events", authenticateUser, requireRole(["super-admin", "EHS-manage
 router.post("/jobs/monthly-leaderboard", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
     const result = await runMonthlyLeaderboard();
     res.json({ ok: true, ...result });
+});
+router.get("/jobs/observability", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
+    const redisReady = await connectRedis();
+    if (!redisReady) {
+        return res.json({
+            available: false,
+            reason: "Redis is not configured or unreachable.",
+            queues: [],
+        });
+    }
+    const stats = await getQueueStats();
+    res.json({
+        ...stats,
+        timestamp: new Date().toISOString(),
+    });
+});
+router.post("/jobs/retry-failed", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+    const queueName = String(req.body.queueName || "").trim();
+    if (!queueName) {
+        return res.status(400).json({ error: "queueName is required" });
+    }
+    const redisReady = await connectRedis();
+    if (!redisReady) {
+        return res.status(503).json({ error: "Redis is not configured or unreachable." });
+    }
+    try {
+        const { createQueue } = await import("../shared/infrastructure/redis/queue.service.js");
+        const queue = createQueue(queueName);
+        const failedJobs = await queue.getFailed(0, 100);
+        const retried = [];
+        for (const job of failedJobs) {
+            try {
+                await job.retry();
+                retried.push(job.id);
+            }
+            catch {
+                // skip individual retry failures
+            }
+        }
+        res.json({ ok: true, retriedCount: retried.length, retried });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        res.status(502).json({ ok: false, error: message });
+    }
 });
 export default router;

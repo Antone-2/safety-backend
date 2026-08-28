@@ -73,7 +73,18 @@ function parseSpreadsheetSerial(value) {
     logger.debug({ spreadsheetSerial, offset, input: value, output: parsed.toISOString() }, "report-date.parseSpreadsheetSerial");
     return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : undefined;
 }
-function parseLocalSlashDate(value) {
+function parseLocalSlashDateParts(year, month, day, hour, minute, second) {
+    const parsed = fromSheetLocalTime(year, month, day, hour, minute, second);
+    const offset = getSheetTimeZoneOffsetMinutes(parsed);
+    const localCheck = new Date(parsed.getTime() + offset * 60000);
+    if (localCheck.getUTCFullYear() === year &&
+        localCheck.getUTCMonth() === month - 1 &&
+        localCheck.getUTCDate() === day) {
+        return parsed.toISOString();
+    }
+    return undefined;
+}
+function parseLocalSlashDate(value, referenceDate = new Date()) {
     const localDate = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[T,\s]+(\d{1,2}):?(\d{2})?(?::?(\d{2}))?\s*(AM|PM)?)?$/i);
     if (!localDate)
         return undefined;
@@ -84,9 +95,6 @@ function parseLocalSlashDate(value) {
     const dateOrder = getDateOrder();
     const isUnambiguouslyDayFirst = first > 12;
     const isUnambiguouslyMonthFirst = second > 12;
-    const monthFirst = isUnambiguouslyMonthFirst || (!isUnambiguouslyDayFirst && dateOrder === "mdy");
-    const day = monthFirst ? second : first;
-    const month = monthFirst ? first : second;
     let hour = Number(hourRaw || 0);
     const minute = Number(minuteRaw || 0);
     const secondPart = Number(secondPartRaw || 0);
@@ -95,22 +103,26 @@ function parseLocalSlashDate(value) {
         hour += 12;
     if (meridiem === "AM" && hour === 12)
         hour = 0;
-    const parsed = fromSheetLocalTime(year, month, day, hour, minute, secondPart);
-    const offset = getSheetTimeZoneOffsetMinutes(parsed);
-    const localCheck = new Date(parsed.getTime() + offset * 60000);
-    if (localCheck.getUTCFullYear() === year &&
-        localCheck.getUTCMonth() === month - 1 &&
-        localCheck.getUTCDate() === day) {
-        return parsed.toISOString();
-    }
-    return undefined;
-}
-function parseIsoLocalDateTime(value) {
-    const isoLocal = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-    if (!isoLocal)
+    const buildCandidate = (monthFirst) => parseLocalSlashDateParts(year, monthFirst ? first : second, monthFirst ? second : first, hour, minute, secondPart);
+    const preferredMonthFirst = isUnambiguouslyMonthFirst || (!isUnambiguouslyDayFirst && dateOrder === "mdy");
+    const preferred = buildCandidate(preferredMonthFirst);
+    if (!preferred) {
         return undefined;
-    const [, year, month, day, hour, minute, second = "0"] = isoLocal;
-    return fromSheetLocalTime(+year, +month, +day, +hour, +minute, +second).toISOString();
+    }
+    if (!isUnambiguouslyDayFirst && !isUnambiguouslyMonthFirst) {
+        const alternate = buildCandidate(!preferredMonthFirst);
+        if (alternate) {
+            const preferredLocalDate = getSheetLocalDateString(new Date(preferred));
+            const alternateLocalDate = getSheetLocalDateString(new Date(alternate));
+            const currentLocalDate = getSheetLocalDateString(referenceDate);
+            const preferredIsFuture = preferredLocalDate > currentLocalDate;
+            const alternateIsFuture = alternateLocalDate > currentLocalDate;
+            if (preferredIsFuture !== alternateIsFuture) {
+                return alternateIsFuture ? preferred : alternate;
+            }
+        }
+    }
+    return preferred;
 }
 function parseNativeDate(value) {
     const hasExplicitYear = /\b\d{4}\b/.test(value);
@@ -127,7 +139,7 @@ function parseNativeDate(value) {
         }
         return parsed.toISOString();
     }
-    const localMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):?(\d{2})(?::?(\d{2}))?)?$/);
+    const localMatch = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):?(\d{2})(?::?(\d{2}))?)?$/);
     if (localMatch) {
         const [, year, month, day, hour = "0", minute = "0", second = "0"] = localMatch;
         return fromSheetLocalTime(+year, +month, +day, +hour, +minute, +second).toISOString();
@@ -141,17 +153,16 @@ function parseNativeDate(value) {
     }
     return parsed.toISOString();
 }
-export function tryParseReportDate(value) {
+export function tryParseReportDate(value, referenceDate = new Date()) {
     const trimmed = String(value ?? "").trim();
     if (!trimmed)
         return undefined;
     return (parseSpreadsheetSerial(trimmed) ||
-        parseLocalSlashDate(trimmed) ||
-        parseIsoLocalDateTime(trimmed) ||
+        parseLocalSlashDate(trimmed, referenceDate) ||
         parseNativeDate(trimmed));
 }
-export function parseReportDate(value) {
-    const parsed = tryParseReportDate(value);
+export function parseReportDate(value, referenceDate = new Date()) {
+    const parsed = tryParseReportDate(value, referenceDate);
     if (!parsed) {
         throw new Error(`Invalid report date: ${String(value ?? "").trim() || "<empty>"}`);
     }
@@ -176,8 +187,8 @@ export function sanitizeReportDate(value, ...fallbacks) {
     return parsed ?? new Date().toISOString();
 }
 export function parseValidatedReportDate(value, options) {
-    const parsed = parseReportDate(value);
     const referenceDate = options?.referenceDate ?? new Date();
+    const parsed = parseReportDate(value, referenceDate);
     const parsedLocalDate = getSheetLocalDateString(new Date(parsed));
     const currentLocalDate = getSheetLocalDateString(referenceDate);
     if (parsedLocalDate > currentLocalDate) {

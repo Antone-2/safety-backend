@@ -36,6 +36,7 @@ import {
   REPORTS_LIST_CACHE_TTL_SECONDS,
   setCachedJsonHeaders,
 } from "./reports.cache.js";
+import { getMonthlyEhsReport } from "./monthly-ehs-report.service.js";
 
 const BulkReportStatusSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100),
@@ -163,6 +164,83 @@ export function dedupeDashboardReports<T extends { id?: string; updatedAt?: stri
   return Array.from(byId.values());
 }
 
+type DashboardInsightReport = {
+  date?: string;
+  severity?: string;
+  status?: string;
+  resolutionDays?: number;
+  slaHours?: number;
+};
+
+function parseInsightTime(value?: string) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function countInRange(
+  reports: DashboardInsightReport[],
+  fromInclusive: Date,
+  toExclusive: Date,
+) {
+  const from = fromInclusive.getTime();
+  const to = toExclusive.getTime();
+  return reports.filter((report) => {
+    const time = parseInsightTime(report.date);
+    return time !== null && time >= from && time < to;
+  }).length;
+}
+
+function buildDashboardInsights(reports: DashboardInsightReport[]) {
+  const now = new Date();
+  const rolling30Start = new Date(now);
+  rolling30Start.setUTCDate(rolling30Start.getUTCDate() - 30);
+  const previous30Start = new Date(now);
+  previous30Start.setUTCDate(previous30Start.getUTCDate() - 60);
+  const rolling12Start = new Date(now);
+  rolling12Start.setUTCFullYear(rolling12Start.getUTCFullYear() - 1);
+  const previous12Start = new Date(now);
+  previous12Start.setUTCFullYear(previous12Start.getUTCFullYear() - 2);
+
+  const lastHighOrCritical = reports
+    .filter((report) => report.severity === "High" || report.severity === "Critical")
+    .map((report) => parseInsightTime(report.date))
+    .filter((time): time is number => time !== null)
+    .sort((a, b) => b - a)[0];
+
+  const closedWithResolution = reports.filter(
+    (report) => report.status === "Closed" && report.resolutionDays != null,
+  );
+  const closedWithinSla = closedWithResolution.filter(
+    (report) =>
+      typeof report.resolutionDays === "number" &&
+      typeof report.slaHours === "number" &&
+      report.resolutionDays * 24 <= report.slaHours,
+  ).length;
+
+  return {
+    rolling30Days: {
+      current: countInRange(reports, rolling30Start, now),
+      previous: countInRange(reports, previous30Start, rolling30Start),
+    },
+    rolling12Months: {
+      current: countInRange(reports, rolling12Start, now),
+      previous: countInRange(reports, previous12Start, rolling12Start),
+    },
+    daysSinceLastHighOrCritical:
+      typeof lastHighOrCritical === "number"
+        ? Math.max(0, Math.floor((Date.now() - lastHighOrCritical) / 86400000))
+        : 0,
+    closedWithinSla: {
+      percent: closedWithResolution.length
+        ? Math.round((closedWithinSla / closedWithResolution.length) * 100)
+        : 0,
+      closedOnTime: closedWithinSla,
+      resolvedTotal: closedWithResolution.length,
+    },
+  };
+}
+
 function routeParam(req: Request, name: string) {
   const value = req.params[name];
   return Array.isArray(value) ? value[0] : (value ?? "");
@@ -230,7 +308,7 @@ export function createReportsRouter() {
       const request = await getCorrectiveActionRequestByToken(token);
       if (!request)
         return res.status(404).json({ error: "Corrective action request not found" });
-      res.json(request);
+      res.json({ data: request });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to load corrective action request";
@@ -251,7 +329,7 @@ export function createReportsRouter() {
         token,
         ...parsed.data,
       });
-      res.json(submitted);
+      res.json({ data: submitted });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit corrective action";
       const status = /not found/i.test(message) ? 404 : 400;
@@ -270,7 +348,7 @@ export function createReportsRouter() {
         token,
         note: parsed.data.note,
       });
-      res.json(acknowledged);
+      res.json({ data: acknowledged });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to acknowledge corrective action follow-up";
@@ -288,8 +366,10 @@ export function createReportsRouter() {
       try {
         const result = await sendCorrectiveActionReminders(daysBefore);
         res.json({
-          ...result,
-          message: `Processed ${result.sent} corrective action reminder${result.sent === 1 ? "" : "s"}.`,
+          data: {
+            ...result,
+            message: `Processed ${result.sent} corrective action reminder${result.sent === 1 ? "" : "s"}.`,
+          },
         });
       } catch (error) {
         console.error("Failed to process corrective action reminders", error);
@@ -309,7 +389,7 @@ export function createReportsRouter() {
           requestId,
           actor: req.user,
         });
-        res.json(result);
+        res.json({ data: result });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to resend corrective action notifications";
@@ -330,7 +410,7 @@ export function createReportsRouter() {
           requestId,
           actor: req.user,
         });
-        res.json(result);
+        res.json({ data: result });
       } catch (error) {
         const message =
           error instanceof Error
@@ -359,7 +439,7 @@ export function createReportsRouter() {
           actionPlanItems: parsed.data.actionPlanItems,
           actor: req.user,
         });
-        res.json(result);
+        res.json({ data: result });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to update corrective action review";
@@ -385,7 +465,7 @@ export function createReportsRouter() {
           text: parsed.data.text,
           actor: req.user,
         });
-        res.json(result);
+        res.json({ data: result });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to add corrective action comment";
@@ -408,9 +488,11 @@ export function createReportsRouter() {
       try {
         const summary = await auditReportTimestamps(sampleLimit);
         res.json({
-          ...summary,
-          sampleLimit,
-          generatedAt: new Date().toISOString(),
+          data: {
+            ...summary,
+            sampleLimit,
+            generatedAt: new Date().toISOString(),
+          },
         });
       } catch (error) {
         console.error("Failed to audit report timestamps", error);
@@ -440,7 +522,7 @@ export function createReportsRouter() {
           () => reportsService.list(filters, page, limit),
           REPORTS_LIST_CACHE_TTL_SECONDS,
         );
-        res.json(result);
+        res.json({ data: result });
       } catch (error) {
         console.error("Failed to load reports", error);
         res.status(500).json({ error: "Failed to load reports" });
@@ -498,7 +580,7 @@ export function createReportsRouter() {
           () => reportsService.stats(),
           REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
         );
-        res.json(stats);
+        res.json({ data: stats });
       } catch (error) {
         console.error("Failed to load stats", error);
         res.status(500).json({ error: "Failed to load stats" });
@@ -523,7 +605,7 @@ export function createReportsRouter() {
           () => reportsService.summary(filters),
           REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
         );
-        res.json(summary);
+        res.json({ data: summary });
       } catch (error) {
         console.error("Failed to load summary", error);
         res.status(500).json({ error: "Failed to load summary" });
@@ -555,8 +637,9 @@ export function createReportsRouter() {
               reportsService.list(filters, page, limit),
               reportsService.summary(filters),
               reportsService.topReportersMonthToDate(6),
-              reportsService.list({ ...filters, all: true }, 1, limit),
+              reportsService.listDashboardAnalytics(filters),
             ]);
+            const dedupedAnalyticsReports = dedupeDashboardReports(analyticsReports);
 
             return {
               reports: {
@@ -565,8 +648,8 @@ export function createReportsRouter() {
               },
               summary,
               topReporters,
-              analyticsReports: dedupeDashboardReports(analyticsReports.data),
-              analyticsPreview: dedupeDashboardReports(analyticsReports.data),
+              analyticsPreview: dedupedAnalyticsReports,
+              insights: buildDashboardInsights(dedupedAnalyticsReports),
               generatedAt: new Date().toISOString(),
             };
           },
@@ -582,11 +665,27 @@ export function createReportsRouter() {
               ? "HIT-COALESCED"
               : payload.cacheStatus.toUpperCase(),
         );
-        res.json(payload.value);
+        res.json({ data: payload.value });
       } catch (error) {
         metricsService.incrementCounter("reports-dashboard.errors");
         console.error("Failed to load dashboard snapshot", error);
         res.status(500).json({ error: "Failed to load dashboard snapshot" });
+      }
+    },
+  );
+
+  router.get(
+    "/monthly-ehs",
+    authenticateUser,
+    requirePermission("reports:read"),
+    async (req: AuthRequest, res) => {
+      try {
+        const month = queryString(req.query.month);
+        const payload = await getMonthlyEhsReport(month);
+        res.json({ data: payload });
+      } catch (error) {
+        console.error("Failed to load monthly EHS report", error);
+        res.status(500).json({ error: "Failed to load monthly EHS report" });
       }
     },
   );
@@ -675,10 +774,38 @@ export function createReportsRouter() {
           () => reportsService.topReportersMonthToDate(limit),
           REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
         );
-        res.json(topReporters);
+        res.json({ data: topReporters });
       } catch (error) {
         console.error("Failed to load top reporters MTD", error);
         res.status(500).json({ error: "Failed to load top reporters MTD" });
+      }
+    },
+  );
+
+  router.get(
+    "/leaderboard",
+    authenticateUser,
+    requirePermission("reports:read"),
+    async (req: AuthRequest, res) => {
+      const requestedMonth = typeof req.query.month === "string" ? req.query.month.trim() : "";
+      const requestedReporter = typeof req.query.reporter === "string" ? req.query.reporter.trim() : "";
+      const cacheKey = buildReportsCacheKey("leaderboard", {
+        role: req.user?.role ?? "unknown",
+        month: requestedMonth || "all",
+        reporter: requestedReporter || "all",
+      });
+
+      try {
+        setCachedJsonHeaders(res, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+        const leaderboard = await cacheService.getOrSet(
+          cacheKey,
+          () => reportsService.getLeaderboard(requestedMonth || undefined, requestedReporter || undefined),
+          REPORTS_DASHBOARD_CACHE_TTL_SECONDS,
+        );
+        res.json({ data: leaderboard });
+      } catch (error) {
+        console.error("Failed to load leaderboard", error);
+        res.status(500).json({ error: "Failed to load leaderboard" });
       }
     },
   );
@@ -946,7 +1073,7 @@ export function createReportsRouter() {
       );
       if (!report) return res.status(404).json({ error: "Not found" });
       setCachedJsonHeaders(res, REPORTS_DETAIL_CACHE_TTL_SECONDS);
-      res.json(report);
+      res.json({ data: report });
     },
   );
 
@@ -972,7 +1099,7 @@ export function createReportsRouter() {
       try {
         const saved = await reportsService.create(parsed.data, req);
         await invalidateReportsCache();
-        res.status(201).json(saved);
+        res.status(201).json({ data: saved });
       } catch (error) {
         console.error("Failed to create report", error);
         res.status(500).json({ error: "Failed to create report" });
@@ -993,7 +1120,7 @@ export function createReportsRouter() {
       const updated = await reportsService.updateStatus(id, parsed.data, req);
       if (!updated) return res.status(404).json({ error: "Not found" });
       await invalidateReportsCache();
-      res.json(updated);
+      res.json({ data: updated });
     },
   );
 
@@ -1010,7 +1137,7 @@ export function createReportsRouter() {
       const { ids, status } = parsed.data;
       const result = await reportsService.bulkUpdateStatus(ids, status, req);
       await invalidateReportsCache();
-      res.json({ ...result, status });
+      res.json({ data: { ...result, status } });
     },
   );
 
@@ -1047,7 +1174,7 @@ export function createReportsRouter() {
       if (!updated) return res.status(404).json({ error: "Not found" });
       await invalidateReportsCache();
       broadcastReport(updated);
-      res.json(updated);
+      res.json({ data: updated });
     },
   );
 
@@ -1082,7 +1209,7 @@ export function createReportsRouter() {
           priority: parsed.data.priority,
           dueDate: parsed.data.dueDate,
         });
-        res.status(201).json(created);
+        res.status(201).json({ data: created });
       } catch (error) {
         console.error("Failed to create corrective action request", error);
         res.status(500).json({
@@ -1105,7 +1232,7 @@ export function createReportsRouter() {
         const report = await reportsService.getById(id);
         if (!report) return res.status(404).json({ error: "Report not found" });
         const requests = await listCorrectiveActionRequestsByReport(id);
-        res.json(requests);
+        res.json({ data: requests });
       } catch (error) {
         console.error("Failed to load corrective action requests", error);
         res.status(500).json({ error: "Failed to load corrective action requests" });
@@ -1142,7 +1269,7 @@ export function createReportsRouter() {
           resolutionNotes,
           photos,
         });
-        res.status(201).json(request);
+        res.status(201).json({ data: request });
       } catch (error) {
         console.error("Failed to create closure request", error);
         res.status(500).json({ error: "Failed to create closure request" });
@@ -1172,7 +1299,7 @@ export function createReportsRouter() {
           reviewedByEmail,
           reviewNotes,
         });
-        res.json(updated);
+        res.json({ data: updated });
       } catch (error) {
         console.error("Failed to approve closure request", error);
         res.status(400).json({
@@ -1210,7 +1337,7 @@ export function createReportsRouter() {
           reviewedByEmail,
           reviewNotes,
         });
-        res.json(updated);
+        res.json({ data: updated });
       } catch (error) {
         console.error("Failed to reject closure request", error);
         res.status(400).json({
@@ -1230,7 +1357,7 @@ export function createReportsRouter() {
             "../../services/report-closure.service.js"
           );
         const requests = await listClosureRequests(id);
-        res.json(requests);
+        res.json({ data: requests });
       } catch (error) {
         console.error("Failed to load closure requests", error);
         res.status(500).json({ error: "Failed to load closure requests" });
@@ -1253,7 +1380,7 @@ export function createReportsRouter() {
       const updated = await reportsService.addComment(id, author, text, req);
       if (!updated) return res.status(404).json({ error: "Not found" });
       await invalidateReportsCache();
-      res.json(updated);
+      res.json({ data: updated });
     },
   );
 
@@ -1266,7 +1393,7 @@ export function createReportsRouter() {
       const updated = await reportsService.update(id, req.body, req);
       if (!updated) return res.status(404).json({ error: "Not found" });
       await invalidateReportsCache();
-      res.json(updated);
+      res.json({ data: updated });
     },
   );
 
@@ -1279,7 +1406,7 @@ export function createReportsRouter() {
       const result = await reportsService.delete(id, req);
       if (!result) return res.status(404).json({ error: "Not found" });
       await invalidateReportsCache();
-      res.json(result);
+      res.json({ data: result });
     },
   );
 

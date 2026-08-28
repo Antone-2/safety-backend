@@ -30,6 +30,8 @@ export declare function replaceGoogleSheetReportsInSqlite(db: any, reports: Arra
 }>): void;
 export declare function buildReportIdForImportedRecord(imported: {
     date: string;
+    sourceTimestampRaw?: string;
+    sourceRowNumber?: number;
     location: string;
     reporter: string;
     description: string;
@@ -41,8 +43,10 @@ export declare function buildReportRecordFromRow(headers: string[], row: string[
     locations: string[];
     categories: string[];
     departments: string[];
-}): {
+}, sourceRowNumber?: number): {
     date: string;
+    sourceTimestampRaw: string;
+    sourceRowNumber?: number;
     location: string;
     reporter: string;
     description: string;

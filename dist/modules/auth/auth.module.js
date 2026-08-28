@@ -7,6 +7,7 @@ import { LoginSchema, CreateUserSchema, OtpRequestSchema, OtpVerifySchema, } fro
 import { getEnv } from "../../config/index.js";
 import { ConflictError, ExternalServiceError, } from "../../shared/domain/errors/index.js";
 import { authenticateUser, getCookieValue, requireRole } from "../../shared/middleware/auth.middleware.js";
+import { denylistJwt } from "../../shared/middleware/jwt-denylist.middleware.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import { allRows, getDb, PostgresOnlyDatabaseError, saveDb, } from "../../lib/database.js";
 import { sendOtpEmail } from "../../lib/email.js";
@@ -25,8 +26,44 @@ const MAX_ACTIVE_SESSIONS_PER_USER = Number(process.env.AUTH_MAX_ACTIVE_SESSIONS
 const ACCOUNT_LOCKOUT_THRESHOLD = Number(process.env.AUTH_ACCOUNT_LOCKOUT_THRESHOLD || 5);
 const ACCOUNT_LOCKOUT_DURATION_MINUTES = Number(process.env.AUTH_ACCOUNT_LOCKOUT_DURATION_MINUTES || 30);
 const PASSWORD_MIN_LENGTH = Number(process.env.AUTH_PASSWORD_MIN_LENGTH || 12);
+const AUTH_DB_TIMEOUT_MS = Number(process.env.AUTH_DB_TIMEOUT_MS || 2500);
+const offlineOtpChallenges = new Map();
 function normalizeEmail(email) {
     return email.trim().toLowerCase();
+}
+function toDisplayName(email) {
+    const localPart = normalizeEmail(email).split("@")[0] || "user";
+    return localPart
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+function buildOfflineDevUser(email) {
+    const normalized = normalizeEmail(email);
+    const configuredName = (process.env.DEV_OFFLINE_NAME || "").trim();
+    const configuredRole = (process.env.DEV_OFFLINE_ROLE || "").trim();
+    return {
+        id: `offline-dev:${normalized}`,
+        email: normalized,
+        name: configuredName || toDisplayName(normalized) || "Offline Developer",
+        role: configuredRole || "EHS-manager",
+    };
+}
+function withTimeout(promise, timeoutMs, label) {
+    let timeoutHandle;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timeoutHandle)
+            clearTimeout(timeoutHandle);
+    });
+}
+function queryAuthPg(text, values = [], label = "auth PostgreSQL query") {
+    return withTimeout(pgPool.query(text, values), AUTH_DB_TIMEOUT_MS, label);
 }
 function isDisabledSqliteFallback(error) {
     return error instanceof PostgresOnlyDatabaseError;
@@ -203,6 +240,21 @@ function isPgConfigured() {
 function publicUser(user) {
     return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
+function getConfiguredDemoUser() {
+    if (process.env.ENABLE_DEMO_LOGIN !== "true")
+        return null;
+    const email = normalizeEmail(process.env.DEMO_EMAIL || "");
+    const password = process.env.DEMO_PASSWORD || "";
+    if (!email || !password)
+        return null;
+    return {
+        id: "demo-user",
+        email,
+        name: process.env.DEMO_NAME?.trim() || "Demo User",
+        role: process.env.DEMO_ROLE?.trim() || "EHS-manager",
+        password,
+    };
+}
 function isPrivilegedRole(role) {
     return PRIVILEGED_BOOTSTRAP_ROLES.includes(role);
 }
@@ -219,6 +271,7 @@ export function createAuthRouter() {
     const router = Router();
     const env = getEnv();
     const JWT_SECRET = env.JWT_SECRET;
+    const configuredDemoUser = getConfiguredDemoUser();
     function generateToken(user, sessionId = randomBytes(16).toString("hex")) {
         return jwt.sign({
             id: user.id,
@@ -238,10 +291,54 @@ export function createAuthRouter() {
             type: "mfa-challenge",
         }, JWT_SECRET, { expiresIn: "10m" });
     }
+    function setAccessCookies(res, token, csrfToken, refreshToken) {
+        const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
+        res.cookie("ehs_access", token, {
+            httpOnly: true,
+            sameSite: cookieSameSite,
+            secure: env.NODE_ENV === "production",
+            maxAge: getAccessCookieMaxAgeMs(),
+            path: "/",
+        });
+        res.cookie("ehs_csrf", csrfToken, {
+            httpOnly: false,
+            sameSite: cookieSameSite,
+            secure: env.NODE_ENV === "production",
+            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+            path: "/",
+        });
+        if (refreshToken) {
+            res.cookie("ehs_refresh", refreshToken, {
+                httpOnly: true,
+                sameSite: cookieSameSite,
+                secure: env.NODE_ENV === "production",
+                maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+                path: "/api/auth",
+            });
+            return;
+        }
+        res.clearCookie("ehs_refresh", { path: "/api/auth" });
+    }
+    function issueOfflineDevLogin(req, res, email) {
+        const user = buildOfflineDevUser(email);
+        const csrfToken = randomBytes(24).toString("base64url");
+        const token = jwt.sign({
+            id: user.id,
+            userId: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            jti: `offline-dev-session:${user.email}`,
+            type: "offline-dev-session",
+        }, JWT_SECRET, { expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m` });
+        setAccessCookies(res, token, csrfToken);
+        audit(req, "login.offline-dev", user.email, true, user.id, "Offline development login").catch(() => undefined);
+        return res.json({ data: { token, user, csrfToken } });
+    }
     async function audit(req, event, email, successful, userId, detail) {
         if (isPgConfigured()) {
             try {
-                await pgPool.query(`INSERT INTO auth_login_audit (user_id, email, event, successful, ip_address, user_agent, detail)
+                await queryAuthPg(`INSERT INTO auth_login_audit (user_id, email, event, successful, ip_address, user_agent, detail)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
                     userId ?? null,
                     email,
@@ -250,7 +347,7 @@ export function createAuthRouter() {
                     req.ip ?? "",
                     req.get("user-agent") ?? "",
                     detail ?? null,
-                ]);
+                ], "auth audit insert");
                 return;
             }
             catch {
@@ -284,11 +381,11 @@ export function createAuthRouter() {
     async function getOtpChallenge(email) {
         if (isPgConfigured()) {
             try {
-                const result = await pgPool.query(`SELECT email, code_hash AS "codeHash", user_id::text AS "userId", expires_at AS "expiresAt",
+                const result = await queryAuthPg(`SELECT email, code_hash AS "codeHash", user_id::text AS "userId", expires_at AS "expiresAt",
                   attempts, requested_at AS "requestedAt", request_count AS "requestCount"
            FROM auth_otp_challenges
            WHERE email = $1
-           LIMIT 1`, [email]);
+           LIMIT 1`, [email], "auth OTP challenge lookup");
                 return result.rows[0];
             }
             catch {
@@ -316,7 +413,7 @@ export function createAuthRouter() {
     async function saveOtpChallenge(email, codeHash, userId, expiresAt, requestedAt) {
         if (isPgConfigured()) {
             try {
-                await pgPool.query(`INSERT INTO auth_otp_challenges (email, code_hash, user_id, expires_at, attempts, requested_at, request_count)
+                await queryAuthPg(`INSERT INTO auth_otp_challenges (email, code_hash, user_id, expires_at, attempts, requested_at, request_count)
            VALUES ($1, $2, $3, $4, 0, $5, 1)
            ON CONFLICT (email) DO UPDATE SET
              code_hash = EXCLUDED.code_hash,
@@ -324,7 +421,7 @@ export function createAuthRouter() {
              expires_at = EXCLUDED.expires_at,
              attempts = 0,
              requested_at = EXCLUDED.requested_at,
-             request_count = auth_otp_challenges.request_count + 1`, [email, codeHash, userId, expiresAt, requestedAt]);
+             request_count = auth_otp_challenges.request_count + 1`, [email, codeHash, userId, expiresAt, requestedAt], "auth OTP challenge save");
                 return;
             }
             catch {
@@ -337,7 +434,7 @@ export function createAuthRouter() {
             await saveDb(db);
         }
         catch {
-            // Silently degrade when SQLite is unavailable.
+            throw new ExternalServiceError("auth-storage", "Authentication storage is temporarily unavailable. Please try again.");
         }
     }
     async function deleteOtpChallenge(email) {
@@ -619,7 +716,6 @@ export function createAuthRouter() {
         if (isPgConfigured()) {
             try {
                 await pgPool.query("UPDATE auth_sessions SET revoked_at = $1 WHERE id = $2 AND user_id = $3", [now, sessionId, userId]);
-                return;
             }
             catch {
                 // Fall through to SQLite fallback.
@@ -637,6 +733,7 @@ export function createAuthRouter() {
             }
             throw error;
         }
+        await denylistJwt(sessionId, ACCESS_TOKEN_TTL_MINUTES * 60 * 1000);
     }
     async function revokeUserSessions(userId) {
         const now = new Date().toISOString();
@@ -948,7 +1045,7 @@ export function createAuthRouter() {
         const normalized = normalizeEmail(email);
         if (isPgConfigured()) {
             try {
-                const result = await pgPool.query("SELECT id::text, email, name, role, phone, site, department FROM users WHERE lower(email) = $1 AND active = TRUE LIMIT 1", [normalized]);
+                const result = await queryAuthPg("SELECT id::text, email, name, role, phone, site, department FROM users WHERE lower(email) = $1 AND active = TRUE LIMIT 1", [normalized], "auth user lookup by email");
                 const row = result.rows[0];
                 return row
                     ? { id: row.id, email: row.email, name: row.name, role: row.role }
@@ -1070,73 +1167,70 @@ export function createAuthRouter() {
         if (!parsed.success) {
             return res.status(400).json({ error: parsed.error.errors });
         }
-        const { email, password } = parsed.data;
+        const { email } = parsed.data;
         const normalized = normalizeEmail(email);
         const lockoutCheck = await isAccountLocked(normalized);
         if (lockoutCheck.locked) {
             return res.status(423).json({ error: lockoutCheck.reason });
         }
-        const foundUser = await findUserByEmailWithPassword(normalized);
+        const foundUser = await findUserByEmail(normalized);
         if (!foundUser) {
             await audit(req, "login", email, false, undefined, "Account not found");
             await recordFailedLogin(normalized);
-            return res.status(401).json({ error: "Invalid email or password" });
-        }
-        const isPasswordValid = await bcrypt.compare(password, foundUser.passwordHash);
-        if (!isPasswordValid) {
-            await audit(req, "login", email, false, foundUser.id, "Invalid password");
-            await recordFailedLogin(normalized);
-            return res.status(401).json({ error: "Invalid email or password" });
+            return res.status(404).json({
+                error: "No active account exists for this email. Ask an admin to create your account.",
+            });
         }
         await resetFailedLoginAttempts(normalized);
-        const user = publicUser(foundUser);
-        const sessionId = randomBytes(16).toString("hex");
-        const refreshToken = randomBytes(48).toString("base64url");
-        const token = generateToken(user, sessionId);
-        const decoded = jwt.decode(token);
-        await createAutEHSssion({
-            id: decoded.jti,
-            userId: user.id,
-            email: normalized,
-            expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
-            ipAddress: req.ip ?? "",
-            userAgent: req.get("user-agent") ?? "",
-            refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-            deviceFingerprint: sessionFingerprint(req),
+        const otpResponse = await requestOtpForEmail(req, foundUser);
+        return res.status(200).json({
+            data: {
+                requiresOtp: true,
+                ...otpResponse,
+            },
         });
-        await enforceSessionLimit(user.id);
-        await audit(req, "login", email, true, user.id, "Password login successful");
-        const currentFingerprint = sessionFingerprint(req);
-        const previousSessions = await listAutEHSssions(user.id);
-        const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
-        if (isNewDevice) {
-            sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(() => undefined);
-        }
-        const csrfToken = randomBytes(24).toString("base64url");
-        const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
-        res.cookie("ehs_access", token, {
-            httpOnly: true,
-            sameSite: cookieSameSite,
-            secure: env.NODE_ENV === "production",
-            maxAge: getAccessCookieMaxAgeMs(),
-            path: "/",
-        });
-        res.cookie("ehs_csrf", csrfToken, {
-            httpOnly: false,
-            sameSite: cookieSameSite,
-            secure: env.NODE_ENV === "production",
-            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-            path: "/",
-        });
-        res.cookie("ehs_refresh", refreshToken, {
-            httpOnly: true,
-            sameSite: cookieSameSite,
-            secure: env.NODE_ENV === "production",
-            maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-            path: "/api/auth",
-        });
-        res.json({ token, user, csrfToken });
     });
+    async function requestOtpForEmail(req, user) {
+        const email = normalizeEmail(user.email);
+        const previous = await getOtpChallenge(email);
+        if (previous?.requestedAt) {
+            const retryAfter = OTP_RESEND_COOLDOWN_SECONDS -
+                Math.floor((Date.now() - Date.parse(previous.requestedAt)) / 1000);
+            if (retryAfter > 0) {
+                return {
+                    message: `Please wait ${retryAfter} seconds before requesting another code.`,
+                    delivered: false,
+                    retryAfter,
+                };
+            }
+        }
+        const code = String(randomInt(100000, 1000000));
+        const now = new Date();
+        try {
+            await saveOtpChallenge(email, hashOtp(email, code), user.id, new Date(now.getTime() + OTP_TTL_MINUTES * 60000).toISOString(), now.toISOString());
+        }
+        catch (error) {
+            if (error instanceof ExternalServiceError) {
+                await audit(req, "otp.request", email, false, user.id, "OTP storage unavailable");
+                return {
+                    message: "Authentication is temporarily unavailable because the database is not ready. Please try again shortly.",
+                    delivered: false,
+                };
+            }
+            throw error;
+        }
+        await audit(req, "otp.request", email, true, user.id, "OTP login code sent");
+        const emailResult = await sendOtpEmail({
+            to: email,
+            code,
+            expiresMinutes: OTP_TTL_MINUTES,
+        });
+        return {
+            message: emailResult.message,
+            delivered: emailResult.delivered,
+            devCode: !emailResult.delivered ? code : undefined,
+        };
+    }
     router.post("/otp/request", async (req, res) => {
         const parsed = OtpRequestSchema.safeParse(req.body);
         if (!parsed.success)
@@ -1172,7 +1266,38 @@ export function createAuthRouter() {
                 retryAfter: blocked.retryAfter,
             });
         }
-        const user = await findUserByEmail(email);
+        let user;
+        try {
+            user = await findUserByEmail(email);
+        }
+        catch (error) {
+            if (error instanceof ExternalServiceError) {
+                await audit(req, "otp.request", email, false, undefined, "Account lookup unavailable");
+                if (process.env.NODE_ENV !== "production") {
+                    const code = String(randomInt(100000, 1000000));
+                    offlineOtpChallenges.set(email, {
+                        code,
+                        expiresAt: Date.now() + OTP_TTL_MINUTES * 60000,
+                        name: buildOfflineDevUser(email).name,
+                        role: buildOfflineDevUser(email).role,
+                    });
+                    return res.json({
+                        data: {
+                            ok: true,
+                            delivered: false,
+                            mode: "offline-development",
+                            message: "Database unavailable in development. Use the fallback login code shown below.",
+                            expiresMinutes: OTP_TTL_MINUTES,
+                            devCode: code,
+                        },
+                    });
+                }
+                return res.status(503).json({
+                    error: "Authentication is temporarily unavailable because the database is not ready. Please try again shortly.",
+                });
+            }
+            throw error;
+        }
         if (!user) {
             await audit(req, "otp.request", email, false, undefined, "Account not found");
             return res.status(404).json({
@@ -1191,7 +1316,18 @@ export function createAuthRouter() {
         }
         const code = String(randomInt(100000, 1000000));
         const now = new Date();
-        await saveOtpChallenge(email, hashOtp(email, code), user.id, new Date(now.getTime() + OTP_TTL_MINUTES * 60000).toISOString(), now.toISOString());
+        try {
+            await saveOtpChallenge(email, hashOtp(email, code), user.id, new Date(now.getTime() + OTP_TTL_MINUTES * 60000).toISOString(), now.toISOString());
+        }
+        catch (error) {
+            if (error instanceof ExternalServiceError) {
+                await audit(req, "otp.request", email, false, user.id, "OTP storage unavailable");
+                return res.status(503).json({
+                    error: "Authentication is temporarily unavailable because the database. Please try again shortly.",
+                });
+            }
+            throw error;
+        }
         await audit(req, "otp.request", email, true, user.id);
         let delivery;
         try {
@@ -1204,12 +1340,14 @@ export function createAuthRouter() {
         catch {
             if (process.env.NODE_ENV !== "production") {
                 return res.json({
-                    ok: true,
-                    delivered: false,
-                    mode: "development",
-                    message: "Email delivery unavailable in development. Use the fallback login code shown below.",
-                    expiresMinutes: OTP_TTL_MINUTES,
-                    devCode: code,
+                    data: {
+                        ok: true,
+                        delivered: false,
+                        mode: "development",
+                        message: "Email delivery unavailable. Use the fallback login code shown below.",
+                        expiresMinutes: OTP_TTL_MINUTES,
+                        devCode: code,
+                    },
                 });
             }
             return res.status(502).json({
@@ -1228,13 +1366,25 @@ export function createAuthRouter() {
         if (!delivery.delivered && process.env.NODE_ENV !== "production") {
             response.devCode = code;
         }
-        res.json(response);
+        res.json({ data: response });
     });
     router.post("/otp/verify", async (req, res) => {
         const parsed = OtpVerifySchema.safeParse(req.body);
         if (!parsed.success)
             return res.status(400).json({ error: parsed.error.errors });
         const email = normalizeEmail(parsed.data.email);
+        const offlineChallenge = offlineOtpChallenges.get(email);
+        if (process.env.NODE_ENV !== "production" && offlineChallenge) {
+            if (offlineChallenge.expiresAt < Date.now()) {
+                offlineOtpChallenges.delete(email);
+                return res.status(401).json({ error: "OTP code expired" });
+            }
+            if (offlineChallenge.code !== parsed.data.code) {
+                return res.status(401).json({ error: "Invalid OTP code" });
+            }
+            offlineOtpChallenges.delete(email);
+            return issueOfflineDevLogin(req, res, email);
+        }
         const lockoutCheck = await isAccountLocked(email);
         if (lockoutCheck.locked) {
             return res.status(423).json({ error: lockoutCheck.reason });
@@ -1262,7 +1412,16 @@ export function createAuthRouter() {
             return res.status(401).json({ error: "Invalid OTP code" });
         }
         await deleteOtpChallenge(email);
-        const foundUser = await findUserByEmail(email);
+        let foundUser;
+        try {
+            foundUser = await findUserByEmail(email);
+        }
+        catch (error) {
+            if (error instanceof ExternalServiceError) {
+                return res.status(401).json({ error: "Account lookup is temporarily unavailable. Please try again." });
+            }
+            throw error;
+        }
         if (!foundUser)
             return res.status(401).json({ error: "Account is no longer active" });
         const user = publicUser(foundUser);
@@ -1278,9 +1437,11 @@ export function createAuthRouter() {
                 type: "mfa-enrollment",
             }, JWT_SECRET, { expiresIn: "10m" });
             return res.status(403).json({
-                user,
-                mfaEnrollmentRequired: true,
-                mfaEnrollmentToken,
+                data: {
+                    user,
+                    mfaEnrollmentRequired: true,
+                    mfaEnrollmentToken,
+                },
             });
         }
         const trustedMfaSession = mfaEnabled
@@ -1288,9 +1449,11 @@ export function createAuthRouter() {
             : null;
         if (mfaEnabled && !trustedMfaSession) {
             return res.json({
-                user,
-                mfaRequired: true,
-                mfaChallengeToken: generateMfaChallengeToken(user),
+                data: {
+                    user,
+                    mfaRequired: true,
+                    mfaChallengeToken: generateMfaChallengeToken(user),
+                },
             });
         }
         // Normal flow without MFA
@@ -1319,10 +1482,6 @@ export function createAuthRouter() {
             sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(() => undefined);
         }
         const csrfToken = randomBytes(24).toString("base64url");
-        // The frontend and backend are served from different origins (e.g. Vercel
-        // + Render), so the refresh cookie must be allowed on cross-site requests.
-        // `sameSite: "none"` is required for that and implies `secure` in browsers,
-        // so only use it in production where HTTPS is guaranteed.
         const cookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
         res.cookie("ehs_access", token, {
             httpOnly: true,
@@ -1345,7 +1504,7 @@ export function createAuthRouter() {
             maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
             path: "/api/auth",
         });
-        res.json({ token, user, csrfToken });
+        res.json({ data: { token, user, csrfToken } });
     });
     router.post("/login/mfa-complete", async (req, res) => {
         try {
@@ -1435,7 +1594,7 @@ export function createAuthRouter() {
                 maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
                 path: "/api/auth",
             });
-            res.json({ token, user, csrfToken });
+            res.json({ data: { token, user, csrfToken } });
         }
         catch (error) {
             console.error("MFA login completion error:", error);
@@ -1503,9 +1662,11 @@ export function createAuthRouter() {
                 path: "/",
             });
             res.json({
-                token,
-                user: publicUser(user),
-                csrfToken,
+                data: {
+                    token,
+                    user: publicUser(user),
+                    csrfToken,
+                },
             });
         }
         catch (error) {
@@ -1524,10 +1685,12 @@ export function createAuthRouter() {
     router.get("/bootstrap/status", async (_req, res) => {
         const configured = await hasPrivilegedUser();
         res.json({
-            canRegisterFirstAdmin: !configured,
-            message: configured
-                ? "Administrator registration is closed. Ask an admin to create your account."
-                : "Register the first administrator account before logging in.",
+            data: {
+                canRegisterFirstAdmin: !configured,
+                message: configured
+                    ? "Administrator registration is closed. Ask an admin to create your account."
+                    : "Register the first administrator account before logging in.",
+            },
         });
     });
     router.post("/bootstrap/register", async (req, res) => {
@@ -1547,8 +1710,10 @@ export function createAuthRouter() {
         try {
             const user = await createManagedUser(parsed.data);
             return res.status(201).json({
-                user,
-                message: "First administrator registered. Request an OTP code to log in.",
+                data: {
+                    user,
+                    message: "First administrator registered. Request an OTP code to log in.",
+                },
             });
         }
         catch (error) {
@@ -1565,7 +1730,7 @@ export function createAuthRouter() {
         }
         try {
             const user = await createManagedUser(parsed.data);
-            return res.status(201).json(user);
+            return res.status(201).json({ data: user });
         }
         catch (error) {
             if (error instanceof ConflictError) {
@@ -1587,7 +1752,7 @@ export function createAuthRouter() {
                 const result = await pgPool.query(`SELECT id::text, email, name, role, phone, active, created_at AS "createdAt"
            FROM users
            ORDER BY created_at DESC`);
-                return res.json(result.rows);
+                return res.json({ data: result.rows });
             }
             catch {
                 throw new ExternalServiceError("PostgreSQL", "User records are temporarily unavailable. Please try again.");
@@ -1595,15 +1760,18 @@ export function createAuthRouter() {
         }
         const db = await getDb();
         const users = allRows(db, "SELECT id, email, name, role, active, createdAt FROM users ORDER BY createdAt DESC");
-        res.json(users);
+        res.json({ data: users });
     });
     router.get("/me", authenticateUser, async (req, res) => {
         if (!req.user)
             return res.status(401).json({ error: "Unauthorized" });
+        if (String(req.user.jti || "").startsWith("offline-dev-session:")) {
+            return res.json({ data: { user: req.user } });
+        }
         const user = await findUserByEmail(req.user.email);
         if (!user || user.id !== req.user.id)
             return res.status(401).json({ error: "Account is no longer active" });
-        res.json({ user });
+        res.json({ data: { user } });
     });
     router.patch("/me", authenticateUser, async (req, res) => {
         if (!req.user)
@@ -1640,7 +1808,7 @@ export function createAuthRouter() {
         const user = await findUserByEmail(req.user.email);
         if (!user)
             return res.status(404).json({ error: "User not found" });
-        res.json({ user });
+        res.json({ data: { user } });
     });
     router.get("/me/overview", authenticateUser, async (req, res) => {
         if (!req.user)
@@ -1699,40 +1867,42 @@ export function createAuthRouter() {
             .sort((a, b) => String(b.updatedAt ?? b.updated_at ?? "").localeCompare(String(a.updatedAt ?? a.updated_at ?? "")))
             .slice(0, 5);
         res.json({
-            activity: {
-                raised: raised.length,
-                assigned: assigned.length,
-                completed,
-                performance,
-                recentActions,
-            },
-            documents,
-            account: {
-                type: req.user.role,
-                active,
-                createdAt,
-                lastLogin: typeof req.user.iat === "number"
-                    ? new Date(req.user.iat * 1000).toISOString()
-                    : null,
+            data: {
+                activity: {
+                    raised: raised.length,
+                    assigned: assigned.length,
+                    completed,
+                    performance,
+                    recentActions,
+                },
+                documents,
+                account: {
+                    type: req.user.role,
+                    active,
+                    createdAt,
+                    lastLogin: typeof req.user.iat === "number"
+                        ? new Date(req.user.iat * 1000).toISOString()
+                        : null,
+                },
             },
         });
     });
     router.get("/sessions", authenticateUser, async (req, res) => {
-        res.json(await listAutEHSssions(req.user.id));
+        res.json({ data: await listAutEHSssions(req.user.id) });
     });
     router.get("/login-history", authenticateUser, async (req, res) => {
-        res.json(await listLoginHistory(req.user.id, req.user.email));
+        res.json({ data: await listLoginHistory(req.user.id, req.user.email) });
     });
     router.delete("/sessions/:id", authenticateUser, async (req, res) => {
         await revokeSession(String(req.params.id), req.user.id);
-        res.json({ ok: true });
+        res.json({ data: { ok: true } });
     });
     router.post("/deactivation-request", authenticateUser, async (req, res) => {
         const requestedAt = await requestAccountDeactivation(req.user.id);
-        res.json({ ok: true, requestedAt });
+        res.json({ data: { ok: true, requestedAt } });
     });
     router.get("/deactivation-requests", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
-        res.json(await listDeactivationRequests());
+        res.json({ data: await listDeactivationRequests() });
     });
     router.post("/deactivation-requests/:id/approve", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
         const id = String(req.params.id);
@@ -1745,14 +1915,14 @@ export function createAuthRouter() {
             return res
                 .status(404)
                 .json({ error: "Deactivation request not found" });
-        res.json({ ok: true, deactivated: id });
+        res.json({ data: { ok: true, deactivated: id } });
     });
     router.delete("/deactivation-requests/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
         await clearDeactivationRequest(String(req.params.id));
-        res.json({ ok: true });
+        res.json({ data: { ok: true } });
     });
     router.get("/preferences", authenticateUser, async (req, res) => {
-        res.json(await getUserPreferences(req.user.id));
+        res.json({ data: await getUserPreferences(req.user.id) });
     });
     router.put("/preferences", authenticateUser, async (req, res) => {
         const preferences = req.body?.preferences && typeof req.body.preferences === "object"
@@ -1763,7 +1933,7 @@ export function createAuthRouter() {
             ? req.body.avatarUrl
             : null;
         const saved = await saveUserPreferences(req.user.id, preferences, avatarUrl);
-        res.json({ ok: true, ...saved });
+        res.json({ data: { ok: true, ...saved } });
     });
     router.post("/email-change/request", authenticateUser, async (req, res) => {
         const newEmail = normalizeEmail(String(req.body?.email ?? ""));
@@ -1786,12 +1956,14 @@ export function createAuthRouter() {
             expiresMinutes: OTP_TTL_MINUTES,
         });
         res.json({
-            ok: true,
-            delivered: delivery.delivered,
-            message: delivery.message,
-            ...(env.NODE_ENV !== "production" && !delivery.delivered
-                ? { devCode: code }
-                : {}),
+            data: {
+                ok: true,
+                delivered: delivery.delivered,
+                message: delivery.message,
+                ...(env.NODE_ENV !== "production" && !delivery.delivered
+                    ? { devCode: code }
+                    : {}),
+            },
         });
     });
     router.post("/email-change/verify", authenticateUser, async (req, res) => {
@@ -1809,7 +1981,7 @@ export function createAuthRouter() {
         }
         await completeEmailChange(req.user.id, change.newEmail);
         res.clearCookie("ehs_refresh", { path: "/api/auth" });
-        res.json({ ok: true, email: change.newEmail, requiresLogin: true });
+        res.json({ data: { ok: true, email: change.newEmail, requiresLogin: true } });
     });
     router.patch("/users/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
         const id = String(req.params.id);
@@ -1858,7 +2030,7 @@ export function createAuthRouter() {
                 if (role || email || active === false) {
                     await pgPool.query("UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [id]);
                 }
-                return res.json(result.rows[0]);
+                return res.json({ data: result.rows[0] });
             }
             catch (error) {
                 if (typeof error === "object" &&
@@ -1890,7 +2062,9 @@ export function createAuthRouter() {
         if (role || email || active === false)
             db.prepare("UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL").run([new Date().toISOString(), id]);
         await saveDb(db);
-        res.json(allRows(db, "SELECT id, email, name, role, phone, active, createdAt FROM users WHERE id = ?", [id])[0]);
+        res.json({
+            data: allRows(db, "SELECT id, email, name, role, phone, active, createdAt FROM users WHERE id = ?", [id])[0],
+        });
     });
     router.delete("/users/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
         const id = String(req.params.id);
@@ -1913,7 +2087,7 @@ export function createAuthRouter() {
                 await client.query("UPDATE users SET active = FALSE, updated_at = NOW() WHERE id = $1", [id]);
                 await client.query("UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [id]);
                 await client.query("COMMIT");
-                return res.json({ ok: true, suspended: id });
+                return res.json({ data: { ok: true, suspended: id } });
             }
             catch {
                 await client.query("ROLLBACK").catch(() => undefined);
@@ -1937,7 +2111,7 @@ export function createAuthRouter() {
         db.prepare("UPDATE users SET active = 0 WHERE id = ?").run([id]);
         db.prepare("UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL").run([now, id]);
         await saveDb(db);
-        res.json({ ok: true, suspended: id });
+        res.json({ data: { ok: true, suspended: id } });
     });
     router.post("/logout", authenticateUser, async (req, res) => {
         await revokeSession(String(req.user.jti), req.user.id);
@@ -1945,7 +2119,7 @@ export function createAuthRouter() {
         res.clearCookie("ehs_access", { path: "/" });
         res.clearCookie("ehs_refresh", { path: "/api/auth" });
         res.clearCookie("ehs_csrf", { path: "/" });
-        res.json({ ok: true });
+        res.json({ data: { ok: true } });
     });
     // MFA (TOTP) Endpoints for Privileged Roles
     router.post("/mfa/enroll", async (req, res) => {
@@ -2006,9 +2180,11 @@ export function createAuthRouter() {
             await mfaService.createMFAEnrollment(userId, challenge.secret, recoveryCodes.map((rc) => rc.code));
             await audit(req, "mfa_enroll_started", userEmail, true, userId);
             res.json({
-                qrCode: challenge.qrCode,
-                secret: challenge.secret,
-                recoveryCodes: recoveryCodes.map((rc) => rc.code),
+                data: {
+                    qrCode: challenge.qrCode,
+                    secret: challenge.secret,
+                    recoveryCodes: recoveryCodes.map((rc) => rc.code),
+                },
             });
         }
         catch (error) {
@@ -2126,7 +2302,7 @@ export function createAuthRouter() {
                 maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
                 path: "/api/auth",
             });
-            res.json({ token: accessToken, user, csrfToken });
+            res.json({ data: { token: accessToken, user, csrfToken } });
         }
         catch (error) {
             console.error("MFA verification error:", error);
@@ -2139,7 +2315,7 @@ export function createAuthRouter() {
             const { MFAService } = await import("../../services/mfa.service.js");
             const mfaService = new MFAService(pgPool);
             const enabled = await mfaService.isMFAEnabled(userId);
-            res.json({ enabled });
+            res.json({ data: { enabled } });
         }
         catch (error) {
             console.error("MFA status check error:", error);
@@ -2190,8 +2366,10 @@ export function createAuthRouter() {
                 type: "mfa-verification",
             }, JWT_SECRET, { expiresIn: "5m" });
             res.json({
-                ok: true,
-                mfaVerificationToken,
+                data: {
+                    ok: true,
+                    mfaVerificationToken,
+                },
             });
         }
         catch (error) {
@@ -2244,9 +2422,11 @@ export function createAuthRouter() {
                 recoveryUsed: true,
             }, JWT_SECRET, { expiresIn: "5m" });
             res.json({
-                ok: true,
-                mfaVerificationToken,
-                warning: "You used a recovery code. Please generate new recovery codes in your account settings.",
+                data: {
+                    ok: true,
+                    mfaVerificationToken,
+                    warning: "You used a recovery code. Please generate new recovery codes in your account settings.",
+                },
             });
         }
         catch (error) {
@@ -2284,7 +2464,7 @@ export function createAuthRouter() {
             const mfaService = new MFAService(pgPool);
             await mfaService.disableMFA(userId);
             await audit(req, "mfa_disabled", userEmail, true, userId);
-            res.json({ ok: true, message: "MFA has been disabled" });
+            res.json({ data: { ok: true, message: "MFA has been disabled" } });
         }
         catch (error) {
             console.error("MFA disable error:", error);
@@ -2346,9 +2526,11 @@ export function createAuthRouter() {
             }
             await audit(req, "mfa_recovery_codes_regenerated", userEmail, true, userId);
             res.json({
-                ok: true,
-                recoveryCodes: recoveryCodes.map((rc) => rc.code),
-                message: "Recovery codes regenerated. Store them in a safe place.",
+                data: {
+                    ok: true,
+                    recoveryCodes: recoveryCodes.map((rc) => rc.code),
+                    message: "Recovery codes regenerated. Store them in a safe place.",
+                },
             });
         }
         catch (error) {

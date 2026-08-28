@@ -23,6 +23,7 @@ import * as Sentry from "@sentry/node";
 
 import { createAuthRouter } from "./modules/auth/auth.module.js";
 import { createUsersRouter } from "./modules/users/users.module.js";
+import permissionMatrixRouter from "./routes/permission-matrix.js";
 import { createIncidentsRouter } from "./modules/incidents/incidents.controller.js";
 import { createPermitsRouter } from "./modules/permits/permits.module.js";
 import { createCapaRouter } from "./modules/capa/capa.module.js";
@@ -50,6 +51,15 @@ import {
   createWorkplaceRegistrationRouter,
   createRiskRouter,
   createKpiRouter,
+  createInspectionsRouter,
+  createObservationsRouter,
+  createMocRouter,
+  createOrganizationRouter,
+  createExposureMonitoringRouter,
+  createVisitorsRouter,
+  createSafetyAlertsRouter,
+  createCalibrationsRouter,
+  createLegalRegisterRouter,
 } from "./modules/index.js";
 
 import googleFormsRouter, {
@@ -107,7 +117,7 @@ function isAllowedOrigin(origin: string | undefined) {
 const app = express();
 
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+app.set("trust proxy", 2);
 
 app.use(
   cors({
@@ -192,6 +202,7 @@ mountAll(API_PREFIXES, "/ppe", createPpeRouter());
 mountAll(API_PREFIXES, "/equipment", createEquipmentRouter());
 mountAll(API_PREFIXES, "/contractors", createContractorsRouter());
 mountAll(API_PREFIXES, "/compliance", createComplianceRouter());
+mountAll(API_PREFIXES, "/legal-register", createLegalRegisterRouter());
 mountAll(API_PREFIXES, "/wiba", createWibaRouter());
 mountAll(API_PREFIXES, "/workplace-registration", createWorkplaceRegistrationRouter());
 mountAll(API_PREFIXES, "/statutory-audits", createStatutoryAuditRouter());
@@ -204,6 +215,14 @@ mountAll(API_PREFIXES, "/scaffolding", createScaffoldRouter());
 mountAll(API_PREFIXES, "/governance", createGovernanceRouter());
 mountAll(API_PREFIXES, "/analytics", createAnalyticsRouter());
 mountAll(API_PREFIXES, "/audit", auditRouter);
+mountAll(API_PREFIXES, "/inspections", createInspectionsRouter());
+mountAll(API_PREFIXES, "/observations", createObservationsRouter());
+mountAll(API_PREFIXES, "/moc", createMocRouter());
+mountAll(API_PREFIXES, "/organization", createOrganizationRouter());
+mountAll(API_PREFIXES, "/exposure-monitoring", createExposureMonitoringRouter());
+mountAll(API_PREFIXES, "/visitors", createVisitorsRouter());
+mountAll(API_PREFIXES, "/safety-alerts", createSafetyAlertsRouter());
+mountAll(API_PREFIXES, "/calibrations", createCalibrationsRouter());
 mountAll(API_PREFIXES, "/context", contextRouter);
 mountAll(API_PREFIXES, "/emergency", emergencyRouter);
 mountAll(API_PREFIXES, "/esg", esgRouter);
@@ -222,6 +241,7 @@ mountAll(API_PREFIXES, "/notifications", createNotificationsRouter());
 
 mountAll(API_PREFIXES, "/documents", createDocumentsRouter());
 mountAll(API_PREFIXES, "/settings", createSettingsRouter());
+mountAll(API_PREFIXES, "/permission-matrix", permissionMatrixRouter);
 mountAll(API_PREFIXES, "/ai", createAiRouter());
 
 if (env.SENTRY_DSN) {
@@ -257,6 +277,20 @@ function startServer() {
   process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  });
+}
+
 async function bootstrap() {
   try {
     let redisReady = false;
@@ -281,13 +315,36 @@ async function bootstrap() {
       return;
     }
 
+    if (env.NODE_ENV === "production" && !env.FRONTEND_URL) {
+      logger.error("FRONTEND_URL is required in production for CORS");
+      console.error("Bootstrap failed: FRONTEND_URL is required in production");
+      process.exit(1);
+      return;
+    }
+
     const sanitizedDbUrl = env.DATABASE_URL.replace(/\/\/.*@/, "//***@");
     logger.info({ db: sanitizedDbUrl }, "Connecting to PostgreSQL");
+    startServer();
 
+    const postgresBootstrapAttempts = Math.max(
+      1,
+      Math.min(10, Math.trunc(env.BOOTSTRAP_PG_MAX_ATTEMPTS ?? 5) || 5),
+    );
+    const postgresAttemptTimeoutMs = Math.max(
+      5_000,
+      Math.min(
+        120_000,
+        Math.trunc(Number(process.env.BOOTSTRAP_PG_ATTEMPT_TIMEOUT_MS || 15_000)) || 15_000,
+      ),
+    );
     let postgresReady = false;
-    for (let attempt = 1; attempt <= 5; attempt++) {
+    for (let attempt = 1; attempt <= postgresBootstrapAttempts; attempt++) {
       try {
-        await runPostgresMigrations();
+        await withTimeout(
+          runPostgresMigrations(),
+          postgresAttemptTimeoutMs,
+          `PostgreSQL bootstrap attempt ${attempt}`,
+        );
         postgresReady = true;
         logger.info("PostgreSQL migrations completed");
         break;
@@ -296,19 +353,20 @@ async function bootstrap() {
           { err: error as Error, attempt },
           "PostgreSQL migration attempt failed",
         );
-        if (attempt < 5) {
+        if (attempt < postgresBootstrapAttempts) {
           await new Promise((r) => setTimeout(r, attempt * 2000));
         }
       }
     }
 
     if (!postgresReady) {
-      logger.error("PostgreSQL is unavailable after 5 attempts; starting in degraded mode");
+      logger.error(
+        `PostgreSQL is unavailable after ${postgresBootstrapAttempts} attempt${postgresBootstrapAttempts === 1 ? "" : "s"}; starting in degraded mode`,
+      );
       console.error("Bootstrap degraded: PostgreSQL unavailable after retries");
     }
 
     setGoogleSheetsPostgresAvailability(postgresReady);
-    startServer();
     startGoogleSheetsScheduler();
     if (postgresReady) {
       startMonthlyLeaderboardScheduler();

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildReportIdForImportedRecord,
   classifyGoogleFormsError,
   buildReportRecordFromRow,
   dedupeGoogleSheetReportsById,
@@ -80,6 +81,34 @@ test("falls back to the published CSV endpoint when the Sheets API returns 403",
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test("keeps distinct Google Sheets submissions separate even when the visible report content matches", () => {
+  const first = buildReportRecordFromRow(
+    ["Timestamp", "Location", "Reporter", "Category", "Severity", "Description"],
+    ["7/24/2026 8:33:15", "Factory", "Alice", "Slip / Trip", "High", "Wet floor near mixing line"],
+    {
+      locations: ["Factory"],
+      categories: ["Slip / Trip"],
+      departments: ["Ops"],
+    },
+    2,
+  );
+  const second = buildReportRecordFromRow(
+    ["Timestamp", "Location", "Reporter", "Category", "Severity", "Description"],
+    ["7/24/2026 8:34:15", "Factory", "Alice", "Slip / Trip", "High", "Wet floor near mixing line"],
+    {
+      locations: ["Factory"],
+      categories: ["Slip / Trip"],
+      departments: ["Ops"],
+    },
+    3,
+  );
+
+  const firstId = buildReportIdForImportedRecord(first);
+  const secondId = buildReportIdForImportedRecord(second);
+
+  assert.notEqual(firstId, secondId);
 });
 
 test("requests unformatted serial values from the Sheets API", async () => {
@@ -175,6 +204,13 @@ test("falls back to day-first when the first part exceeds 12", () => {
   assert.equal(parseDate("13/07/2026 14:35:10"), "2026-07-13T18:35:10.000Z");
 });
 
+test("prefers the non-future interpretation for ambiguous slash dates", () => {
+  assert.equal(
+    parseDate("7/11/2026 13:02:41", new Date("2026-08-02T09:00:00.000Z")),
+    "2026-07-11T17:02:41.000Z",
+  );
+});
+
 test("honors explicit dmy date order", () => {
   const previous = process.env.GOOGLE_SHEETS_DATE_ORDER;
   process.env.GOOGLE_SHEETS_DATE_ORDER = "dmy";
@@ -220,9 +256,9 @@ test("falls back safely to dmy when the configured date order is invalid", () =>
   }
 });
 
-test("rejects report dates that are in the future relative to Tuesday, July 28, 2026 in America/New_York", () => {
-  assert.throws(
-    () => parseDate("12/31/2026 08:00:00", new Date("2026-07-28T16:00:00.000Z")),
-    /2026-07-28/,
+test("accepts future Google Sheets report dates when they are valid local timestamps", () => {
+  assert.equal(
+    parseDate("12/31/2026 08:00:00", new Date("2026-07-28T16:00:00.000Z")),
+    "2026-12-31T12:00:00.000Z",
   );
 });

@@ -6,6 +6,50 @@ export declare class AiRepository {
         userId?: string;
         limit?: number;
     }): Promise<any[]>;
+    saveChatSession(input: {
+        conversationId: string;
+        userId: string;
+        history: Array<{
+            role: string;
+            content: string;
+        }>;
+        latestResponse?: unknown;
+        title?: string;
+        pinned?: boolean;
+    }): Promise<string>;
+    getLatestChatSession(userId: string): Promise<{
+        conversationId: string;
+        userId: string;
+        title: string;
+        pinned: boolean;
+        history: any;
+        result: any;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    getChatSession(userId: string, conversationId: string): Promise<{
+        conversationId: string;
+        userId: string;
+        history: any;
+        result: any;
+        createdAt: string;
+        updatedAt: string;
+    } | null>;
+    listChatSessions(userId: string, limit?: number): Promise<{
+        conversationId: string;
+        userId: string;
+        title: string;
+        pinned: boolean;
+        preview: string | undefined;
+        sourceCount: any;
+        hasSources: boolean;
+        messageCount: number;
+        createdAt: string;
+        updatedAt: string;
+    }[]>;
+    updateChatSessionTitle(userId: string, conversationId: string, title: string): Promise<boolean>;
+    updateChatSessionPinned(userId: string, conversationId: string, pinned: boolean): Promise<boolean>;
+    deleteChatSession(userId: string, conversationId: string): Promise<boolean>;
     saveDocument(document: {
         title: string;
         content: string;

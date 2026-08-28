@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
-import { IncidentService } from "../services/incident.service.js";
-import { authenticateUser, requireRole } from "../middleware/auth.js";
+import { IncidentService, IncidentSchema } from "../services/incident.service.js";
+import { authenticateUser, requirePermission } from "../shared/middleware/auth.middleware.js";
+import { validate } from "../shared/middleware/validation.middleware.js";
 const router = Router();
 const incidentService = new IncidentService();
-router.get("/", authenticateUser, async (req, res) => {
+router.get("/", authenticateUser, requirePermission("incidents:read"), async (req, res) => {
     try {
         const filters = {};
         if (String(req.query.status))
@@ -22,7 +23,7 @@ router.get("/", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch incidents" });
     }
 });
-router.get("/:id", authenticateUser, async (req, res) => {
+router.get("/:id", authenticateUser, requirePermission("incidents:read"), async (req, res) => {
     try {
         const incident = await incidentService.getById(String(req.params.id));
         if (!incident)
@@ -33,7 +34,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch incident" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), async (req, res) => {
+router.post("/", authenticateUser, requirePermission("incidents:create"), validate(IncidentSchema), async (req, res) => {
     try {
         const data = req.body;
         const incident = await incidentService.createIncident(data);
@@ -48,7 +49,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
         }
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requirePermission("incidents:update"), validate(IncidentSchema.partial()), async (req, res) => {
     try {
         const incident = await incidentService.update(String(req.params.id), req.body);
         res.json(incident);
@@ -57,7 +58,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
         res.status(500).json({ error: "Failed to update incident" });
     }
 });
-router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+router.delete("/:id", authenticateUser, requirePermission("incidents:delete"), async (req, res) => {
     try {
         const deleted = await incidentService.delete(String(req.params.id));
         if (!deleted)
@@ -68,7 +69,7 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
         res.status(500).json({ error: "Failed to delete incident" });
     }
 });
-router.get("/stats/summary", authenticateUser, async (req, res) => {
+router.get("/stats/summary", authenticateUser, requirePermission("incidents:read"), async (req, res) => {
     try {
         const stats = await incidentService.getStats();
         res.json(stats);
@@ -77,7 +78,7 @@ router.get("/stats/summary", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch stats" });
     }
 });
-router.get("/overdue/list", authenticateUser, async (req, res) => {
+router.get("/overdue/list", authenticateUser, requirePermission("incidents:read"), async (req, res) => {
     try {
         const overdue = await incidentService.getOverdue();
         res.json(overdue);

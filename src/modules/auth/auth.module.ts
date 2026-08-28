@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, randomInt } from "crypto";
 import { v4 as uuidv4 } from "uuid";
+import type { QueryResultRow } from "pg";
 import {
   LoginSchema,
   CreateUserSchema,
@@ -15,6 +16,7 @@ import {
   ExternalServiceError,
 } from "../../shared/domain/errors/index.js";
 import { AuthRequest, authenticateUser, getCookieValue, requireRole } from "../../shared/middleware/auth.middleware.js";
+import { denylistJwt } from "../../shared/middleware/jwt-denylist.middleware.js";
 import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import {
   allRows,
@@ -69,9 +71,58 @@ const ACCOUNT_LOCKOUT_DURATION_MINUTES = Number(
   process.env.AUTH_ACCOUNT_LOCKOUT_DURATION_MINUTES || 30,
 );
 const PASSWORD_MIN_LENGTH = Number(process.env.AUTH_PASSWORD_MIN_LENGTH || 12);
+const AUTH_DB_TIMEOUT_MS = Number(process.env.AUTH_DB_TIMEOUT_MS || 2500);
+const offlineOtpChallenges = new Map<
+  string,
+  { code: string; expiresAt: number; name: string; role: string }
+>();
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+function toDisplayName(email: string) {
+  const localPart = normalizeEmail(email).split("@")[0] || "user";
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildOfflineDevUser(email: string) {
+  const normalized = normalizeEmail(email);
+  const configuredName = (process.env.DEV_OFFLINE_NAME || "").trim();
+  const configuredRole = (process.env.DEV_OFFLINE_ROLE || "").trim();
+
+  return {
+    id: `offline-dev:${normalized}`,
+    email: normalized,
+    name: configuredName || toDisplayName(normalized) || "Offline Developer",
+    role: configuredRole || "EHS-manager",
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  });
+}
+
+function queryAuthPg<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  values: unknown[] = [],
+  label = "auth PostgreSQL query",
+) {
+  return withTimeout(pgPool.query<T>(text, values), AUTH_DB_TIMEOUT_MS, label);
 }
 
 function isDisabledSqliteFallback(error: unknown) {
@@ -291,6 +342,22 @@ function publicUser(user: AuthUserRecord) {
   return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
 
+function getConfiguredDemoUser(): (AuthUserRecord & { password: string }) | null {
+  if (process.env.ENABLE_DEMO_LOGIN !== "true") return null;
+
+  const email = normalizeEmail(process.env.DEMO_EMAIL || "");
+  const password = process.env.DEMO_PASSWORD || "";
+  if (!email || !password) return null;
+
+  return {
+    id: "demo-user",
+    email,
+    name: process.env.DEMO_NAME?.trim() || "Demo User",
+    role: process.env.DEMO_ROLE?.trim() || "EHS-manager",
+    password,
+  };
+}
+
 function isPrivilegedRole(role: string) {
   return PRIVILEGED_BOOTSTRAP_ROLES.includes(role);
 }
@@ -311,6 +378,7 @@ export function createAuthRouter() {
   const router = Router();
   const env = getEnv();
   const JWT_SECRET = env.JWT_SECRET;
+  const configuredDemoUser = getConfiguredDemoUser();
 
   function generateToken(
     user: { id: string; email: string; name: string; role: string },
@@ -349,6 +417,63 @@ export function createAuthRouter() {
     );
   }
 
+  function setAccessCookies(res: Response, token: string, csrfToken: string, refreshToken?: string) {
+    const cookieSameSite: "none" | "lax" =
+      env.NODE_ENV === "production" ? "none" : "lax";
+
+    res.cookie("ehs_access", token, {
+      httpOnly: true,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: getAccessCookieMaxAgeMs(),
+      path: "/",
+    });
+    res.cookie("ehs_csrf", csrfToken, {
+      httpOnly: false,
+      sameSite: cookieSameSite,
+      secure: env.NODE_ENV === "production",
+      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+      path: "/",
+    });
+
+    if (refreshToken) {
+      res.cookie("ehs_refresh", refreshToken, {
+        httpOnly: true,
+        sameSite: cookieSameSite,
+        secure: env.NODE_ENV === "production",
+        maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
+        path: "/api/auth",
+      });
+      return;
+    }
+
+    res.clearCookie("ehs_refresh", { path: "/api/auth" });
+  }
+
+  function issueOfflineDevLogin(req: Request, res: Response, email: string) {
+    const user = buildOfflineDevUser(email);
+    const csrfToken = randomBytes(24).toString("base64url");
+    const token = jwt.sign(
+      {
+        id: user.id,
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        jti: `offline-dev-session:${user.email}`,
+        type: "offline-dev-session",
+      },
+      JWT_SECRET,
+      { expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m` },
+    );
+
+    setAccessCookies(res, token, csrfToken);
+    audit(req, "login.offline-dev", user.email, true, user.id, "Offline development login").catch(
+      () => undefined,
+    );
+    return res.json({ data: { token, user, csrfToken } });
+  }
+
   async function audit(
     req: Request,
     event: string,
@@ -359,7 +484,7 @@ export function createAuthRouter() {
   ) {
     if (isPgConfigured()) {
       try {
-        await pgPool.query(
+        await queryAuthPg(
           `INSERT INTO auth_login_audit (user_id, email, event, successful, ip_address, user_agent, detail)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
@@ -371,6 +496,7 @@ export function createAuthRouter() {
             req.get("user-agent") ?? "",
             detail ?? null,
           ],
+          "auth audit insert",
         );
         return;
       } catch {
@@ -406,13 +532,22 @@ const db = await getDb();
   async function getOtpChallenge(email: string) {
     if (isPgConfigured()) {
       try {
-        const result = await pgPool.query(
+        const result = await queryAuthPg<{
+          email: string;
+          codeHash: string;
+          userId: string;
+          expiresAt: string;
+          attempts: number;
+          requestedAt: string;
+          requestCount: number;
+        }>(
           `SELECT email, code_hash AS "codeHash", user_id::text AS "userId", expires_at AS "expiresAt",
                   attempts, requested_at AS "requestedAt", request_count AS "requestCount"
            FROM auth_otp_challenges
            WHERE email = $1
            LIMIT 1`,
           [email],
+          "auth OTP challenge lookup",
         );
         return result.rows[0];
       } catch {
@@ -446,7 +581,7 @@ const db = await getDb();
   ) {
     if (isPgConfigured()) {
       try {
-        await pgPool.query(
+        await queryAuthPg(
           `INSERT INTO auth_otp_challenges (email, code_hash, user_id, expires_at, attempts, requested_at, request_count)
            VALUES ($1, $2, $3, $4, 0, $5, 1)
            ON CONFLICT (email) DO UPDATE SET
@@ -457,6 +592,7 @@ const db = await getDb();
              requested_at = EXCLUDED.requested_at,
              request_count = auth_otp_challenges.request_count + 1`,
           [email, codeHash, userId, expiresAt, requestedAt],
+          "auth OTP challenge save",
         );
         return;
       } catch {
@@ -471,7 +607,10 @@ const db = await getDb();
       ).run([email, codeHash, userId, expiresAt, requestedAt, email]);
       await saveDb(db);
     } catch {
-      // Silently degrade when SQLite is unavailable.
+      throw new ExternalServiceError(
+        "auth-storage",
+        "Authentication storage is temporarily unavailable. Please try again.",
+      );
     }
   }
 
@@ -836,7 +975,6 @@ const db = await getDb();
           "UPDATE auth_sessions SET revoked_at = $1 WHERE id = $2 AND user_id = $3",
           [now, sessionId, userId],
         );
-        return;
       } catch {
         // Fall through to SQLite fallback.
       }
@@ -855,6 +993,8 @@ const db = await getDb();
       }
       throw error;
     }
+
+    await denylistJwt(sessionId, ACCESS_TOKEN_TTL_MINUTES * 60 * 1000);
   }
 
   async function revokeUserSessions(userId: string) {
@@ -1255,9 +1395,18 @@ const db = await getDb();
 
     if (isPgConfigured()) {
       try {
-        const result = await pgPool.query(
+        const result = await queryAuthPg<{
+          id: string;
+          email: string;
+          name: string;
+          role: string;
+          phone?: string;
+          site?: string;
+          department?: string;
+        }>(
           "SELECT id::text, email, name, role, phone, site, department FROM users WHERE lower(email) = $1 AND active = TRUE LIMIT 1",
           [normalized],
+          "auth user lookup by email",
         );
         const row = result.rows[0];
         return row
@@ -1431,7 +1580,7 @@ const db = await getDb();
       return res.status(400).json({ error: parsed.error.errors });
     }
 
-    const { email, password } = parsed.data;
+    const { email } = parsed.data;
     const normalized = normalizeEmail(email);
 
     const lockoutCheck = await isAccountLocked(normalized);
@@ -1439,76 +1588,80 @@ const db = await getDb();
       return res.status(423).json({ error: lockoutCheck.reason });
     }
 
-    const foundUser = await findUserByEmailWithPassword(normalized);
+    const foundUser = await findUserByEmail(normalized);
     if (!foundUser) {
       await audit(req, "login", email, false, undefined, "Account not found");
       await recordFailedLogin(normalized);
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, foundUser.passwordHash);
-    if (!isPasswordValid) {
-      await audit(req, "login", email, false, foundUser.id, "Invalid password");
-      await recordFailedLogin(normalized);
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(404).json({
+        error: "No active account exists for this email. Ask an admin to create your account.",
+      });
     }
 
     await resetFailedLoginAttempts(normalized);
 
-    const user = publicUser(foundUser);
-    const sessionId = randomBytes(16).toString("hex");
-    const refreshToken = randomBytes(48).toString("base64url");
-    const token = generateToken(user, sessionId);
-    const decoded = jwt.decode(token) as { jti: string; exp: number };
-
-    await createAutEHSssion({
-      id: decoded.jti,
-      userId: user.id,
-      email: normalized,
-      expiresAt: addDays(REFRESH_SESSION_TTL_DAYS),
-      ipAddress: req.ip ?? "",
-      userAgent: req.get("user-agent") ?? "",
-      refreshHash: createHash("sha256").update(refreshToken).digest("hex"),
-      deviceFingerprint: sessionFingerprint(req),
+    const otpResponse = await requestOtpForEmail(req, foundUser);
+    return res.status(200).json({
+      data: {
+        requiresOtp: true,
+        ...otpResponse,
+      },
     });
-    await enforceSessionLimit(user.id);
-    await audit(req, "login", email, true, user.id, "Password login successful");
+  });
 
-    const currentFingerprint = sessionFingerprint(req);
-    const previousSessions = await listAutEHSssions(user.id);
-    const isNewDevice = !hasMatchingDeviceFingerprint(previousSessions, currentFingerprint);
-    if (isNewDevice) {
-      sendNewDeviceNotification(email, req.ip ?? "", req.get("user-agent") ?? "").catch(
-        () => undefined,
-      );
+  async function requestOtpForEmail(
+    req: Request,
+    user: AuthUserRecord,
+  ): Promise<{ message: string; delivered: boolean; devCode?: string; retryAfter?: number }> {
+    const email = normalizeEmail(user.email);
+    const previous = await getOtpChallenge(email);
+    if (previous?.requestedAt) {
+      const retryAfter =
+        OTP_RESEND_COOLDOWN_SECONDS -
+        Math.floor((Date.now() - Date.parse(previous.requestedAt)) / 1000);
+      if (retryAfter > 0) {
+        return {
+          message: `Please wait ${retryAfter} seconds before requesting another code.`,
+          delivered: false,
+          retryAfter,
+        };
+      }
     }
 
-    const csrfToken = randomBytes(24).toString("base64url");
-    const cookieSameSite: "none" | "lax" =
-      env.NODE_ENV === "production" ? "none" : "lax";
-    res.cookie("ehs_access", token, {
-      httpOnly: true,
-      sameSite: cookieSameSite,
-      secure: env.NODE_ENV === "production",
-      maxAge: getAccessCookieMaxAgeMs(),
-      path: "/",
+    const code = String(randomInt(100000, 1000000));
+    const now = new Date();
+    try {
+      await saveOtpChallenge(
+        email,
+        hashOtp(email, code),
+        user.id,
+        new Date(now.getTime() + OTP_TTL_MINUTES * 60000).toISOString(),
+        now.toISOString(),
+      );
+    } catch (error) {
+      if (error instanceof ExternalServiceError) {
+        await audit(req, "otp.request", email, false, user.id, "OTP storage unavailable");
+        return {
+          message:
+            "Authentication is temporarily unavailable because the database is not ready. Please try again shortly.",
+          delivered: false,
+        };
+      }
+      throw error;
+    }
+    await audit(req, "otp.request", email, true, user.id, "OTP login code sent");
+
+    const emailResult = await sendOtpEmail({
+      to: email,
+      code,
+      expiresMinutes: OTP_TTL_MINUTES,
     });
-    res.cookie("ehs_csrf", csrfToken, {
-      httpOnly: false,
-      sameSite: cookieSameSite,
-      secure: env.NODE_ENV === "production",
-      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-      path: "/",
-    });
-    res.cookie("ehs_refresh", refreshToken, {
-      httpOnly: true,
-      sameSite: cookieSameSite,
-      secure: env.NODE_ENV === "production",
-      maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-      path: "/api/auth",
-    });
-    res.json({ token, user, csrfToken });
-  });
+
+    return {
+      message: emailResult.message,
+      delivered: emailResult.delivered,
+      devCode: !emailResult.delivered ? code : undefined,
+    };
+  }
 
   router.post("/otp/request", async (req: Request, res: Response) => {
     const parsed = OtpRequestSchema.safeParse(req.body);
@@ -1547,7 +1700,40 @@ const db = await getDb();
       });
     }
 
-    const user = await findUserByEmail(email);
+    let user: AuthUserRecord | null;
+    try {
+      user = await findUserByEmail(email);
+    } catch (error) {
+      if (error instanceof ExternalServiceError) {
+        await audit(req, "otp.request", email, false, undefined, "Account lookup unavailable");
+        if (process.env.NODE_ENV !== "production") {
+          const code = String(randomInt(100000, 1000000));
+          offlineOtpChallenges.set(email, {
+            code,
+            expiresAt: Date.now() + OTP_TTL_MINUTES * 60000,
+            name: buildOfflineDevUser(email).name,
+            role: buildOfflineDevUser(email).role,
+          });
+          return res.json({
+            data: {
+              ok: true,
+              delivered: false,
+              mode: "offline-development",
+              message:
+                "Database unavailable in development. Use the fallback login code shown below.",
+              expiresMinutes: OTP_TTL_MINUTES,
+              devCode: code,
+            },
+          });
+        }
+        return res.status(503).json({
+          error:
+            "Authentication is temporarily unavailable because the database is not ready. Please try again shortly.",
+        });
+      }
+      throw error;
+    }
+
     if (!user) {
       await audit(
         req,
@@ -1577,13 +1763,24 @@ const db = await getDb();
 
     const code = String(randomInt(100000, 1000000));
     const now = new Date();
-    await saveOtpChallenge(
-      email,
-      hashOtp(email, code),
-      user.id,
-      new Date(now.getTime() + OTP_TTL_MINUTES * 60000).toISOString(),
-      now.toISOString(),
-    );
+    try {
+      await saveOtpChallenge(
+        email,
+        hashOtp(email, code),
+        user.id,
+        new Date(now.getTime() + OTP_TTL_MINUTES * 60000).toISOString(),
+        now.toISOString(),
+      );
+    } catch (error) {
+      if (error instanceof ExternalServiceError) {
+        await audit(req, "otp.request", email, false, user.id, "OTP storage unavailable");
+        return res.status(503).json({
+          error:
+            "Authentication is temporarily unavailable because the database. Please try again shortly.",
+        });
+      }
+      throw error;
+    }
     await audit(req, "otp.request", email, true, user.id);
 
     let delivery: Awaited<ReturnType<typeof sendOtpEmail>>;
@@ -1596,13 +1793,15 @@ const db = await getDb();
     } catch {
       if (process.env.NODE_ENV !== "production") {
         return res.json({
-          ok: true,
-          delivered: false,
-          mode: "development",
-          message:
-            "Email delivery unavailable in development. Use the fallback login code shown below.",
-          expiresMinutes: OTP_TTL_MINUTES,
-          devCode: code,
+          data: {
+            ok: true,
+            delivered: false,
+            mode: "development",
+            message:
+              "Email delivery unavailable. Use the fallback login code shown below.",
+            expiresMinutes: OTP_TTL_MINUTES,
+            devCode: code,
+          },
         });
       }
 
@@ -1625,7 +1824,7 @@ const db = await getDb();
       response.devCode = code;
     }
 
-    res.json(response);
+    res.json({ data: response });
   });
 
   router.post("/otp/verify", async (req: Request, res: Response) => {
@@ -1634,6 +1833,20 @@ const db = await getDb();
       return res.status(400).json({ error: parsed.error.errors });
 
     const email = normalizeEmail(parsed.data.email);
+    const offlineChallenge = offlineOtpChallenges.get(email);
+    if (process.env.NODE_ENV !== "production" && offlineChallenge) {
+      if (offlineChallenge.expiresAt < Date.now()) {
+        offlineOtpChallenges.delete(email);
+        return res.status(401).json({ error: "OTP code expired" });
+      }
+
+      if (offlineChallenge.code !== parsed.data.code) {
+        return res.status(401).json({ error: "Invalid OTP code" });
+      }
+
+      offlineOtpChallenges.delete(email);
+      return issueOfflineDevLogin(req, res, email);
+    }
 
     const lockoutCheck = await isAccountLocked(email);
     if (lockoutCheck.locked) {
@@ -1679,7 +1892,16 @@ const db = await getDb();
     }
 
     await deleteOtpChallenge(email);
-    const foundUser = await findUserByEmail(email);
+    let foundUser: AuthUserRecord | null;
+    try {
+      foundUser = await findUserByEmail(email);
+    } catch (error) {
+      if (error instanceof ExternalServiceError) {
+        return res.status(401).json({ error: "Account lookup is temporarily unavailable. Please try again." });
+      }
+      throw error;
+    }
+
     if (!foundUser)
       return res.status(401).json({ error: "Account is no longer active" });
     const user = publicUser(foundUser);
@@ -1701,9 +1923,11 @@ const db = await getDb();
         { expiresIn: "10m" },
       );
       return res.status(403).json({
-        user,
-        mfaEnrollmentRequired: true,
-        mfaEnrollmentToken,
+        data: {
+          user,
+          mfaEnrollmentRequired: true,
+          mfaEnrollmentToken,
+        },
       });
     }
 
@@ -1713,9 +1937,11 @@ const db = await getDb();
 
     if (mfaEnabled && !trustedMfaSession) {
       return res.json({
-        user,
-        mfaRequired: true,
-        mfaChallengeToken: generateMfaChallengeToken(user),
+        data: {
+          user,
+          mfaRequired: true,
+          mfaChallengeToken: generateMfaChallengeToken(user),
+        },
       });
     }
 
@@ -1749,10 +1975,6 @@ const db = await getDb();
     }
 
     const csrfToken = randomBytes(24).toString("base64url");
-    // The frontend and backend are served from different origins (e.g. Vercel
-    // + Render), so the refresh cookie must be allowed on cross-site requests.
-    // `sameSite: "none"` is required for that and implies `secure` in browsers,
-    // so only use it in production where HTTPS is guaranteed.
     const cookieSameSite: "none" | "lax" =
       env.NODE_ENV === "production" ? "none" : "lax";
     res.cookie("ehs_access", token, {
@@ -1776,7 +1998,7 @@ const db = await getDb();
       maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
       path: "/api/auth",
     });
-    res.json({ token, user, csrfToken });
+    res.json({ data: { token, user, csrfToken } });
   });
 
   router.post("/login/mfa-complete", async (req: Request, res: Response) => {
@@ -1882,7 +2104,7 @@ const db = await getDb();
         path: "/api/auth",
       });
 
-      res.json({ token, user, csrfToken });
+      res.json({ data: { token, user, csrfToken } });
     } catch (error) {
       console.error("MFA login completion error:", error);
       res.status(500).json({ error: "Failed to complete MFA login" });
@@ -1955,9 +2177,11 @@ const db = await getDb();
         path: "/",
       });
       res.json({
-        token,
-        user: publicUser(user),
-        csrfToken,
+        data: {
+          token,
+          user: publicUser(user),
+          csrfToken,
+        },
       });
     } catch (error) {
       if (error instanceof ExternalServiceError) {
@@ -1978,10 +2202,12 @@ const db = await getDb();
   router.get("/bootstrap/status", async (_req: Request, res: Response) => {
     const configured = await hasPrivilegedUser();
     res.json({
-      canRegisterFirstAdmin: !configured,
-      message: configured
-        ? "Administrator registration is closed. Ask an admin to create your account."
-        : "Register the first administrator account before logging in.",
+      data: {
+        canRegisterFirstAdmin: !configured,
+        message: configured
+          ? "Administrator registration is closed. Ask an admin to create your account."
+          : "Register the first administrator account before logging in.",
+      },
     });
   });
 
@@ -2005,9 +2231,11 @@ const db = await getDb();
     try {
       const user = await createManagedUser(parsed.data);
       return res.status(201).json({
-        user,
-        message:
-          "First administrator registered. Request an OTP code to log in.",
+        data: {
+          user,
+          message:
+            "First administrator registered. Request an OTP code to log in.",
+        },
       });
     } catch (error) {
       if (error instanceof ConflictError) {
@@ -2029,7 +2257,7 @@ const db = await getDb();
 
       try {
         const user = await createManagedUser(parsed.data);
-        return res.status(201).json(user);
+        return res.status(201).json({ data: user });
       } catch (error) {
         if (error instanceof ConflictError) {
           return res.status(409).json({ error: error.message });
@@ -2058,7 +2286,7 @@ const db = await getDb();
            FROM users
            ORDER BY created_at DESC`,
           );
-          return res.json(result.rows);
+          return res.json({ data: result.rows });
         } catch {
           throw new ExternalServiceError(
             "PostgreSQL",
@@ -2072,7 +2300,7 @@ const db = await getDb();
         db,
         "SELECT id, email, name, role, active, createdAt FROM users ORDER BY createdAt DESC",
       ) as any[];
-      res.json(users);
+      res.json({ data: users });
     },
   );
 
@@ -2081,10 +2309,13 @@ const db = await getDb();
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+      if (String(req.user.jti || "").startsWith("offline-dev-session:")) {
+        return res.json({ data: { user: req.user } });
+      }
       const user = await findUserByEmail(req.user.email);
       if (!user || user.id !== req.user.id)
         return res.status(401).json({ error: "Account is no longer active" });
-      res.json({ user });
+      res.json({ data: { user } });
     },
   );
 
@@ -2128,7 +2359,7 @@ const db = await getDb();
 
       const user = await findUserByEmail(req.user.email);
       if (!user) return res.status(404).json({ error: "User not found" });
-      res.json({ user });
+      res.json({ data: { user } });
     },
   );
 
@@ -2226,22 +2457,24 @@ const db = await getDb();
         .slice(0, 5);
 
       res.json({
-        activity: {
-          raised: raised.length,
-          assigned: assigned.length,
-          completed,
-          performance,
-          recentActions,
-        },
-        documents,
-        account: {
-          type: req.user.role,
-          active,
-          createdAt,
-          lastLogin:
-            typeof (req.user as any).iat === "number"
-              ? new Date((req.user as any).iat * 1000).toISOString()
-              : null,
+        data: {
+          activity: {
+            raised: raised.length,
+            assigned: assigned.length,
+            completed,
+            performance,
+            recentActions,
+          },
+          documents,
+          account: {
+            type: req.user.role,
+            active,
+            createdAt,
+            lastLogin:
+              typeof (req.user as any).iat === "number"
+                ? new Date((req.user as any).iat * 1000).toISOString()
+                : null,
+          },
         },
       });
     },
@@ -2251,7 +2484,7 @@ const db = await getDb();
     "/sessions",
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
-      res.json(await listAutEHSssions(req.user!.id));
+      res.json({ data: await listAutEHSssions(req.user!.id) });
     },
   );
 
@@ -2259,7 +2492,7 @@ const db = await getDb();
     "/login-history",
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
-      res.json(await listLoginHistory(req.user!.id, req.user!.email));
+      res.json({ data: await listLoginHistory(req.user!.id, req.user!.email) });
     },
   );
 
@@ -2268,7 +2501,7 @@ const db = await getDb();
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
       await revokeSession(String(req.params.id), req.user!.id);
-      res.json({ ok: true });
+      res.json({ data: { ok: true } });
     },
   );
 
@@ -2277,7 +2510,7 @@ const db = await getDb();
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
       const requestedAt = await requestAccountDeactivation(req.user!.id);
-      res.json({ ok: true, requestedAt });
+      res.json({ data: { ok: true, requestedAt } });
     },
   );
 
@@ -2286,7 +2519,7 @@ const db = await getDb();
     authenticateUser,
     requireRole(["super-admin", "EHS-manager"]),
     async (_req: AuthRequest, res: Response) => {
-      res.json(await listDeactivationRequests());
+      res.json({ data: await listDeactivationRequests() });
     },
   );
 
@@ -2305,7 +2538,7 @@ const db = await getDb();
         return res
           .status(404)
           .json({ error: "Deactivation request not found" });
-      res.json({ ok: true, deactivated: id });
+      res.json({ data: { ok: true, deactivated: id } });
     },
   );
 
@@ -2315,7 +2548,7 @@ const db = await getDb();
     requireRole(["super-admin", "EHS-manager"]),
     async (req: AuthRequest, res: Response) => {
       await clearDeactivationRequest(String(req.params.id));
-      res.json({ ok: true });
+      res.json({ data: { ok: true } });
     },
   );
 
@@ -2323,7 +2556,7 @@ const db = await getDb();
     "/preferences",
     authenticateUser,
     async (req: AuthRequest, res: Response) => {
-      res.json(await getUserPreferences(req.user!.id));
+      res.json({ data: await getUserPreferences(req.user!.id) });
     },
   );
 
@@ -2345,7 +2578,7 @@ const db = await getDb();
         preferences as Record<string, unknown>,
         avatarUrl,
       );
-      res.json({ ok: true, ...saved });
+      res.json({ data: { ok: true, ...saved } });
     },
   );
 
@@ -2375,12 +2608,14 @@ const db = await getDb();
         expiresMinutes: OTP_TTL_MINUTES,
       });
       res.json({
-        ok: true,
-        delivered: delivery.delivered,
-        message: delivery.message,
-        ...(env.NODE_ENV !== "production" && !delivery.delivered
-          ? { devCode: code }
-          : {}),
+        data: {
+          ok: true,
+          delivered: delivery.delivered,
+          message: delivery.message,
+          ...(env.NODE_ENV !== "production" && !delivery.delivered
+            ? { devCode: code }
+            : {}),
+        },
       });
     },
   );
@@ -2403,7 +2638,7 @@ const db = await getDb();
       }
       await completeEmailChange(req.user!.id, change.newEmail);
       res.clearCookie("ehs_refresh", { path: "/api/auth" });
-      res.json({ ok: true, email: change.newEmail, requiresLogin: true });
+      res.json({ data: { ok: true, email: change.newEmail, requiresLogin: true } });
     },
   );
 
@@ -2470,7 +2705,7 @@ const db = await getDb();
               [id],
             );
           }
-          return res.json(result.rows[0]);
+          return res.json({ data: result.rows[0] });
         } catch (error: unknown) {
           if (
             typeof error === "object" &&
@@ -2508,13 +2743,13 @@ const db = await getDb();
           "UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL",
         ).run([new Date().toISOString(), id]);
       await saveDb(db);
-      res.json(
-        allRows(
+      res.json({
+        data: allRows(
           db,
           "SELECT id, email, name, role, phone, active, createdAt FROM users WHERE id = ?",
           [id],
         )[0],
-      );
+      });
     },
   );
 
@@ -2556,7 +2791,7 @@ const db = await getDb();
             [id],
           );
           await client.query("COMMIT");
-          return res.json({ ok: true, suspended: id });
+          return res.json({ data: { ok: true, suspended: id } });
         } catch {
           await client.query("ROLLBACK").catch(() => undefined);
           throw new ExternalServiceError(
@@ -2583,7 +2818,7 @@ const db = await getDb();
         "UPDATE auth_sessions SET revokedAt = ? WHERE userId = ? AND revokedAt IS NULL",
       ).run([now, id]);
       await saveDb(db);
-      res.json({ ok: true, suspended: id });
+      res.json({ data: { ok: true, suspended: id } });
     },
   );
 
@@ -2596,7 +2831,7 @@ const db = await getDb();
       res.clearCookie("ehs_access", { path: "/" });
       res.clearCookie("ehs_refresh", { path: "/api/auth" });
       res.clearCookie("ehs_csrf", { path: "/" });
-      res.json({ ok: true });
+      res.json({ data: { ok: true } });
     },
   );
 
@@ -2674,9 +2909,11 @@ const db = await getDb();
       await audit(req, "mfa_enroll_started", userEmail, true, userId);
 
       res.json({
-        qrCode: challenge.qrCode,
-        secret: challenge.secret,
-        recoveryCodes: recoveryCodes.map((rc) => rc.code),
+        data: {
+          qrCode: challenge.qrCode,
+          secret: challenge.secret,
+          recoveryCodes: recoveryCodes.map((rc) => rc.code),
+        },
       });
     } catch (error) {
       console.error("MFA enrollment error:", error);
@@ -2814,7 +3051,7 @@ const db = await getDb();
         path: "/api/auth",
       });
 
-      res.json({ token: accessToken, user, csrfToken });
+      res.json({ data: { token: accessToken, user, csrfToken } });
     } catch (error) {
       console.error("MFA verification error:", error);
       res.status(500).json({ error: "Failed to verify MFA enrollment" });
@@ -2831,7 +3068,7 @@ const db = await getDb();
         const mfaService = new MFAService(pgPool);
 
         const enabled = await mfaService.isMFAEnabled(userId);
-        res.json({ enabled });
+        res.json({ data: { enabled } });
       } catch (error) {
         console.error("MFA status check error:", error);
         res.status(500).json({ error: "Failed to check MFA status" });
@@ -2900,8 +3137,10 @@ const db = await getDb();
         );
 
         res.json({
-          ok: true,
-          mfaVerificationToken,
+          data: {
+            ok: true,
+            mfaVerificationToken,
+          },
         });
       } catch (error) {
         console.error("MFA token verification error:", error);
@@ -2972,10 +3211,12 @@ const db = await getDb();
         );
 
         res.json({
-          ok: true,
-          mfaVerificationToken,
-          warning:
-            "You used a recovery code. Please generate new recovery codes in your account settings.",
+          data: {
+            ok: true,
+            mfaVerificationToken,
+            warning:
+              "You used a recovery code. Please generate new recovery codes in your account settings.",
+          },
         });
       } catch (error) {
         console.error("Recovery code verification error:", error);
@@ -3026,7 +3267,7 @@ const db = await getDb();
 
         await audit(req, "mfa_disabled", userEmail, true, userId);
 
-        res.json({ ok: true, message: "MFA has been disabled" });
+        res.json({ data: { ok: true, message: "MFA has been disabled" } });
       } catch (error) {
         console.error("MFA disable error:", error);
         res.status(500).json({ error: "Failed to disable MFA" });
@@ -3115,9 +3356,11 @@ const db = await getDb();
         );
 
         res.json({
-          ok: true,
-          recoveryCodes: recoveryCodes.map((rc) => rc.code),
-          message: "Recovery codes regenerated. Store them in a safe place.",
+          data: {
+            ok: true,
+            recoveryCodes: recoveryCodes.map((rc) => rc.code),
+            message: "Recovery codes regenerated. Store them in a safe place.",
+          },
         });
       } catch (error) {
         console.error("Recovery codes regenerate error:", error);

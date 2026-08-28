@@ -1,0 +1,124 @@
+import { z } from "zod";
+
+export const VisitorAccessStatusSchema = z.enum([
+  "Planned",
+  "On Site",
+  "Checked Out",
+  "Expired",
+  "Denied",
+]);
+
+export const VisitorInductionStatusSchema = z.enum([
+  "Pending",
+  "Completed",
+  "Waived",
+  "Expired",
+]);
+
+export type VisitorAccessStatus = z.infer<typeof VisitorAccessStatusSchema>;
+export type VisitorInductionStatus = z.infer<typeof VisitorInductionStatusSchema>;
+
+export interface VisitorRecord {
+  id: string;
+  visitorNo: string;
+  fullName: string;
+  companyName?: string;
+  idNumber?: string;
+  phone?: string;
+  email?: string;
+  hostName: string;
+  hostUserId?: string;
+  site: string;
+  department?: string;
+  areaToVisit: string;
+  purpose: string;
+  visitDate: string;
+  checkInAt?: string;
+  checkOutAt?: string;
+  accessStatus: VisitorAccessStatus;
+  inductionStatus: VisitorInductionStatus;
+  inductionCompletedAt?: string;
+  inductionExpiryDate?: string;
+  badgeNo?: string;
+  vehicleRegNo?: string;
+  accessCardIssued: boolean;
+  ppeIssued?: string;
+  restrictions?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VisitorStats {
+  total: number;
+  planned: number;
+  onSite: number;
+  checkedOut: number;
+  overdueCheckouts: number;
+  inductionPending: number;
+  activeVisitors: number;
+}
+
+export const CreateVisitorSchema = z.object({
+  fullName: z.string().min(1).max(200),
+  companyName: z.string().max(200).optional(),
+  idNumber: z.string().max(100).optional(),
+  phone: z.string().max(60).optional(),
+  email: z.string().email().max(200).optional(),
+  hostName: z.string().min(1).max(200),
+  hostUserId: z.string().max(120).optional(),
+  site: z.string().min(1).max(200),
+  department: z.string().max(120).optional(),
+  areaToVisit: z.string().min(1).max(200),
+  purpose: z.string().min(1).max(2000),
+  visitDate: z.string().min(1),
+  checkInAt: z.string().optional(),
+  checkOutAt: z.string().optional(),
+  accessStatus: VisitorAccessStatusSchema.default("Planned"),
+  inductionStatus: VisitorInductionStatusSchema.default("Pending"),
+  inductionCompletedAt: z.string().optional(),
+  inductionExpiryDate: z.string().optional(),
+  badgeNo: z.string().max(60).optional(),
+  vehicleRegNo: z.string().max(80).optional(),
+  accessCardIssued: z.boolean().default(false),
+  ppeIssued: z.string().max(500).optional(),
+  restrictions: z.string().max(1000).optional(),
+  emergencyContactName: z.string().max(200).optional(),
+  emergencyContactPhone: z.string().max(60).optional(),
+  notes: z.string().max(2000).optional(),
+  createdBy: z.string().min(1).max(200),
+});
+export type CreateVisitorInput = z.infer<typeof CreateVisitorSchema>;
+
+export const UpdateVisitorSchema = z.object({
+  fullName: z.string().min(1).max(200).optional(),
+  companyName: z.string().max(200).optional().nullable(),
+  idNumber: z.string().max(100).optional().nullable(),
+  phone: z.string().max(60).optional().nullable(),
+  email: z.string().email().max(200).optional().nullable(),
+  hostName: z.string().min(1).max(200).optional(),
+  hostUserId: z.string().max(120).optional().nullable(),
+  site: z.string().min(1).max(200).optional(),
+  department: z.string().max(120).optional().nullable(),
+  areaToVisit: z.string().min(1).max(200).optional(),
+  purpose: z.string().min(1).max(2000).optional(),
+  visitDate: z.string().min(1).optional(),
+  checkInAt: z.string().optional().nullable(),
+  checkOutAt: z.string().optional().nullable(),
+  accessStatus: VisitorAccessStatusSchema.optional(),
+  inductionStatus: VisitorInductionStatusSchema.optional(),
+  inductionCompletedAt: z.string().optional().nullable(),
+  inductionExpiryDate: z.string().optional().nullable(),
+  badgeNo: z.string().max(60).optional().nullable(),
+  vehicleRegNo: z.string().max(80).optional().nullable(),
+  accessCardIssued: z.boolean().optional(),
+  ppeIssued: z.string().max(500).optional().nullable(),
+  restrictions: z.string().max(1000).optional().nullable(),
+  emergencyContactName: z.string().max(200).optional().nullable(),
+  emergencyContactPhone: z.string().max(60).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export type UpdateVisitorInput = z.infer<typeof UpdateVisitorSchema>;

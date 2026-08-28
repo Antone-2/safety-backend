@@ -87,9 +87,9 @@ export declare const RiskRegisterSchema: z.ZodObject<{
     status: string;
     title: string;
     department: string;
+    createdBy: string;
     severity: number;
     location: string;
-    createdBy: string;
     activity: string;
     hazard: string;
     existingControls: string;
@@ -107,9 +107,9 @@ export declare const RiskRegisterSchema: z.ZodObject<{
 }, {
     title: string;
     department: string;
+    createdBy: string;
     severity: number;
     location: string;
-    createdBy: string;
     activity: string;
     hazard: string;
     existingControls: string;
@@ -142,8 +142,8 @@ export declare const BowTieSchema: z.ZodObject<{
     status: string;
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     topEvent: string;
     id?: string | undefined;
     threats?: string | undefined;
@@ -153,8 +153,8 @@ export declare const BowTieSchema: z.ZodObject<{
 }, {
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     topEvent: string;
     status?: string | undefined;
     id?: string | undefined;

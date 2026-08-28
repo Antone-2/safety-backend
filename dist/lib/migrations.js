@@ -954,12 +954,34 @@ const MIGRATIONS = [
     )`,
     },
     {
-        name: "044_create_ai_indexes",
+        name: "044_create_ai_chat_sessions",
+        sql: `CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+      conversation_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      history_json TEXT NOT NULL,
+      latest_response_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    },
+    {
+        name: "045_create_ai_indexes",
         sql: `CREATE INDEX IF NOT EXISTS idx_ai_predictions_feature ON ai_predictions(feature);
           CREATE INDEX IF NOT EXISTS idx_ai_predictions_created_at ON ai_predictions(created_at);
           CREATE INDEX IF NOT EXISTS idx_ai_documents_category ON ai_documents(category);
           CREATE INDEX IF NOT EXISTS idx_ai_feedback_feature ON ai_feedback(feature);
+          CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_user_updated ON ai_chat_sessions(user_id, updated_at);
           CREATE INDEX IF NOT EXISTS idx_ai_knowledge_base_source ON ai_knowledge_base(source_document_id);`,
+    },
+    {
+        name: "046_add_ai_chat_session_title",
+        sql: `ALTER TABLE ai_chat_sessions ADD COLUMN title TEXT`,
+    },
+    {
+        name: "047_add_ai_chat_session_pinned",
+        sql: `ALTER TABLE ai_chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
     },
     {
         name: "048_add_report_contact_fields",

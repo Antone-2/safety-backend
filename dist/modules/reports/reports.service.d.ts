@@ -14,6 +14,14 @@ export type TopReporterEntry = {
     reporter: string;
     reportCount: number;
 };
+export type LeaderboardFilters = {
+    month?: string;
+    reporter?: string;
+};
+export declare function buildLeaderboardFilter(filters: LeaderboardFilters): {
+    whereSql: string;
+    params: unknown[];
+};
 export declare function buildPgFilter(filters: ReportFilters): {
     whereSql: string;
     params: unknown[];
@@ -77,6 +85,53 @@ export declare class ReportsService {
     }>;
     private listPg;
     private listSqlite;
+    listDashboardAnalytics(filters?: ReportFilters, maxRows?: number): Promise<{
+        id: any;
+        date: string;
+        location: any;
+        reporter: any;
+        description: any;
+        severity: any;
+        status: any;
+        category: any;
+        type: any;
+        resolutionDays: any;
+        slaHours: any;
+        dueAt: string;
+        assignedTo: any;
+        assignedToCopy: string[];
+        comments: {
+            author: string;
+            at: string;
+            text: string;
+        }[];
+        isNearMiss: any;
+        isRecordable: boolean;
+        isLostTimeInjury: boolean;
+        medicalTreatmentCase: boolean;
+        lostWorkDays: number;
+        restrictedWorkDays: number;
+        classificationSource: any;
+        classificationVerifiedBy: any;
+        classificationVerifiedAt: any;
+        anonymous: any;
+        department: any;
+        shift: any;
+        complianceRequired: any;
+        complianceDueAt: string | undefined;
+        photoUrl: string;
+        reporterEmail: any;
+        reporterPhone: any;
+        reporterWhatsApp: any;
+        source: any;
+        sourceSyncedAt: any;
+        auditHistory: {
+            at: string;
+            actor: string;
+            action: string;
+            detail: any;
+        }[];
+    }[]>;
     getById(id: string): Promise<{
         id: any;
         date: string;
@@ -438,6 +493,28 @@ export declare class ReportsService {
     bulkUpdateStatus(ids: string[], status: string, request?: any): Promise<{
         updated: number;
         ids: any[];
+    }>;
+    getLeaderboard(month?: string, reporter?: string): Promise<{
+        availableMonths: string[];
+        availableReporters: string[];
+        currentMonth: {
+            reporter: string;
+            reportCount: number;
+        }[];
+        monthlyByMonth: {
+            month: string;
+            reporters: {
+                reporter: string;
+                rank: number;
+                reportCount: number;
+                points: number;
+            }[];
+        }[];
+        allTime: {
+            reporter: string;
+            totalReports: number;
+            totalPoints: number;
+        }[];
     }>;
     private bulkUpdateStatusPg;
     private bulkUpdateStatusSqlite;

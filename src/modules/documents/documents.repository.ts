@@ -316,6 +316,37 @@ export class DocumentsRepository {
     return result.rows.map((row) => asAcknowledgement(row as unknown as Record<string, unknown>));
   }
 
+  async findAcknowledgementSummaryByDocumentIds(documentIds: string[]) {
+    if (documentIds.length === 0) return new Map<string, { acknowledgements: number; lastAcknowledgedAt?: string }>();
+
+    const result = await this.pool.query<{
+      document_id: string;
+      acknowledgements: string | number;
+      last_acknowledged_at: Date | string | null;
+    }>(
+      `SELECT
+         document_id,
+         COUNT(*) AS acknowledgements,
+         MAX(acknowledged_at) AS last_acknowledged_at
+       FROM document_acknowledgements
+       WHERE document_id = ANY($1::text[])
+       GROUP BY document_id`,
+      [documentIds],
+    );
+
+    return new Map(
+      result.rows.map((row) => [
+        String(row.document_id),
+        {
+          acknowledgements: Number(row.acknowledgements ?? 0),
+          lastAcknowledgedAt: row.last_acknowledged_at
+            ? new Date(row.last_acknowledged_at).toISOString()
+            : undefined,
+        },
+      ]),
+    );
+  }
+
   async createAccessLink(link: Omit<DocumentAccessLink, "id" | "createdAt" | "downloadCount">) {
     const result = await this.pool.query(
       `INSERT INTO document_access_links (id, document_id, token_hash, purpose, created_by, expires_at, download_count, created_at)

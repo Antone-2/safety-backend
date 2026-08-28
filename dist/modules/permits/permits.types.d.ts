@@ -79,6 +79,7 @@ export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
     attachments: any[];
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
@@ -87,7 +88,6 @@ export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
     fireWatchRequired: boolean;
     gasTestRequired: boolean;
     comments: any[];
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     applicantContact?: string | undefined;
@@ -106,11 +106,11 @@ export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     attachments?: any[] | undefined;
@@ -135,6 +135,7 @@ export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
     attachments: any[];
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
@@ -143,7 +144,6 @@ export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
     fireWatchRequired: boolean;
     gasTestRequired: boolean;
     comments: any[];
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     applicantContact?: string | undefined;
@@ -162,11 +162,11 @@ export declare const CreatePermitSchema: z.ZodEffects<z.ZodObject<{
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     attachments?: any[] | undefined;
@@ -303,6 +303,7 @@ export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
     attachments: any[];
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
@@ -311,7 +312,6 @@ export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
     fireWatchRequired: boolean;
     gasTestRequired: boolean;
     comments: any[];
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     applicantContact?: string | undefined;
@@ -330,11 +330,11 @@ export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     attachments?: any[] | undefined;
@@ -359,6 +359,7 @@ export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
     attachments: any[];
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
@@ -367,7 +368,6 @@ export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
     fireWatchRequired: boolean;
     gasTestRequired: boolean;
     comments: any[];
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     applicantContact?: string | undefined;
@@ -386,11 +386,11 @@ export declare const CreatePermitInputSchema: z.ZodEffects<z.ZodObject<{
 }, {
     type: "Hot Work" | "Cold Work" | "Confined Space" | "Electrical" | "Excavation" | "Height Work" | "General";
     description: string;
+    createdBy: string;
     location: string;
     applicant: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     supervisor?: string | undefined;
     issuer?: string | undefined;
     attachments?: any[] | undefined;

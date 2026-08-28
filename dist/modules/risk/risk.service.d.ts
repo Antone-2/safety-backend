@@ -4,6 +4,10 @@ export declare class RiskService {
     private repository;
     constructor(repository: RiskRepository);
     private calculateRiskLevel;
+    private severityScore;
+    private matchesRegisterFilters;
+    private mapReportToRiskRegister;
+    private getLiveRegisters;
     getMatrices(): Promise<RiskMatrix[]>;
     getDefaultMatrix(): Promise<RiskMatrix | null>;
     createMatrix(data: CreateRiskMatrixInput): Promise<RiskMatrix>;
@@ -11,6 +15,7 @@ export declare class RiskService {
     getRegisterById(id: string): Promise<RiskRegister | null>;
     createRegister(data: CreateRiskRegisterInput): Promise<RiskRegister>;
     updateRegister(id: string, data: UpdateRiskRegisterInput): Promise<RiskRegister | null>;
+    deleteRegister(id: string): Promise<boolean>;
     getBowTies(): Promise<BowTie[]>;
     createBowTie(data: CreateBowTieInput): Promise<BowTie>;
     getRiskDashboard(): Promise<RiskDashboard>;

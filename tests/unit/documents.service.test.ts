@@ -152,6 +152,19 @@ const mockRepository = {
     acknowledgedAt: "2026-02-01T00:00:00.000Z",
   }),
   findAcknowledgements: vi.fn().mockResolvedValue(mockAcknowledgements),
+  findAcknowledgementSummaryByDocumentIds: vi.fn().mockImplementation((documentIds: string[]) => {
+    const summary = new Map<string, { acknowledgements: number; lastAcknowledgedAt?: string }>();
+    for (const documentId of documentIds) {
+      const acknowledgements = mockAcknowledgements.filter((ack) => ack.documentId === documentId);
+      if (acknowledgements.length > 0) {
+        summary.set(documentId, {
+          acknowledgements: acknowledgements.length,
+          lastAcknowledgedAt: acknowledgements[0]?.acknowledgedAt,
+        });
+      }
+    }
+    return Promise.resolve(summary);
+  }),
 
   createAccessLink: vi.fn().mockResolvedValue({
     id: "LINK-1",
@@ -188,6 +201,7 @@ vi.mock("../../src/modules/documents/documents.repository.js", () => ({
     findApprovals = mockRepository.findApprovals;
     createAcknowledgement = mockRepository.createAcknowledgement;
     findAcknowledgements = mockRepository.findAcknowledgements;
+    findAcknowledgementSummaryByDocumentIds = mockRepository.findAcknowledgementSummaryByDocumentIds;
     createAccessLink = mockRepository.createAccessLink;
     getStats = mockRepository.getStats;
   },

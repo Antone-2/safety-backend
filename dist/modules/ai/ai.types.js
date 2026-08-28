@@ -1,5 +1,6 @@
 import { z } from "zod";
 export const AiFeatureSchema = z.enum([
+    "ai-query",
     "investigation-assistant",
     "root-cause-analysis",
     "hazard-detection",
@@ -58,6 +59,12 @@ export const ChatbotInputSchema = z.object({
     context: z.record(z.string(), z.any()).optional(),
     conversationId: z.string().optional(),
     maxResults: z.number().min(1).max(20).default(5),
+});
+export const ChatSessionTitleUpdateSchema = z.object({
+    title: z.string().trim().min(1).max(120),
+});
+export const ChatSessionPinnedUpdateSchema = z.object({
+    pinned: z.boolean(),
 });
 export const AiQueryInputSchema = z.object({
     query: z.string().min(1),

@@ -58,13 +58,14 @@ router.get("/", authenticateUser, async (req: AuthRequest, res: Response) => {
   const notifications = await listNotifications();
   const privileged =
     req.user?.role === "super-admin" || req.user?.role === "EHS-manager";
-  res.json(
-    privileged
-      ? notifications
-      : notifications.filter((item) =>
-          [req.user?.email, req.user?.name].includes(item.recipient),
-        ),
-  );
+  res.json({
+    data:
+      privileged
+        ? notifications
+        : notifications.filter((item) =>
+            [req.user?.email, req.user?.name].includes(item.recipient),
+          ),
+  });
 });
 
 router.post(
@@ -86,7 +87,7 @@ router.post(
           typeof item === "string" && allowed.includes(item),
       ),
     );
-    res.json({ ok: true });
+    res.json({ data: { ok: true } });
   },
 );
 
@@ -96,7 +97,7 @@ router.get(
   requireRole(["super-admin", "EHS-manager"]),
   async (_req: AuthRequest, res: Response) => {
     const templates = await notificationCenterService.listTemplates();
-    res.json(templates);
+    res.json({ data: templates });
   },
 );
 
@@ -109,7 +110,7 @@ router.post(
       req.body,
       req.user,
     );
-    res.status(201).json(template);
+    res.status(201).json({ data: template });
   },
 );
 
@@ -128,7 +129,7 @@ router.post(
       createdBy: req.user?.email || req.user?.name || "System",
       maxAttempts: Number(req.body.maxAttempts || 3),
     });
-    res.status(201).json(job);
+    res.status(201).json({ data: job });
   },
 );
 
@@ -140,7 +141,7 @@ router.post(
     const result = await notificationCenterService.processDue(
       Number(req.body.limit || 25),
     );
-    res.json({ processed: result });
+    res.json({ data: { processed: result } });
   },
 );
 
@@ -155,7 +156,7 @@ router.get(
       limit:
         typeof req.query.limit === "string" ? Number(req.query.limit) : 100,
     });
-    res.json(jobs);
+    res.json({ data: jobs });
   },
 );
 
@@ -167,7 +168,7 @@ router.get(
     const recipients = await notificationCenterService.listRecipients(
       String(req.params.id),
     );
-    res.json(recipients);
+    res.json({ data: recipients });
   },
 );
 
@@ -177,7 +178,7 @@ router.get(
   requireRole(["super-admin", "EHS-manager"]),
   async (_req: AuthRequest, res: Response) => {
     const recipients = await notificationCenterService.listRecipients();
-    res.json(recipients);
+    res.json({ data: recipients });
   },
 );
 
@@ -187,7 +188,7 @@ router.get(
   requireRole(["super-admin", "EHS-manager"]),
   async (_req: AuthRequest, res: Response) => {
     const dashboard = await notificationCenterService.dashboard();
-    res.json(dashboard);
+    res.json({ data: dashboard });
   },
 );
 
@@ -201,7 +202,7 @@ router.post(
       cadence: req.body.cadence,
       channels: req.body.channels,
     });
-    res.status(201).json(digest);
+    res.status(201).json({ data: digest });
   },
 );
 
@@ -210,7 +211,7 @@ router.get(
   authenticateUser,
   async (req: AuthRequest, res: Response) => {
     const digests = await notificationCenterService.listDigests({ userId: req.user?.id });
-    res.json(digests);
+    res.json({ data: digests });
   },
 );
 
@@ -230,7 +231,7 @@ router.patch(
       channels: req.body.channels,
       active: req.body.active,
     });
-    res.json(updated);
+    res.json({ data: updated });
   },
 );
 
@@ -246,7 +247,7 @@ router.delete(
       return res.status(403).json({ error: "Forbidden" });
     }
     await notificationCenterService.deleteDigest(id);
-    res.json({ ok: true });
+    res.json({ data: { ok: true } });
   },
 );
 

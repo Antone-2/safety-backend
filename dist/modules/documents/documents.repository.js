@@ -272,6 +272,26 @@ export class DocumentsRepository {
         const result = await this.pool.query("SELECT * FROM document_acknowledgements WHERE document_id = $1 ORDER BY acknowledged_at DESC", [documentId]);
         return result.rows.map((row) => asAcknowledgement(row));
     }
+    async findAcknowledgementSummaryByDocumentIds(documentIds) {
+        if (documentIds.length === 0)
+            return new Map();
+        const result = await this.pool.query(`SELECT
+         document_id,
+         COUNT(*) AS acknowledgements,
+         MAX(acknowledged_at) AS last_acknowledged_at
+       FROM document_acknowledgements
+       WHERE document_id = ANY($1::text[])
+       GROUP BY document_id`, [documentIds]);
+        return new Map(result.rows.map((row) => [
+            String(row.document_id),
+            {
+                acknowledgements: Number(row.acknowledgements ?? 0),
+                lastAcknowledgedAt: row.last_acknowledged_at
+                    ? new Date(row.last_acknowledged_at).toISOString()
+                    : undefined,
+            },
+        ]));
+    }
     async createAccessLink(link) {
         const result = await this.pool.query(`INSERT INTO document_access_links (id, document_id, token_hash, purpose, created_by, expires_at, download_count, created_at)
        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7)

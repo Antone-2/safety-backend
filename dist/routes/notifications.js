@@ -34,9 +34,11 @@ export async function markNotificationsRead(ids) {
 router.get("/", authenticateUser, async (req, res) => {
     const notifications = await listNotifications();
     const privileged = req.user?.role === "super-admin" || req.user?.role === "EHS-manager";
-    res.json(privileged
-        ? notifications
-        : notifications.filter((item) => [req.user?.email, req.user?.name].includes(item.recipient)));
+    res.json({
+        data: privileged
+            ? notifications
+            : notifications.filter((item) => [req.user?.email, req.user?.name].includes(item.recipient)),
+    });
 });
 router.post("/read", authenticateUser, async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
@@ -46,15 +48,15 @@ router.post("/read", authenticateUser, async (req, res) => {
         [req.user?.email, req.user?.name].includes(item.recipient))
         .map((item) => item.id);
     await markNotificationsRead(ids.filter((item) => typeof item === "string" && allowed.includes(item)));
-    res.json({ ok: true });
+    res.json({ data: { ok: true } });
 });
 router.get("/templates", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
     const templates = await notificationCenterService.listTemplates();
-    res.json(templates);
+    res.json({ data: templates });
 });
 router.post("/templates", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     const template = await notificationCenterService.upsertTemplate(req.body, req.user);
-    res.status(201).json(template);
+    res.status(201).json({ data: template });
 });
 router.post("/enqueue", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
     const job = await notificationCenterService.enqueue({
@@ -67,30 +69,30 @@ router.post("/enqueue", authenticateUser, requireRole(["super-admin", "EHS-manag
         createdBy: req.user?.email || req.user?.name || "System",
         maxAttempts: Number(req.body.maxAttempts || 3),
     });
-    res.status(201).json(job);
+    res.status(201).json({ data: job });
 });
 router.post("/process-due", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     const result = await notificationCenterService.processDue(Number(req.body.limit || 25));
-    res.json({ processed: result });
+    res.json({ data: { processed: result } });
 });
 router.get("/jobs", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     const jobs = await notificationCenterService.listJobs({
         status: typeof req.query.status === "string" ? req.query.status : undefined,
         limit: typeof req.query.limit === "string" ? Number(req.query.limit) : 100,
     });
-    res.json(jobs);
+    res.json({ data: jobs });
 });
 router.get("/jobs/:id/recipients", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     const recipients = await notificationCenterService.listRecipients(String(req.params.id));
-    res.json(recipients);
+    res.json({ data: recipients });
 });
 router.get("/delivery-status", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
     const recipients = await notificationCenterService.listRecipients();
-    res.json(recipients);
+    res.json({ data: recipients });
 });
 router.get("/dashboard", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (_req, res) => {
     const dashboard = await notificationCenterService.dashboard();
-    res.json(dashboard);
+    res.json({ data: dashboard });
 });
 router.post("/digests", authenticateUser, async (req, res) => {
     const digest = await notificationCenterService.createDigest({
@@ -99,11 +101,11 @@ router.post("/digests", authenticateUser, async (req, res) => {
         cadence: req.body.cadence,
         channels: req.body.channels,
     });
-    res.status(201).json(digest);
+    res.status(201).json({ data: digest });
 });
 router.get("/digests", authenticateUser, async (req, res) => {
     const digests = await notificationCenterService.listDigests({ userId: req.user?.id });
-    res.json(digests);
+    res.json({ data: digests });
 });
 router.patch("/digests/:id", authenticateUser, async (req, res) => {
     const id = String(req.params.id);
@@ -119,7 +121,7 @@ router.patch("/digests/:id", authenticateUser, async (req, res) => {
         channels: req.body.channels,
         active: req.body.active,
     });
-    res.json(updated);
+    res.json({ data: updated });
 });
 router.delete("/digests/:id", authenticateUser, async (req, res) => {
     const id = String(req.params.id);
@@ -131,6 +133,6 @@ router.delete("/digests/:id", authenticateUser, async (req, res) => {
         return res.status(403).json({ error: "Forbidden" });
     }
     await notificationCenterService.deleteDigest(id);
-    res.json({ ok: true });
+    res.json({ data: { ok: true } });
 });
 export default router;

@@ -177,7 +177,7 @@ router.get("/stats", async (_req, res) => {
     const avg = closedRows.length
         ? +(closedRows.reduce((s, r) => s + Number(r.resolutionDays), 0) / closedRows.length).toFixed(1)
         : 0;
-    res.json({ total, open, closed, today: todayCount, week: weekCount, avgResolution: avg });
+    res.json({ data: { total, open, closed, today: todayCount, week: weekCount, avgResolution: avg } });
 });
 router.get("/events", authenticateUser, requirePermission("reports:read"), async (req, res) => {
     const origin = req.headers.origin;
@@ -249,7 +249,7 @@ router.get("/summary", async (_req, res) => {
     const avg = closedRows.length
         ? +(closedRows.reduce((s, r) => s + Number(r.resolutionDays), 0) / closedRows.length).toFixed(1)
         : 0;
-    res.json({ total, open, closed, today: todayCount, week: weekCount, criticalOpen, overdue, avgResolution: avg });
+    res.json({ data: { total, open, closed, today: todayCount, week: weekCount, criticalOpen, overdue, avgResolution: avg } });
 });
 router.get("/:id", async (req, res) => {
     const db = await getDb();
@@ -257,7 +257,7 @@ router.get("/:id", async (req, res) => {
     const row = db.prepare("SELECT * FROM reports WHERE id = ?").getAsObject([id]);
     if (!row || !row.id)
         return res.status(404).json({ error: "Not found" });
-    res.json(rowMapper(db, row));
+    res.json({ data: rowMapper(db, row) });
 });
 router.post("/", async (req, res) => {
     const db = await getDb();
@@ -357,7 +357,7 @@ router.post("/", async (req, res) => {
         await saveDb(db);
     }
     broadcastReport(saved);
-    res.status(201).json(saved);
+    res.status(201).json({ data: saved });
 });
 router.patch("/:id/status", async (req, res) => {
     const db = await getDb();
@@ -403,7 +403,7 @@ router.patch("/:id/status", async (req, res) => {
         await saveDb(db);
     }
     broadcastReport(updated);
-    res.json(updated);
+    res.json({ data: updated });
 });
 function parseAssignedToCopy(value) {
     if (Array.isArray(value))
@@ -555,7 +555,7 @@ router.patch("/:id/assign", async (req, res) => {
         await notifyAssignmentTarget(updated, user, audiences.join(" and "));
     }
     broadcastReport(updated);
-    res.json(updated);
+    res.json({ data: updated });
 });
 // NOTE: For brevity, the rest of the routes are identical to the original file.
 // Keep them in sync if you use this module directly.

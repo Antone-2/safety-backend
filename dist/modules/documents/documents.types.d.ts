@@ -204,7 +204,7 @@ export declare const UpdateDocumentSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     code?: string | null | undefined;
     type?: "Permit" | "Other" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form" | undefined;
-    status?: "Under Review" | "Approved" | "Draft" | "Obsolete" | undefined;
+    status?: "Draft" | "Under Review" | "Approved" | "Obsolete" | undefined;
     owner?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
@@ -229,7 +229,7 @@ export declare const UpdateDocumentSchema: z.ZodObject<{
 }, {
     code?: string | null | undefined;
     type?: "Permit" | "Other" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form" | undefined;
-    status?: "Under Review" | "Approved" | "Draft" | "Obsolete" | undefined;
+    status?: "Draft" | "Under Review" | "Approved" | "Obsolete" | undefined;
     owner?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
@@ -303,13 +303,13 @@ export declare const ApproveDocumentSchema: z.ZodObject<{
     effectiveDate: z.ZodOptional<z.ZodString>;
     reviewCycleDays: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    status: "Pending" | "Approved" | "Rejected";
+    status: "Rejected" | "Approved" | "Pending";
     version?: string | undefined;
     comments?: string | undefined;
     effectiveDate?: string | undefined;
     reviewCycleDays?: number | undefined;
 }, {
-    status?: "Pending" | "Approved" | "Rejected" | undefined;
+    status?: "Rejected" | "Approved" | "Pending" | undefined;
     version?: string | undefined;
     comments?: string | undefined;
     effectiveDate?: string | undefined;

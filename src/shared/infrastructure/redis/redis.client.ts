@@ -8,14 +8,6 @@ let bullMqSupportChecked = false;
 let bullMqSupported = false;
 let bullMqRedisVersion: string | null = null;
 
-function isLocalhostRedisUrl(url: string): boolean {
-  const normalized = url.replace(/^redis(s?):\/\//i, "").split("/")[0]?.split("?")[0]?.split("@").pop()?.trim() || "";
-  if (!normalized) return true;
-  const host = normalized.replace(/^\[|\]$/g, "").split(":")[0]?.trim();
-  if (!host) return true;
-  return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(host.toLowerCase());
-}
-
 export class RedisRequiredError extends Error {
   constructor(message: string) {
     super(message);
@@ -46,10 +38,6 @@ export const redisClient = env.REDIS_URL
     })
   : null;
 
-if (redisClient && env.REDIS_URL && isLocalhostRedisUrl(env.REDIS_URL)) {
-  console.warn(`REDIS_URL points to ${env.REDIS_URL}; Redis on localhost is not available in this environment. Redis-backed features will remain disabled.`);
-}
-
 if (redisClient) {
   let redisErrorLogged = false;
 
@@ -72,10 +60,6 @@ if (redisClient) {
 export async function connectRedis() {
   if (!env.REDIS_URL || !redisClient) {
     console.warn("Redis not configured; rate-limiting and background jobs are disabled.");
-    return false;
-  }
-  if (isLocalhostRedisUrl(env.REDIS_URL)) {
-    console.warn("Skipping Redis connection because REDIS_URL points to localhost.");
     return false;
   }
   try {
@@ -150,12 +134,6 @@ export async function ensureRedisProductionReady() {
 
   if (!env.REDIS_URL || !redisClient) {
     throw new RedisRequiredError("REDIS_URL is required when REQUIRE_REDIS=true");
-  }
-
-  if (isLocalhostRedisUrl(env.REDIS_URL)) {
-    throw new RedisRequiredError(
-      "REDIS_URL must not point to localhost when REQUIRE_REDIS=true in this environment.",
-    );
   }
 
   const connected = await connectRedis();

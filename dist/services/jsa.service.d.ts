@@ -60,8 +60,8 @@ export declare const JsaSchema: z.ZodObject<{
     status: "active" | "draft" | "completed" | "in-review" | "archived";
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     steps: {
         id: string;
         description: string;
@@ -77,8 +77,8 @@ export declare const JsaSchema: z.ZodObject<{
 }, {
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
     id?: string | undefined;
     description?: string | undefined;

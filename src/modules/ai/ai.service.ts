@@ -12,6 +12,11 @@ import type {
 import { AiRepository } from "./ai.repository.js";
 import { createHash } from "crypto";
 import { ReportsService } from "../reports/reports.service.js";
+import { ComplianceService } from "../compliance/compliance.service.js";
+import { ComplianceRepository } from "../compliance/compliance.repository.js";
+import { TrainingService } from "../training/training.service.js";
+import { TrainingRepository } from "../training/training.repository.js";
+import { pgPool } from "../../shared/infrastructure/database/postgres.client.js";
 import type { AiQueryInput } from "./ai.types.js";
 import type { ReportFilters } from "../reports/reports.service.js";
 
@@ -67,6 +72,25 @@ type PlannedAiQuery = {
   reportFilters: ReportFilters;
   responseFilters: NonNullable<AiQueryInput["filters"]>;
   inferredConstraints: string[];
+};
+
+type InvestigationTimelineEntry = {
+  timestamp: string;
+  event: string;
+  source: string;
+};
+
+type InvestigationEntities = {
+  who?: string[];
+  what?: string;
+  where?: string;
+  when?: string;
+};
+
+type ChatbotSource = {
+  title: string;
+  excerpt: string;
+  score?: number;
 };
 
 function buildResponse(
@@ -212,6 +236,30 @@ function escapeHtml(value: unknown) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function buildChatbotSuggestedActions(
+  message: string,
+  sources: ChatbotSource[],
+): string[] {
+  const text = message.toLowerCase();
+  const actions: string[] = [];
+  if (sources[0]?.title) {
+    actions.push(`Review ${sources[0].title} and confirm the applicable local control steps.`);
+  }
+  if (/spill|chemical|exposure/.test(text)) {
+    actions.push("Verify spill response controls, PPE readiness, and medical escalation steps before work continues.");
+  }
+  if (/investigation|incident|near miss/.test(text)) {
+    actions.push("Capture facts, witnesses, and immediate controls while the event details are still fresh.");
+  }
+  if (/training|competency|induction/.test(text)) {
+    actions.push("Confirm the affected team has current training records and schedule any missing refreshers.");
+  }
+  if (actions.length === 0) {
+    actions.push("Validate the guidance against the cited procedure or policy before issuing instructions to the team.");
+  }
+  return uniqueStrings(actions).slice(0, 3);
 }
 
 function confidenceFromData(total: number, trendMonths: number) {
@@ -420,24 +468,430 @@ function compactReportEvidence(report: ReportRow) {
   };
 }
 
+function sentenceCaseList(items: string[]) {
+  return items.filter(Boolean).map((item) => item.trim());
+}
+
+function uniqueStrings(values: Array<string | undefined | null>) {
+  return [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))];
+}
+
+function tokenize(text: string) {
+  return String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+}
+
+function firstMeaningfulSentence(text: string) {
+  const normalized = String(text ?? "").trim();
+  if (!normalized) return "";
+  const [sentence] = normalized.split(/(?<=[.!?])\s+/);
+  return sentence?.trim() || normalized;
+}
+
+function inferCategoryFromText(text: string) {
+  const normalized = text.toLowerCase();
+  if (/chemical|spill|exposure/.test(normalized)) return "Chemical Safety";
+  if (/guard|machine|equipment/.test(normalized)) return "Machine Guarding";
+  if (/fire|exit|evac/.test(normalized)) return "Emergency Preparedness";
+  if (/fall|height|ladder|scaffold/.test(normalized)) return "Work At Height";
+  if (/ppe|helmet|glove|goggle/.test(normalized)) return "PPE Compliance";
+  return "General Safety";
+}
+
+function inferSeverityFromText(text: string) {
+  const normalized = text.toLowerCase();
+  if (/fatal|hospital|fracture|amputation|critical|medical treatment/.test(normalized))
+    return "Critical";
+  if (/injury|burn|chemical|spill|high/.test(normalized)) return "High";
+  if (/near miss|medium|unsafe/.test(normalized)) return "Medium";
+  return "Low";
+}
+
+function inferWitnessNames(statements: string[]) {
+  return uniqueStrings(
+    statements.flatMap((statement) => {
+      const prefix = statement.split(/:| - /)[0]?.trim();
+      if (prefix && /\s/.test(prefix) && prefix.length <= 60) return [prefix];
+      return [];
+    }),
+  );
+}
+
+function relatedReportScore(
+  report: ReportRow,
+  input: {
+    incidentId?: string;
+    description: string;
+    location?: string;
+    department?: string;
+  },
+) {
+  let score = 0;
+  if (input.incidentId && report.id === input.incidentId) score += 50;
+  if (input.location && report.location === input.location) score += 8;
+  if (input.department && report.department === input.department) score += 6;
+
+  const inputTokens = new Set(tokenize(input.description));
+  const reportTokens = tokenize(
+    `${report.description} ${report.category} ${report.type} ${report.location} ${report.department ?? ""}`,
+  );
+  for (const token of reportTokens) {
+    if (inputTokens.has(token)) score += 2;
+  }
+
+  return score;
+}
+
+function buildInvestigationQuestions(input: {
+  description: string;
+  severity: string;
+  category: string;
+  evidence: string[];
+  witnessStatements: string[];
+  relatedIncidents: string[];
+}) {
+  const normalized = input.description.toLowerCase();
+  const questions = [
+    `What task was being performed immediately before the ${input.category.toLowerCase()} event occurred?`,
+    "Which control failed, was missing, or was bypassed at the point of work?",
+    "What immediate conditions made the event possible, and why were they not corrected earlier?",
+    "What supervision, permit, or pre-task verification should have detected the risk before exposure?",
+  ];
+
+  if (input.severity === "Critical" || /injury|medical treatment|hospital/.test(normalized)) {
+    questions.push(
+      "What injury mechanism or exposure pathway caused the actual or potential harm, and how can it be eliminated?",
+    );
+  }
+  if (/chemical|spill|exposure/.test(normalized)) {
+    questions.push(
+      "Were the correct SDS, containment, and decontamination controls available and understood before the task started?",
+    );
+  }
+  if (input.relatedIncidents.length > 0) {
+    questions.push(
+      `Do the related reports (${input.relatedIncidents.join(", ")}) show a recurring risk that requires a systemic fix?`,
+    );
+  }
+  if (input.witnessStatements.length > 0) {
+    questions.push(
+      "Where do witness accounts align or conflict, and what evidence is needed to resolve those differences?",
+    );
+  }
+  if (input.evidence.length > 0) {
+    questions.push(
+      "Which physical or documentary evidence best proves the timeline, equipment condition, and control status?",
+    );
+  }
+
+  return uniqueStrings(questions).slice(0, 8);
+}
+
+function buildInvestigationActions(input: {
+  severity: string;
+  category: string;
+  relatedIncidents: string[];
+}) {
+  const actions = [
+    "Secure the scene, preserve evidence, and confirm immediate controls remain in place.",
+    "Validate the job steps, permit conditions, and supervisor checks against what actually happened.",
+    "Assign corrective actions with owners and due dates for each failed or missing control.",
+  ];
+  if (input.severity === "Critical") {
+    actions.unshift(
+      "Escalate the case for management review and confirm whether regulatory notification thresholds were met.",
+    );
+  }
+  if (input.relatedIncidents.length > 0) {
+    actions.push(
+      "Review the recurring pattern across related reports and raise a preventive CAPA if the same risk has repeated.",
+    );
+  }
+  if (input.category === "Chemical Safety") {
+    actions.push(
+      "Reconfirm SDS access, spill response readiness, and chemical handling training before work restarts.",
+    );
+  }
+  return actions;
+}
+
+function buildInvestigationContent(input: {
+  severity: string;
+  category: string;
+  entities: InvestigationEntities;
+  relatedIncidents: string[];
+  suggestedQuestions: string[];
+  recommendedActions: string[];
+}) {
+  const summary = [
+    `Likely classification: ${input.severity} severity, ${input.category}.`,
+    input.entities.where ? `Primary location: ${input.entities.where}.` : undefined,
+    input.entities.what ? `Event summary: ${input.entities.what}` : undefined,
+    input.relatedIncidents.length
+      ? `Related report references: ${input.relatedIncidents.join(", ")}.`
+      : "No closely related backend report references were found from the supplied context.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const questions = input.suggestedQuestions.map((question, index) => `${index + 1}. ${question}`).join("\n");
+  const actions = input.recommendedActions.map((action, index) => `${index + 1}. ${action}`).join("\n");
+
+  return `${summary}\n\nInvestigation questions:\n${questions}\n\nRecommended actions:\n${actions}`;
+}
+
+function dateValue(value?: string) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function complianceRiskLabel(input: {
+  total: number;
+  nonCompliant: number;
+  pending: number;
+  overdue: number;
+  openAudits: number;
+}) {
+  if (input.nonCompliant >= 3 || input.overdue >= 3 || input.openAudits >= 3)
+    return "High";
+  if (input.nonCompliant > 0 || input.pending > 0 || input.openAudits > 0)
+    return "Medium";
+  if (input.total > 0) return "Low";
+  return "Unknown";
+}
+
+function summarizeComplianceGaps(input: {
+  obligations: Array<Record<string, any>>;
+  audits: Array<Record<string, any>>;
+  includeGaps: boolean;
+}) {
+  if (!input.includeGaps) return [];
+  const gaps: string[] = [];
+  for (const obligation of input.obligations) {
+    if (obligation.status === "Non-Compliant") {
+      gaps.push(
+        `${obligation.title} is non-compliant for ${obligation.site}/${obligation.department}.`,
+      );
+    } else if (obligation.status === "Pending" && !obligation.evidence) {
+      gaps.push(
+        `${obligation.title} is still pending and has no evidence attached yet.`,
+      );
+    }
+  }
+  for (const audit of input.audits) {
+    if (audit.status === "In Progress") {
+      gaps.push(
+        `${audit.title} remains in progress for ${audit.site}/${audit.department}, so closure evidence should be confirmed.`,
+      );
+    } else if (audit.status === "Planned") {
+      gaps.push(
+        `${audit.title} is still planned and may leave the assurance schedule exposed until execution starts.`,
+      );
+    }
+  }
+  return uniqueStrings(gaps).slice(0, 8);
+}
+
+function buildComplianceActions(input: {
+  obligations: Array<Record<string, any>>;
+  audits: Array<Record<string, any>>;
+  gapSummary: string[];
+}) {
+  const actions = [
+    "Confirm each applicable obligation has a named owner, current evidence, and a valid next review date.",
+    "Review the highest-risk obligations first and update closure dates for any non-compliant or overdue items.",
+  ];
+  if (input.audits.some((audit) => audit.status === "In Progress")) {
+    actions.push(
+      "Close out open audit workpapers and verify that findings have owners, due dates, and evidence of completion.",
+    );
+  }
+  if (input.gapSummary.length > 0) {
+    actions.push(
+      "Convert the identified gaps into tracked CAPA or compliance follow-up actions with management visibility.",
+    );
+  }
+  if (input.obligations.some((obligation) => obligation.status === "Pending")) {
+    actions.push(
+      "Escalate long-pending obligations so evidence collection and review do not slip past their control cycle.",
+    );
+  }
+  return uniqueStrings(actions).slice(0, 6);
+}
+
+function buildComplianceNarrative(input: {
+  regulation?: string;
+  siteId?: string;
+  department?: string;
+  auditId?: string;
+  totals: {
+    obligations: number;
+    compliant: number;
+    nonCompliant: number;
+    pending: number;
+    overdue: number;
+    audits: number;
+    openAudits: number;
+  };
+  riskLevel: string;
+  topGaps: string[];
+  recommendedActions: string[];
+}) {
+  const scope = [
+    input.regulation ? `Regulation focus: ${input.regulation}.` : undefined,
+    input.siteId ? `Site: ${input.siteId}.` : undefined,
+    input.department ? `Department: ${input.department}.` : undefined,
+    input.auditId ? `Audit reference: ${input.auditId}.` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const summary = `Compliance risk is ${input.riskLevel}. Reviewed ${input.totals.obligations} obligation(s) and ${input.totals.audits} audit record(s): ${input.totals.compliant} compliant, ${input.totals.nonCompliant} non-compliant, ${input.totals.pending} pending, ${input.totals.overdue} overdue, ${input.totals.openAudits} audit(s) still open.`;
+  const gaps = input.topGaps.length
+    ? `Top gaps:\n${input.topGaps.map((gap, index) => `${index + 1}. ${gap}`).join("\n")}`
+    : "No major gaps were surfaced from the filtered live compliance records.";
+  const actions = `Recommended actions:\n${input.recommendedActions
+    .map((action, index) => `${index + 1}. ${action}`)
+    .join("\n")}`;
+  return [scope, summary, gaps, actions].filter(Boolean).join("\n\n");
+}
+
+function trainingPriorityLabel(input: {
+  expired: number;
+  overdueOrScheduled: number;
+  mandatoryMatches: number;
+  incidentLinked: boolean;
+}) {
+  if (input.expired > 0 || (input.incidentLinked && input.mandatoryMatches > 0))
+    return "High";
+  if (input.overdueOrScheduled > 0 || input.mandatoryMatches > 0) return "Medium";
+  return "Low";
+}
+
+function buildTrainingGaps(input: {
+  records: Array<Record<string, any>>;
+  matrix: Array<Record<string, any>>;
+  coursesById: Map<string, Record<string, any>>;
+}) {
+  const gaps: string[] = [];
+  for (const record of input.records) {
+    if (record.status === "Expired") {
+      gaps.push(
+        `${record.employeeName} has expired training for ${input.coursesById.get(record.courseId)?.title ?? record.courseId}.`,
+      );
+    } else if (record.status === "Scheduled" || record.status === "In Progress") {
+      gaps.push(
+        `${record.employeeName} still has ${record.status.toLowerCase()} training that has not been completed yet.`,
+      );
+    }
+  }
+  for (const entry of input.matrix) {
+    if (entry.mandatory) {
+      const matched = input.records.some((record) => record.courseId === entry.courseId);
+      if (!matched) {
+        gaps.push(
+          `Mandatory matrix requirement for ${entry.role}/${entry.department} is not evidenced by a matching training record for ${input.coursesById.get(entry.courseId)?.title ?? entry.courseId}.`,
+        );
+      }
+    }
+  }
+  return uniqueStrings(gaps).slice(0, 8);
+}
+
+function buildTrainingActions(input: {
+  records: Array<Record<string, any>>;
+  matrix: Array<Record<string, any>>;
+  gaps: string[];
+  incidentLinked: boolean;
+}) {
+  const actions = [
+    "Confirm the worker or role is mapped to the correct mandatory matrix requirements and supervisors understand the expectation.",
+    "Verify completion evidence, trainer sign-off, and expiry dates for all critical courses in scope.",
+  ];
+  if (input.records.some((record) => record.status === "Expired")) {
+    actions.push(
+      "Prioritize immediate refresher or recertification training for expired records before the task continues.",
+    );
+  }
+  if (input.incidentLinked) {
+    actions.push(
+      "Review whether the incident or near miss indicates a competency gap, then add targeted retraining and supervisor verification.",
+    );
+  }
+  if (input.gaps.length > 0) {
+    actions.push(
+      "Convert uncovered training gaps into tracked actions with owners, target dates, and closure evidence.",
+    );
+  }
+  if (input.matrix.some((entry) => entry.mandatory)) {
+    actions.push(
+      "Check that mandatory course frequencies in the training matrix still match operational and regulatory risk.",
+    );
+  }
+  return uniqueStrings(actions).slice(0, 6);
+}
+
+function buildTrainingNarrative(input: {
+  employeeId?: string;
+  role?: string;
+  department?: string;
+  siteId?: string;
+  incidentId?: string;
+  limit: number;
+  stats: {
+    courses: number;
+    records: number;
+    mandatoryMatches: number;
+    expired: number;
+    open: number;
+    priority: string;
+  };
+  gaps: string[];
+  actions: string[];
+}) {
+  const scope = [
+    input.employeeId ? `Employee: ${input.employeeId}.` : undefined,
+    input.role ? `Role: ${input.role}.` : undefined,
+    input.department ? `Department: ${input.department}.` : undefined,
+    input.siteId ? `Site: ${input.siteId}.` : undefined,
+    input.incidentId ? `Incident reference: ${input.incidentId}.` : undefined,
+    `Recommendation scope limited to ${input.limit} record(s).`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const summary = `Training priority is ${input.stats.priority}. Reviewed ${input.stats.records} training record(s), ${input.stats.courses} course definition(s), and ${input.stats.mandatoryMatches} mandatory matrix match(es). ${input.stats.expired} expired and ${input.stats.open} still scheduled or in-progress record(s) were found.`;
+  const gaps = input.gaps.length
+    ? `Training gaps:\n${input.gaps.map((gap, index) => `${index + 1}. ${gap}`).join("\n")}`
+    : "No major training gaps were surfaced from the filtered live records.";
+  const actions = `Recommended actions:\n${input.actions
+    .map((action, index) => `${index + 1}. ${action}`)
+    .join("\n")}`;
+  return [scope, summary, gaps, actions].filter(Boolean).join("\n\n");
+}
+
 export class AiService {
   private llm = new LlmClient();
   private rag = new RagEngine();
   private repository = new AiRepository();
   private reports = new ReportsService();
+  private compliance = new ComplianceService(new ComplianceRepository());
+  private training = new TrainingService(new TrainingRepository(pgPool));
   private model = process.env.AI_MODEL || "local-fallback";
   private operationalQueryEngine = new OperationalQueryEngine({
     llm: this.llm,
     model: this.model,
     savePrediction: (feature, input, output, confidence, userId) =>
-      this.savePredictionBestEffort(feature, input, output, confidence, userId),
+      this.savePredictionBestEffort(feature, input, output, confidence, userId).then(() => undefined),
     savePromptAudit: (input) => this.savePromptAuditBestEffort(input),
   });
   private reportQueryEngine = new ReportQueryEngine({
     llm: this.llm,
     model: this.model,
     savePrediction: (feature, input, output, confidence, userId) =>
-      this.savePredictionBestEffort(feature, input, output, confidence, userId),
+      this.savePredictionBestEffort(feature, input, output, confidence, userId).then(() => undefined),
     savePromptAudit: (input) => this.savePromptAuditBestEffort(input),
   });
 
@@ -521,12 +975,12 @@ export class AiService {
     output: unknown,
     confidence: number,
     userId?: string,
-  ) {
+  ): Promise<string | undefined> {
     try {
       const inputHash = createHash("sha256")
         .update(JSON.stringify(input))
         .digest("hex");
-      await this.repository.savePrediction(
+      return await this.repository.savePrediction(
         feature,
         inputHash,
         output,
@@ -539,6 +993,7 @@ export class AiService {
         "AI prediction audit skipped:",
         error instanceof Error ? error.message : String(error),
       );
+      return undefined;
     }
   }
 
@@ -677,13 +1132,132 @@ export class AiService {
   }
 
   async investigationAssistant(data: any, userId?: string): Promise<Json> {
-    const user = `Incident: ${JSON.stringify(data)}`;
-    return this.generate(
+    const input = {
+      incidentId: String(data?.incidentId ?? "").trim() || undefined,
+      type: String(data?.type ?? "").trim() || undefined,
+      description: String(data?.description ?? "").trim(),
+      evidence: sentenceCaseList(
+        Array.isArray(data?.evidence) ? data.evidence.map(String) : [],
+      ),
+      witnessStatements: sentenceCaseList(
+        Array.isArray(data?.witnessStatements)
+          ? data.witnessStatements.map(String)
+          : [],
+      ),
+      location: String(data?.location ?? "").trim() || undefined,
+      department: String(data?.department ?? "").trim() || undefined,
+    };
+
+    const related = await this.reports
+      .list(
+        {
+          all: true,
+          location: input.location,
+          department: input.department,
+        } as ReportFilters,
+        1,
+        100,
+      )
+      .then((result) => result.data as ReportRow[])
+      .catch(() => []);
+
+    const rankedRelated = related
+      .map((report) => ({
+        report,
+        score: relatedReportScore(report, input),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 5);
+
+    const primaryMatch = rankedRelated[0]?.report;
+    const category =
+      primaryMatch?.category ||
+      input.type ||
+      inferCategoryFromText(input.description);
+    const severity =
+      primaryMatch?.severity || inferSeverityFromText(input.description);
+    const witnessNames = inferWitnessNames(input.witnessStatements);
+    const relatedIncidentIds = uniqueStrings(
+      rankedRelated.map((entry) => entry.report.id),
+    ).slice(0, 5);
+
+    const timeline: InvestigationTimelineEntry[] = [
+      ...(primaryMatch
+        ? [
+            {
+              timestamp: primaryMatch.date,
+              event: `Matched backend report ${primaryMatch.id}: ${firstMeaningfulSentence(primaryMatch.description)}`,
+              source: primaryMatch.id,
+            },
+          ]
+        : []),
+      ...input.evidence.map((item, index) => ({
+        timestamp: new Date().toISOString(),
+        event: `Evidence noted ${index + 1}: ${item}`,
+        source: "user-evidence",
+      })),
+      ...input.witnessStatements.map((item, index) => ({
+        timestamp: new Date().toISOString(),
+        event: `Witness statement ${index + 1}: ${firstMeaningfulSentence(item)}`,
+        source: "witness-statement",
+      })),
+    ].slice(0, 10);
+
+    const entities: InvestigationEntities = {
+      who: uniqueStrings([
+        ...witnessNames,
+        primaryMatch?.reporter,
+        input.department ? `${input.department} team` : undefined,
+      ]),
+      what: firstMeaningfulSentence(input.description),
+      where: input.location || primaryMatch?.location,
+      when: primaryMatch?.date,
+    };
+
+    const suggestedQuestions = buildInvestigationQuestions({
+      description: input.description,
+      severity,
+      category,
+      evidence: input.evidence,
+      witnessStatements: input.witnessStatements,
+      relatedIncidents: relatedIncidentIds,
+    });
+    const recommendedActions = buildInvestigationActions({
+      severity,
+      category,
+      relatedIncidents: relatedIncidentIds,
+    });
+    const content = buildInvestigationContent({
+      severity,
+      category,
+      entities,
+      relatedIncidents: relatedIncidentIds,
+      suggestedQuestions,
+      recommendedActions,
+    });
+
+    const output = {
+      ...buildResponse("investigation-assistant", content, this.model, 0.82),
+      data: {
+        category,
+        severity,
+        timeline,
+        entities,
+        suggestedQuestions,
+        relatedIncidents: relatedIncidentIds,
+        recommendedActions,
+        sources: relatedIncidentIds,
+      },
+    };
+    const predictionId = await this.savePredictionBestEffort(
       "investigation-assistant",
-      "You are an expert EHS incident investigation assistant. Provide structured root cause questions and corrective action guidance.",
-      user,
+      input,
+      output,
+      0.82,
       userId,
     );
+    return predictionId ? { ...output, predictionId } : output;
   }
 
   async rootCauseAnalysis(data: any, userId?: string): Promise<Json> {
@@ -716,9 +1290,11 @@ export class AiService {
   async chatbot(data: any, userId?: string): Promise<Json> {
     const history = Array.isArray(data?.history) ? data.history : [];
     const message = data.message || data.query || "";
-    const retrieved = await this.rag
+    const conversationId =
+      String(data?.conversationId ?? "").trim() || `ai-chat-${Date.now()}`;
+    const retrieved = (await this.rag
       .search(message, { maxResults: 3 })
-      .catch(() => []);
+      .catch(() => [])) as ChatbotSource[];
     const context = retrieved
       .map((r: any) => `- ${r.title}: ${r.excerpt}`)
       .join("\n");
@@ -727,25 +1303,307 @@ export class AiService {
       `Knowledge:\n${context}\n\nConversation: ${JSON.stringify(history)}\nUser: ${message}`,
       { temperature: 0.3 },
     );
-    return buildResponse("chatbot", reply, this.model);
+    const suggestedActions = buildChatbotSuggestedActions(message, retrieved);
+    const output = {
+      ...buildResponse("chatbot", reply, this.model, retrieved.length > 0 ? 0.8 : 0.68),
+      conversationId,
+      sources: retrieved.map((item) => ({
+        title: item.title,
+        excerpt: item.excerpt,
+      })),
+      suggestedActions,
+    };
+    const predictionId = await this.savePredictionBestEffort(
+      "chatbot",
+      data,
+      output,
+      retrieved.length > 0 ? 0.8 : 0.68,
+      userId,
+    );
+    const finalOutput = predictionId ? { ...output, predictionId } : output;
+    if (userId) {
+      await this.repository.saveChatSession({
+        conversationId,
+        userId,
+        history: [...history, { role: "assistant", content: reply }],
+        latestResponse: finalOutput,
+      });
+    }
+    return finalOutput;
   }
 
   async complianceAssistant(data: any, userId?: string): Promise<Json> {
-    return this.generate(
+    const input = {
+      siteId: String(data?.siteId ?? "").trim() || undefined,
+      regulation: String(data?.regulation ?? "").trim() || undefined,
+      auditId: String(data?.auditId ?? "").trim() || undefined,
+      department: String(data?.department ?? "").trim() || undefined,
+      includeGaps: data?.includeGaps !== false,
+    };
+
+    const [obligations, audits] = await Promise.all([
+      this.compliance.getObligations({
+        ...(input.department ? { department: input.department } : {}),
+        ...(input.siteId ? { site: input.siteId } : {}),
+      }),
+      this.compliance.getAudits({
+        ...(input.department ? { department: input.department } : {}),
+        ...(input.siteId ? { site: input.siteId } : {}),
+      }),
+    ]);
+
+    const regulationNeedle = input.regulation?.toLowerCase();
+    const scopedObligations = obligations.filter((obligation: any) => {
+      if (
+        regulationNeedle &&
+        !`${obligation.legislation} ${obligation.title} ${obligation.requirement}`
+          .toLowerCase()
+          .includes(regulationNeedle)
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const scopedAudits = audits.filter((audit: any) => {
+      if (input.auditId && audit.id !== input.auditId) return false;
+      if (
+        regulationNeedle &&
+        !`${audit.title} ${audit.criteria ?? ""} ${audit.scope ?? ""}`
+          .toLowerCase()
+          .includes(regulationNeedle)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const now = new Date("2026-08-02T00:00:00.000Z");
+    const overdueObligations = scopedObligations.filter((obligation: any) => {
+      const due = dateValue(obligation.dueDate);
+      return (
+        obligation.status !== "Compliant" &&
+        due !== null &&
+        due.getTime() < now.getTime()
+      );
+    });
+    const compliantCount = scopedObligations.filter(
+      (obligation: any) => obligation.status === "Compliant",
+    ).length;
+    const nonCompliantCount = scopedObligations.filter(
+      (obligation: any) => obligation.status === "Non-Compliant",
+    ).length;
+    const pendingCount = scopedObligations.filter(
+      (obligation: any) => obligation.status === "Pending",
+    ).length;
+    const openAuditCount = scopedAudits.filter((audit: any) =>
+      ["Planned", "In Progress"].includes(audit.status),
+    ).length;
+    const topGaps = summarizeComplianceGaps({
+      obligations: scopedObligations,
+      audits: scopedAudits,
+      includeGaps: input.includeGaps,
+    });
+    const riskLevel = complianceRiskLabel({
+      total: scopedObligations.length,
+      nonCompliant: nonCompliantCount,
+      pending: pendingCount,
+      overdue: overdueObligations.length,
+      openAudits: openAuditCount,
+    });
+    const recommendedActions = buildComplianceActions({
+      obligations: scopedObligations,
+      audits: scopedAudits,
+      gapSummary: topGaps,
+    });
+    const content = buildComplianceNarrative({
+      regulation: input.regulation,
+      siteId: input.siteId,
+      department: input.department,
+      auditId: input.auditId,
+      totals: {
+        obligations: scopedObligations.length,
+        compliant: compliantCount,
+        nonCompliant: nonCompliantCount,
+        pending: pendingCount,
+        overdue: overdueObligations.length,
+        audits: scopedAudits.length,
+        openAudits: openAuditCount,
+      },
+      riskLevel,
+      topGaps,
+      recommendedActions,
+    });
+
+    const output = {
+      ...buildResponse("compliance-assistant", content, this.model, 0.8),
+      data: {
+        scope: input,
+        summary: {
+          obligations: scopedObligations.length,
+          compliant: compliantCount,
+          nonCompliant: nonCompliantCount,
+          pending: pendingCount,
+          overdue: overdueObligations.length,
+          audits: scopedAudits.length,
+          openAudits: openAuditCount,
+          riskLevel,
+        },
+        gaps: topGaps,
+        recommendedActions,
+        matchedObligations: scopedObligations.slice(0, 10).map((obligation: any) => ({
+          id: obligation.id,
+          title: obligation.title,
+          legislation: obligation.legislation,
+          status: obligation.status,
+          site: obligation.site,
+          department: obligation.department,
+          dueDate: obligation.dueDate,
+        })),
+        matchedAudits: scopedAudits.slice(0, 10).map((audit: any) => ({
+          id: audit.id,
+          title: audit.title,
+          status: audit.status,
+          type: audit.type,
+          site: audit.site,
+          department: audit.department,
+        })),
+      },
+    };
+    const predictionId = await this.savePredictionBestEffort(
       "compliance-assistant",
-      "Map the provided process to ISO 45001 / regulatory compliance requirements and list gaps.",
-      `Input: ${JSON.stringify(data)}`,
+      input,
+      output,
+      0.8,
       userId,
     );
+    return predictionId ? { ...output, predictionId } : output;
   }
 
   async trainingRecommendation(data: any, userId?: string): Promise<Json> {
-    return this.generate(
+    const input = {
+      employeeId: String(data?.employeeId ?? "").trim() || undefined,
+      department: String(data?.department ?? "").trim() || undefined,
+      role: String(data?.role ?? "").trim() || undefined,
+      siteId: String(data?.siteId ?? "").trim() || undefined,
+      incidentId: String(data?.incidentId ?? "").trim() || undefined,
+      limit: Math.min(Math.max(Number(data?.limit ?? 10) || 10, 1), 50),
+    };
+
+    const [courses, records, matrix] = await Promise.all([
+      this.training.getCourses().catch(() => []),
+      this.training
+        .getRecords({
+          ...(input.employeeId ? { employeeId: input.employeeId } : {}),
+          ...(input.department ? { department: input.department } : {}),
+          ...(input.siteId ? { site: input.siteId } : {}),
+        })
+        .catch(() => []),
+      this.training
+        .getMatrix({
+          ...(input.department ? { department: input.department } : {}),
+          ...(input.role ? { role: input.role } : {}),
+        })
+        .catch(() => []),
+    ]);
+
+    const scopedRecords = records.slice(0, input.limit);
+    const scopedMatrix = matrix.filter((entry: any) => {
+      if (input.role && entry.role !== input.role) return false;
+      if (input.department && entry.department !== input.department) return false;
+      return true;
+    });
+    const courseMap = new Map(
+      courses.map((course: any) => [course.id, course as Record<string, any>]),
+    );
+    const mandatoryMatches = scopedMatrix.filter((entry: any) =>
+      scopedRecords.some((record: any) => record.courseId === entry.courseId),
+    );
+    const expiredRecords = scopedRecords.filter(
+      (record: any) => record.status === "Expired",
+    );
+    const openRecords = scopedRecords.filter((record: any) =>
+      ["Scheduled", "In Progress"].includes(record.status),
+    );
+    const gaps = buildTrainingGaps({
+      records: scopedRecords as Array<Record<string, any>>,
+      matrix: scopedMatrix as Array<Record<string, any>>,
+      coursesById: courseMap,
+    });
+    const priority = trainingPriorityLabel({
+      expired: expiredRecords.length,
+      overdueOrScheduled: openRecords.length,
+      mandatoryMatches: mandatoryMatches.length,
+      incidentLinked: Boolean(input.incidentId),
+    });
+    const recommendedActions = buildTrainingActions({
+      records: scopedRecords as Array<Record<string, any>>,
+      matrix: scopedMatrix as Array<Record<string, any>>,
+      gaps,
+      incidentLinked: Boolean(input.incidentId),
+    });
+    const content = buildTrainingNarrative({
+      employeeId: input.employeeId,
+      role: input.role,
+      department: input.department,
+      siteId: input.siteId,
+      incidentId: input.incidentId,
+      limit: input.limit,
+      stats: {
+        courses: courses.length,
+        records: scopedRecords.length,
+        mandatoryMatches: mandatoryMatches.length,
+        expired: expiredRecords.length,
+        open: openRecords.length,
+        priority,
+      },
+      gaps,
+      actions: recommendedActions,
+    });
+
+    const output = {
+      ...buildResponse("training-recommendation", content, this.model, 0.79),
+      data: {
+        scope: input,
+        summary: {
+          courses: courses.length,
+          records: scopedRecords.length,
+          mandatoryMatches: mandatoryMatches.length,
+          expired: expiredRecords.length,
+          open: openRecords.length,
+          priority,
+        },
+        gaps,
+        recommendedActions,
+        matchedRecords: scopedRecords.slice(0, 10).map((record: any) => ({
+          id: record.id,
+          employeeId: record.employeeId,
+          employeeName: record.employeeName,
+          courseId: record.courseId,
+          courseTitle: courseMap.get(record.courseId)?.title ?? record.courseId,
+          status: record.status,
+          expiryDate: record.expiryDate,
+          department: record.department,
+          site: record.site,
+        })),
+        matchedMatrix: scopedMatrix.slice(0, 10).map((entry: any) => ({
+          id: entry.id,
+          role: entry.role,
+          department: entry.department,
+          courseId: entry.courseId,
+          courseTitle: courseMap.get(entry.courseId)?.title ?? entry.courseId,
+          frequency: entry.frequency,
+          mandatory: entry.mandatory,
+        })),
+      },
+    };
+    const predictionId = await this.savePredictionBestEffort(
       "training-recommendation",
-      "Recommend EHS training modules based on the provided profile.",
-      `Input: ${JSON.stringify(data)}`,
+      input,
+      output,
+      0.79,
       userId,
     );
+    return predictionId ? { ...output, predictionId } : output;
   }
 
   async permitValidation(data: any, userId?: string): Promise<Json> {
@@ -809,11 +1667,19 @@ export class AiService {
         maxResults: data.maxResults ?? 5,
       })
       .catch(() => []);
-    return {
+    const output = {
       feature: "document-search",
       results,
       generatedAt: new Date().toISOString(),
     };
+    const predictionId = await this.savePredictionBestEffort(
+      "document-search",
+      data,
+      output,
+      results.length > 0 ? 0.78 : 0.62,
+      userId,
+    );
+    return predictionId ? { ...output, predictionId } : output;
   }
 
   async toolboxTalkGenerator(data: any, userId?: string): Promise<Json> {

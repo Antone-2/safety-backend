@@ -8,6 +8,7 @@ export declare function createRiskController(service: RiskService): {
     createRegister(req: AuthRequest, res: Response): Promise<void>;
     getRegisterById(req: AuthRequest, res: Response): Promise<void>;
     updateRegister(req: AuthRequest, res: Response): Promise<void>;
+    deleteRegister(req: AuthRequest, res: Response): Promise<void>;
     getBowTies(_req: AuthRequest, res: Response): Promise<void>;
     createBowTie(req: AuthRequest, res: Response): Promise<void>;
     getDashboard(_req: AuthRequest, res: Response): Promise<void>;

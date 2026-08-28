@@ -45,7 +45,7 @@ export declare const CreateContractorSchema: z.ZodEffects<z.ZodObject<{
     performanceScore: z.ZodOptional<z.ZodNumber>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Expired" | "Active" | "Suspended" | "Blacklisted";
+    status: "Active" | "Expired" | "Suspended" | "Blacklisted";
     createdBy: string;
     companyName: string;
     registrationNumber: string;
@@ -69,7 +69,7 @@ export declare const CreateContractorSchema: z.ZodEffects<z.ZodObject<{
     contactPerson: string;
     contactEmail: string;
     contactPhone: string;
-    status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    status?: "Active" | "Expired" | "Suspended" | "Blacklisted" | undefined;
     physicalAddress?: string | undefined;
     services?: string | undefined;
     certifications?: string | undefined;
@@ -81,7 +81,7 @@ export declare const CreateContractorSchema: z.ZodEffects<z.ZodObject<{
     documents?: string[] | undefined;
     performanceScore?: number | undefined;
 }>, {
-    status: "Expired" | "Active" | "Suspended" | "Blacklisted";
+    status: "Active" | "Expired" | "Suspended" | "Blacklisted";
     createdBy: string;
     companyName: string;
     registrationNumber: string;
@@ -105,7 +105,7 @@ export declare const CreateContractorSchema: z.ZodEffects<z.ZodObject<{
     contactPerson: string;
     contactEmail: string;
     contactPhone: string;
-    status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    status?: "Active" | "Expired" | "Suspended" | "Blacklisted" | undefined;
     physicalAddress?: string | undefined;
     services?: string | undefined;
     certifications?: string | undefined;
@@ -137,7 +137,7 @@ export declare const UpdateContractorSchema: z.ZodObject<{
     documents: z.ZodNullable<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
     performanceScore: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    status?: "Active" | "Expired" | "Suspended" | "Blacklisted" | undefined;
     incidents?: number | undefined;
     companyName?: string | undefined;
     registrationNumber?: string | undefined;
@@ -155,7 +155,7 @@ export declare const UpdateContractorSchema: z.ZodObject<{
     documents?: string[] | null | undefined;
     performanceScore?: number | null | undefined;
 }, {
-    status?: "Expired" | "Active" | "Suspended" | "Blacklisted" | undefined;
+    status?: "Active" | "Expired" | "Suspended" | "Blacklisted" | undefined;
     incidents?: number | undefined;
     companyName?: string | undefined;
     registrationNumber?: string | undefined;
@@ -200,9 +200,9 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     date: string;
     description: string;
+    createdBy: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    createdBy: string;
     contractorId: string;
     incidentType: string;
     followUpRequired: boolean;
@@ -210,9 +210,9 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
 }, {
     date: string;
     description: string;
+    createdBy: string;
     severity: "Critical" | "Low" | "Medium" | "High";
     location: string;
-    createdBy: string;
     contractorId: string;
     incidentType: string;
     actionTaken?: string | undefined;

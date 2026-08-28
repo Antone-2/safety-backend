@@ -40,6 +40,8 @@ export interface RiskRegister {
     reviewDate?: string;
     reviewedBy?: string;
     status: string;
+    sourceKind?: "database" | "report-sync";
+    readonly?: boolean;
     createdBy: string;
     createdAt: string;
     updatedAt: string;
@@ -140,9 +142,9 @@ export declare const CreateRiskRegisterSchema: z.ZodObject<{
     status: string;
     title: string;
     department: string;
+    createdBy: string;
     severity: number;
     location: string;
-    createdBy: string;
     activity: string;
     hazard: string;
     existingControls: string;
@@ -155,9 +157,9 @@ export declare const CreateRiskRegisterSchema: z.ZodObject<{
 }, {
     title: string;
     department: string;
+    createdBy: string;
     severity: number;
     location: string;
-    createdBy: string;
     activity: string;
     hazard: string;
     existingControls: string;
@@ -232,8 +234,8 @@ export declare const CreateBowTieSchema: z.ZodObject<{
     status: string;
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     topEvent: string;
     threats?: string | undefined;
     preventiveBarriers?: string | undefined;
@@ -242,8 +244,8 @@ export declare const CreateBowTieSchema: z.ZodObject<{
 }, {
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     topEvent: string;
     status?: string | undefined;
     threats?: string | undefined;

@@ -39,6 +39,79 @@ function normalizeIncidentSeverity(value: unknown): Incident["severity"] {
   return "Medium";
 }
 
+function normalizeFilterValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const normalized = String(value).trim();
+  return normalized ? normalized.toLowerCase() : undefined;
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
+}
+
+function normalizeDatabaseIncident(row: Incident | Record<string, unknown>): Incident {
+  const value = row as Record<string, unknown>;
+  const createdAt = String(value.createdAt ?? value.created_at ?? now());
+  const updatedAt = String(value.updatedAt ?? value.updated_at ?? createdAt);
+
+  return {
+    id: String(value.id),
+    type: value.type as Incident["type"],
+    severity: normalizeIncidentSeverity(value.severity),
+    status: normalizeIncidentStatus(value.status),
+    location: String(value.location ?? ""),
+    department: String(value.department ?? ""),
+    shift: String(value.shift ?? ""),
+    description: String(value.description ?? ""),
+    reporter: String(value.reporter ?? ""),
+    reporterEmail: value.reporterEmail ?? value.reporter_email ? String(value.reporterEmail ?? value.reporter_email) : undefined,
+    reporterPhone: value.reporterPhone ?? value.reporter_phone ? String(value.reporterPhone ?? value.reporter_phone) : undefined,
+    anonymous: normalizeBoolean(value.anonymous),
+    isNearMiss: normalizeBoolean(value.isNearMiss ?? value.is_near_miss),
+    photoUrl: value.photoUrl ?? value.photo_url ? String(value.photoUrl ?? value.photo_url) : undefined,
+    photos: parseJsonArray(value.photos),
+    assignedTo: value.assignedTo ?? value.assigned_to ? String(value.assignedTo ?? value.assigned_to) : undefined,
+    assignedToCopy: parseJsonArray(value.assignedToCopy ?? value.assigned_to_copy),
+    slaHours: Number(value.slaHours ?? value.sla_hours ?? 24),
+    dueAt: value.dueAt ?? value.due_at ? String(value.dueAt ?? value.due_at) : undefined,
+    resolutionDays: value.resolutionDays ?? value.resolution_days ? Number(value.resolutionDays ?? value.resolution_days) : undefined,
+    rootCause: value.rootCause ?? value.root_cause ? String(value.rootCause ?? value.root_cause) : undefined,
+    correctiveAction: value.correctiveAction ?? value.corrective_action ? String(value.correctiveAction ?? value.corrective_action) : undefined,
+    preventiveAction: value.preventiveAction ?? value.preventive_action ? String(value.preventiveAction ?? value.preventive_action) : undefined,
+    investigationMethod: value.investigationMethod ?? value.investigation_method ? String(value.investigationMethod ?? value.investigation_method) : undefined,
+    witnessStatement: value.witnessStatement ?? value.witness_statement ? String(value.witnessStatement ?? value.witness_statement) : undefined,
+    regulatoryNotificationRequired: normalizeBoolean(value.regulatoryNotificationRequired ?? value.regulatory_notification_required),
+    regulatoryNotificationDate: value.regulatoryNotificationDate ?? value.regulatory_notification_date ? String(value.regulatoryNotificationDate ?? value.regulatory_notification_date) : undefined,
+    complianceRequired: normalizeBoolean(value.complianceRequired ?? value.compliance_required),
+    complianceDueAt: value.complianceDueAt ?? value.compliance_due_at ? String(value.complianceDueAt ?? value.compliance_due_at) : undefined,
+    source: String(value.source ?? "manual"),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function matchesIncidentFilters(
+  incident: Incident,
+  filters?: Record<string, unknown>,
+): boolean {
+  if (!filters) return true;
+
+  const status = normalizeFilterValue(filters.status);
+  if (status && incident.status.toLowerCase() !== status) return false;
+
+  const severity = normalizeFilterValue(filters.severity);
+  if (severity && incident.severity.toLowerCase() !== severity) return false;
+
+  const location = normalizeFilterValue(filters.location);
+  if (location && !incident.location.toLowerCase().includes(location)) return false;
+
+  const department = normalizeFilterValue(filters.department);
+  if (department && !incident.department.toLowerCase().includes(department)) return false;
+
+  return true;
+}
+
 function mapReportToIncident(row: Record<string, unknown>): Incident {
   const reportType = String(row.type ?? "").toLowerCase();
   const createdAt = tryParseReportDateWithFallbacks(row.created_at, row.updated_at) ?? now();
@@ -93,6 +166,8 @@ function mapReportToIncident(row: Record<string, unknown>): Incident {
     complianceRequired: Boolean(row.compliance_required),
     complianceDueAt,
     source: String(row.source ?? "manual"),
+    sourceKind: "report-sync",
+    readonly: true,
     auditHistory: undefined,
     createdAt,
     updatedAt,
@@ -102,15 +177,19 @@ function mapReportToIncident(row: Record<string, unknown>): Incident {
 export class IncidentsService {
   constructor(private repository: IncidentsRepository) {}
 
-  async getAll(filters?: Record<string, unknown>): Promise<Incident[]> {
+  private async getCombinedIncidents(): Promise<Incident[]> {
     const [incidents, reports] = await Promise.all([
-      this.repository.findAll(filters),
+      this.repository.findAll(),
       this.repository.findAllReports(),
     ]);
 
     const mappedReports = reports.map(mapReportToIncident);
-
-    const combined = [...incidents, ...mappedReports];
+    const mappedIncidents = incidents.map((incident) => ({
+      ...normalizeDatabaseIncident(incident),
+      sourceKind: "database" as const,
+      readonly: false,
+    }));
+    const combined = [...mappedIncidents, ...mappedReports];
     combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const seen = new Set<string>();
@@ -121,9 +200,16 @@ export class IncidentsService {
     });
   }
 
+  async getAll(filters?: Record<string, unknown>): Promise<Incident[]> {
+    const combined = await this.getCombinedIncidents();
+    return combined.filter((incident) => matchesIncidentFilters(incident, filters));
+  }
+
   async getById(id: string): Promise<Incident | null> {
     const incident = await this.repository.findById(id);
-    if (incident) return incident;
+    if (incident) {
+      return { ...normalizeDatabaseIncident(incident), sourceKind: "database", readonly: false };
+    }
 
     const report = await this.repository.findReportById(id);
     return report ? mapReportToIncident(report) : null;
@@ -133,13 +219,15 @@ export class IncidentsService {
     if (data.severity === "Critical" && !data.department) {
       throw new BusinessRuleError("Critical incidents require a department");
     }
-    return this.repository.create(data);
+    const created = await this.repository.create(data);
+    return { ...normalizeDatabaseIncident(created), sourceKind: "database", readonly: false };
   }
 
   async update(id: string, data: Partial<IncidentInput>): Promise<Incident | null> {
     const existing = await this.repository.findById(id);
     if (!existing) throw new NotFoundError("Incident");
-    return this.repository.update(id, data);
+    const updated = await this.repository.update(id, data);
+    return updated ? { ...normalizeDatabaseIncident(updated), sourceKind: "database", readonly: false } : null;
   }
 
   async delete(id: string): Promise<boolean> {
@@ -148,15 +236,32 @@ export class IncidentsService {
     return this.repository.delete(id);
   }
 
-  async getStats(): Promise<{ total: number; open: number; closed: number; today: number; week: number }> {
-    const total = await this.repository.count();
-    const open = await this.repository.count({ status: "Open" });
-    const closed = await this.repository.count({ status: "Closed" });
-    return { total, open, closed, today: 0, week: 0 };
+  async getStats(): Promise<{
+    total: number;
+    open: number;
+    investigating: number;
+    capaOpen: number;
+    closed: number;
+    critical: number;
+    overdue: number;
+  }> {
+    const incidents = await this.getCombinedIncidents();
+    const nowTime = Date.now();
+
+    return {
+      total: incidents.length,
+      open: incidents.filter((incident) => incident.status === "Open").length,
+      investigating: incidents.filter((incident) => incident.status === "Investigating" || incident.status === "Root Cause Analysis").length,
+      capaOpen: incidents.filter((incident) => incident.status === "CAPA Open").length,
+      closed: incidents.filter((incident) => incident.status === "Closed").length,
+      critical: incidents.filter((incident) => incident.severity === "Critical" && incident.status !== "Closed").length,
+      overdue: incidents.filter((incident) => incident.status !== "Closed" && incident.dueAt && new Date(incident.dueAt).getTime() < nowTime).length,
+    };
   }
 
   async getOverdue(): Promise<Incident[]> {
-    const all = await this.repository.findAll({ status: "Open" });
-    return all.filter((incident) => incident.dueAt && new Date(incident.dueAt) < new Date());
+    const all = await this.getCombinedIncidents();
+    const nowTime = Date.now();
+    return all.filter((incident) => incident.status !== "Closed" && incident.dueAt && new Date(incident.dueAt).getTime() < nowTime);
   }
 }

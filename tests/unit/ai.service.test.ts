@@ -98,6 +98,12 @@ vi.mock("../../src/modules/ai/ai.repository.js", () => ({
     async savePrediction() {
       return "prediction-1";
     }
+    async saveChatSession() {
+      return "ai-chat-1";
+    }
+    async getLatestChatSession() {
+      return null;
+    }
     async getGuardrailSettings() {
       return {
         enabled: true,
@@ -112,6 +118,129 @@ vi.mock("../../src/modules/ai/ai.repository.js", () => ({
     }
     async savePromptAudit() {
       return undefined;
+    }
+  },
+}));
+
+vi.mock("../../src/modules/ai/infra/llm.client.js", () => ({
+  LlmClient: class {
+    async generate(_system: string, prompt: string) {
+      if (prompt.includes("spill response")) {
+        return "Use the spill response procedure, isolate the area, and verify PPE before cleanup.";
+      }
+      return "Grounded AI response.";
+    }
+  },
+}));
+
+vi.mock("../../src/modules/ai/infra/rag.engine.js", () => ({
+  RagEngine: class {
+    async search(query: string) {
+      if (query.toLowerCase().includes("spill")) {
+        return [
+          {
+            title: "Chemical Spill Response Procedure",
+            excerpt: "Isolate the spill area, don chemical-resistant PPE, and notify the supervisor immediately.",
+            score: 6,
+          },
+          {
+            title: "Emergency Eyewash Guidance",
+            excerpt: "Use the nearest eyewash station for splash exposure and refer exposed workers for medical review.",
+            score: 4,
+          },
+        ];
+      }
+      return [];
+    }
+  },
+}));
+
+vi.mock("../../src/modules/training/training.service.js", () => ({
+  TrainingService: class {
+    async getCourses() {
+      return [
+        {
+          id: "CRS-1",
+          title: "Chemical Handling Basics",
+          code: "CHEM-101",
+          category: "Chemical Safety",
+          duration: 4,
+          frequency: "Annual",
+          passingScore: 80,
+          createdBy: "Admin",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "CRS-2",
+          title: "Forklift Refresher",
+          code: "FL-201",
+          category: "Mobile Equipment",
+          duration: 3,
+          frequency: "Annual",
+          passingScore: 75,
+          createdBy: "Admin",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ];
+    }
+
+    async getRecords(filters?: Record<string, unknown>) {
+      const rows = [
+        {
+          id: "TRN-1",
+          employeeId: "EMP-1",
+          employeeName: "Jane Doe",
+          courseId: "CRS-1",
+          department: "Production",
+          site: "Factory A",
+          status: "Expired",
+          expiryDate: "2026-07-01",
+        },
+        {
+          id: "TRN-2",
+          employeeId: "EMP-1",
+          employeeName: "Jane Doe",
+          courseId: "CRS-2",
+          department: "Production",
+          site: "Factory A",
+          status: "Scheduled",
+          expiryDate: undefined,
+        },
+      ];
+      return rows.filter((row) => {
+        if (filters?.employeeId && row.employeeId !== filters.employeeId) return false;
+        if (filters?.department && row.department !== filters.department) return false;
+        if (filters?.site && row.site !== filters.site) return false;
+        return true;
+      });
+    }
+
+    async getMatrix(filters?: Record<string, unknown>) {
+      const rows = [
+        {
+          id: "MAT-1",
+          role: "Operator",
+          department: "Production",
+          courseId: "CRS-1",
+          frequency: "Annual",
+          mandatory: true,
+        },
+        {
+          id: "MAT-2",
+          role: "Operator",
+          department: "Production",
+          courseId: "CRS-3",
+          frequency: "Quarterly",
+          mandatory: true,
+        },
+      ];
+      return rows.filter((row) => {
+        if (filters?.role && row.role !== filters.role) return false;
+        if (filters?.department && row.department !== filters.department) return false;
+        return true;
+      });
     }
   },
 }));
@@ -192,6 +321,138 @@ describe("AiService query", () => {
     expect(tableTitles).toContain("Department Exposure");
     expect((result.data as any).managementActions.join(" ")).toContain(
       "Factory",
+    );
+  }, 15000);
+
+  it("returns structured, grounded investigation guidance from incident input", async () => {
+    const { AiService } = await import("../../src/modules/ai/ai.service.js");
+    const service = new AiService();
+
+    const result = await service.investigationAssistant(
+      {
+        incidentId: "RPT-3",
+        type: "Chemical Spill",
+        description:
+          "Chemical spill on the production line caused medical treatment after splash exposure.",
+        evidence: [
+          "Photos show spill residue beside the transfer pump.",
+          "PPE checklist for the task was unsigned.",
+        ],
+        witnessStatements: [
+          "Jane Supervisor: Operator reported the spill immediately after the hose failed.",
+        ],
+        location: "Factory A",
+        department: "Production",
+      },
+      "user-1",
+    );
+
+    expect((result as any).feature).toBe("investigation-assistant");
+    expect((result as any).content).toContain("Investigation questions");
+    expect((result as any).data.category).toBe("Chemical Spill");
+    expect((result as any).data.severity).toBe("Critical");
+    expect((result as any).data.relatedIncidents).toEqual(
+      expect.arrayContaining(["RPT-3", "RPT-1"]),
+    );
+    expect((result as any).data.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "RPT-3" }),
+        expect.objectContaining({ source: "user-evidence" }),
+        expect.objectContaining({ source: "witness-statement" }),
+      ]),
+    );
+    expect((result as any).data.entities.where).toBe("Factory A");
+    expect((result as any).data.suggestedQuestions.join(" ")).toContain(
+      "related reports",
+    );
+  }, 15000);
+
+  it("returns chatbot citations, suggested actions, and prediction linkage", async () => {
+    const { AiService } = await import("../../src/modules/ai/ai.service.js");
+    const service = new AiService();
+
+    const result = await service.chatbot(
+      {
+        query: "What should we do first after a spill response incident?",
+        history: [{ role: "user", content: "We had a spill response incident." }],
+      },
+      "user-4",
+    );
+
+    expect((result as any).feature).toBe("chatbot");
+    expect((result as any).predictionId).toBe("prediction-1");
+    expect((result as any).content).toContain("spill response");
+    expect((result as any).sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "Chemical Spill Response Procedure",
+        }),
+      ]),
+    );
+    expect((result as any).suggestedActions.join(" ")).toContain("PPE");
+  }, 15000);
+
+  it("returns grounded compliance guidance from live obligation and audit context", async () => {
+    const { AiService } = await import("../../src/modules/ai/ai.service.js");
+    const service = new AiService();
+
+    const result = await service.complianceAssistant(
+      {
+        siteId: "Factory B",
+        regulation: "Fire Safety Act",
+        department: "Warehouse",
+        includeGaps: true,
+      },
+      "user-2",
+    );
+
+    expect((result as any).feature).toBe("compliance-assistant");
+    expect((result as any).content).toContain("Compliance risk is");
+    expect((result as any).data.summary.nonCompliant).toBe(0);
+    expect((result as any).data.summary.pending).toBe(1);
+    expect((result as any).data.summary.riskLevel).toBe("Medium");
+    expect((result as any).data.gaps.join(" ")).toContain("pending");
+    expect((result as any).data.matchedObligations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "OBS-2",
+          legislation: "Fire Safety Act",
+          department: "Warehouse",
+        }),
+      ]),
+    );
+  }, 15000);
+
+  it("returns grounded training recommendations from live training context", async () => {
+    const { AiService } = await import("../../src/modules/ai/ai.service.js");
+    const service = new AiService();
+
+    const result = await service.trainingRecommendation(
+      {
+        employeeId: "EMP-1",
+        role: "Operator",
+        department: "Production",
+        siteId: "Factory A",
+        incidentId: "RPT-3",
+        limit: 10,
+      },
+      "user-3",
+    );
+
+    expect((result as any).feature).toBe("training-recommendation");
+    expect((result as any).content).toContain("Training priority is High");
+    expect((result as any).data.summary.expired).toBe(1);
+    expect((result as any).data.summary.open).toBe(1);
+    expect((result as any).data.summary.mandatoryMatches).toBe(1);
+    expect((result as any).data.gaps.join(" ")).toContain("Mandatory matrix requirement");
+    expect((result as any).data.matchedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          employeeId: "EMP-1",
+          courseTitle: "Chemical Handling Basics",
+          status: "Expired",
+        }),
+      ]),
     );
   }, 15000);
 });

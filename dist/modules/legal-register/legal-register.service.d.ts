@@ -1,0 +1,30 @@
+import { LegalRegisterEntry, LegalObligation, ObligationReview, ObligationEvidence, ObligationAction, CreateLegalRegisterEntryInput, UpdateLegalRegisterEntryInput, CreateLegalObligationInput, UpdateLegalObligationInput, CreateObligationReviewInput, UpdateObligationReviewInput, CreateObligationEvidenceInput, CreateObligationActionInput, UpdateObligationActionInput, LegalRegisterDashboard } from "./legal-register.types.js";
+import { LegalRegisterRepository } from "./legal-register.repository.js";
+export declare class LegalRegisterService {
+    private repository;
+    constructor(repository: LegalRegisterRepository);
+    getDashboard(): Promise<LegalRegisterDashboard>;
+    getRegisterEntries(filters?: Record<string, unknown>): Promise<LegalRegisterEntry[]>;
+    getRegisterEntryById(id: string): Promise<LegalRegisterEntry | null>;
+    createRegisterEntry(data: CreateLegalRegisterEntryInput): Promise<LegalRegisterEntry>;
+    updateRegisterEntry(id: string, data: UpdateLegalRegisterEntryInput): Promise<LegalRegisterEntry | null>;
+    deleteRegisterEntry(id: string): Promise<boolean>;
+    getObligations(filters?: Record<string, unknown>): Promise<LegalObligation[]>;
+    getObligationById(id: string): Promise<LegalObligation | null>;
+    createObligation(data: CreateLegalObligationInput): Promise<LegalObligation>;
+    updateObligation(id: string, data: UpdateLegalObligationInput): Promise<LegalObligation | null>;
+    deleteObligation(id: string): Promise<boolean>;
+    getReviews(filters?: Record<string, unknown>): Promise<ObligationReview[]>;
+    getReviewById(id: string): Promise<ObligationReview | null>;
+    createReview(data: CreateObligationReviewInput): Promise<ObligationReview>;
+    updateReview(id: string, data: UpdateObligationReviewInput): Promise<ObligationReview | null>;
+    deleteReview(id: string): Promise<boolean>;
+    getEvidence(filters?: Record<string, unknown>): Promise<ObligationEvidence[]>;
+    createEvidence(data: CreateObligationEvidenceInput): Promise<ObligationEvidence>;
+    deleteEvidence(id: string): Promise<boolean>;
+    getActions(filters?: Record<string, unknown>): Promise<ObligationAction[]>;
+    getActionById(id: string): Promise<ObligationAction | null>;
+    createAction(data: CreateObligationActionInput): Promise<ObligationAction>;
+    updateAction(id: string, data: UpdateObligationActionInput): Promise<ObligationAction | null>;
+    deleteAction(id: string): Promise<boolean>;
+}

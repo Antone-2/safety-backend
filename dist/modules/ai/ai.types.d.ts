@@ -1,5 +1,5 @@
 import { z } from "zod";
-export declare const AiFeatureSchema: z.ZodEnum<["investigation-assistant", "root-cause-analysis", "hazard-detection", "risk-prediction", "chatbot", "compliance-assistant", "training-recommendation", "permit-validation", "inspection-assistant", "safety-observation-analysis", "environmental-monitoring", "predictive-analytics", "dashboard-insights", "document-search", "toolbox-talk-generator", "safety-alert-generator", "trend-analysis", "corrective-action-recommendation", "kpi-forecasting", "executive-reports"]>;
+export declare const AiFeatureSchema: z.ZodEnum<["ai-query", "investigation-assistant", "root-cause-analysis", "hazard-detection", "risk-prediction", "chatbot", "compliance-assistant", "training-recommendation", "permit-validation", "inspection-assistant", "safety-observation-analysis", "environmental-monitoring", "predictive-analytics", "dashboard-insights", "document-search", "toolbox-talk-generator", "safety-alert-generator", "trend-analysis", "corrective-action-recommendation", "kpi-forecasting", "executive-reports"]>;
 export type AiFeature = z.infer<typeof AiFeatureSchema>;
 export declare const ConfidenceLevelSchema: z.ZodEnum<["low", "medium", "high", "very-high"]>;
 export type ConfidenceLevel = z.infer<typeof ConfidenceLevelSchema>;
@@ -80,14 +80,14 @@ export declare const RiskPredictionInputSchema: z.ZodObject<{
     includeComponents: boolean;
     horizonDays: number;
     department?: string | undefined;
+    siteId?: string | undefined;
     location?: string | undefined;
     activity?: string | undefined;
-    siteId?: string | undefined;
 }, {
     department?: string | undefined;
+    siteId?: string | undefined;
     location?: string | undefined;
     activity?: string | undefined;
-    siteId?: string | undefined;
     includeComponents?: boolean | undefined;
     horizonDays?: number | undefined;
 }>;
@@ -109,6 +109,22 @@ export declare const ChatbotInputSchema: z.ZodObject<{
     conversationId?: string | undefined;
 }>;
 export type ChatbotInput = z.infer<typeof ChatbotInputSchema>;
+export declare const ChatSessionTitleUpdateSchema: z.ZodObject<{
+    title: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+}, {
+    title: string;
+}>;
+export type ChatSessionTitleUpdate = z.infer<typeof ChatSessionTitleUpdateSchema>;
+export declare const ChatSessionPinnedUpdateSchema: z.ZodObject<{
+    pinned: z.ZodBoolean;
+}, "strip", z.ZodTypeAny, {
+    pinned: boolean;
+}, {
+    pinned: boolean;
+}>;
+export type ChatSessionPinnedUpdate = z.infer<typeof ChatSessionPinnedUpdateSchema>;
 export declare const AiQueryInputSchema: z.ZodObject<{
     query: z.ZodString;
     conversationId: z.ZodOptional<z.ZodString>;
@@ -200,16 +216,16 @@ export declare const TrainingInputSchema: z.ZodObject<{
     limit: number;
     role?: string | undefined;
     department?: string | undefined;
+    siteId?: string | undefined;
     incidentId?: string | undefined;
     employeeId?: string | undefined;
-    siteId?: string | undefined;
 }, {
     role?: string | undefined;
     department?: string | undefined;
+    siteId?: string | undefined;
     incidentId?: string | undefined;
     employeeId?: string | undefined;
     limit?: number | undefined;
-    siteId?: string | undefined;
 }>;
 export type TrainingInput = z.infer<typeof TrainingInputSchema>;
 export declare const PermitInputSchema: z.ZodObject<{
@@ -247,15 +263,15 @@ export declare const InspectionInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type?: string | undefined;
     department?: string | undefined;
+    siteId?: string | undefined;
     location?: string | undefined;
     equipmentId?: string | undefined;
-    siteId?: string | undefined;
 }, {
     type?: string | undefined;
     department?: string | undefined;
+    siteId?: string | undefined;
     location?: string | undefined;
     equipmentId?: string | undefined;
-    siteId?: string | undefined;
 }>;
 export type InspectionInput = z.infer<typeof InspectionInputSchema>;
 export declare const ObservationInputSchema: z.ZodObject<{
@@ -269,18 +285,18 @@ export declare const ObservationInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     limit: number;
     department?: string | undefined;
+    siteId?: string | undefined;
     activity?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
-    siteId?: string | undefined;
     observer?: string | undefined;
 }, {
     department?: string | undefined;
+    siteId?: string | undefined;
     limit?: number | undefined;
     activity?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
-    siteId?: string | undefined;
     observer?: string | undefined;
 }>;
 export type ObservationInput = z.infer<typeof ObservationInputSchema>;
@@ -293,15 +309,15 @@ export declare const EnvironmentalInputSchema: z.ZodObject<{
     horizonHours: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     horizonHours: number;
+    siteId?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
-    siteId?: string | undefined;
     metric?: string | undefined;
     sensorType?: string | undefined;
 }, {
+    siteId?: string | undefined;
     dateFrom?: string | undefined;
     dateTo?: string | undefined;
-    siteId?: string | undefined;
     metric?: string | undefined;
     sensorType?: string | undefined;
     horizonHours?: number | undefined;
@@ -370,13 +386,13 @@ export declare const ToolboxTalkInputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     language: "en" | "sw";
     department?: string | undefined;
-    incidentId?: string | undefined;
     siteId?: string | undefined;
+    incidentId?: string | undefined;
     topic?: string | undefined;
 }, {
     department?: string | undefined;
-    incidentId?: string | undefined;
     siteId?: string | undefined;
+    incidentId?: string | undefined;
     topic?: string | undefined;
     language?: "en" | "sw" | undefined;
 }>;
@@ -389,14 +405,14 @@ export declare const SafetyAlertInputSchema: z.ZodObject<{
     channels: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     department?: string | undefined;
-    severity?: "critical" | "notice" | "warning" | undefined;
     siteId?: string | undefined;
+    severity?: "notice" | "critical" | "warning" | undefined;
     triggerEvent?: string | undefined;
     channels?: string[] | undefined;
 }, {
     department?: string | undefined;
-    severity?: "critical" | "notice" | "warning" | undefined;
     siteId?: string | undefined;
+    severity?: "notice" | "critical" | "warning" | undefined;
     triggerEvent?: string | undefined;
     channels?: string[] | undefined;
 }>;
@@ -456,8 +472,8 @@ export declare const ExecutiveReportInputSchema: z.ZodObject<{
 }, {
     department?: string | undefined;
     reportType?: "monthly" | "quarterly" | "annual" | "adhoc" | undefined;
-    format?: "pdf" | "json" | "markdown" | undefined;
     siteId?: string | undefined;
+    format?: "pdf" | "json" | "markdown" | undefined;
     includeBenchmark?: boolean | undefined;
 }>;
 export type ExecutiveReportInput = z.infer<typeof ExecutiveReportInputSchema>;
@@ -490,6 +506,7 @@ export declare const AiResponseSchema: z.ZodObject<{
         warnings?: string[] | undefined;
     }>;
 }, "strip", z.ZodTypeAny, {
+    success: boolean;
     metadata: {
         feature: string;
         confidence?: number | undefined;
@@ -499,9 +516,9 @@ export declare const AiResponseSchema: z.ZodObject<{
         sources?: string[] | undefined;
         warnings?: string[] | undefined;
     };
-    success: boolean;
     data?: any;
 }, {
+    success: boolean;
     metadata: {
         feature: string;
         confidence?: number | undefined;
@@ -511,7 +528,6 @@ export declare const AiResponseSchema: z.ZodObject<{
         sources?: string[] | undefined;
         warnings?: string[] | undefined;
     };
-    success: boolean;
     data?: any;
 }>;
 export type AiResponse<T = any> = {
@@ -528,17 +544,17 @@ export type AiResponse<T = any> = {
     };
 };
 export declare const AiFeedbackSchema: z.ZodObject<{
-    feature: z.ZodEnum<["investigation-assistant", "root-cause-analysis", "hazard-detection", "risk-prediction", "chatbot", "compliance-assistant", "training-recommendation", "permit-validation", "inspection-assistant", "safety-observation-analysis", "environmental-monitoring", "predictive-analytics", "dashboard-insights", "document-search", "toolbox-talk-generator", "safety-alert-generator", "trend-analysis", "corrective-action-recommendation", "kpi-forecasting", "executive-reports"]>;
+    feature: z.ZodEnum<["ai-query", "investigation-assistant", "root-cause-analysis", "hazard-detection", "risk-prediction", "chatbot", "compliance-assistant", "training-recommendation", "permit-validation", "inspection-assistant", "safety-observation-analysis", "environmental-monitoring", "predictive-analytics", "dashboard-insights", "document-search", "toolbox-talk-generator", "safety-alert-generator", "trend-analysis", "corrective-action-recommendation", "kpi-forecasting", "executive-reports"]>;
     predictionId: z.ZodOptional<z.ZodString>;
     rating: z.ZodNumber;
     feedbackText: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    feature: "investigation-assistant" | "root-cause-analysis" | "hazard-detection" | "risk-prediction" | "chatbot" | "compliance-assistant" | "training-recommendation" | "permit-validation" | "inspection-assistant" | "safety-observation-analysis" | "environmental-monitoring" | "predictive-analytics" | "dashboard-insights" | "document-search" | "toolbox-talk-generator" | "safety-alert-generator" | "trend-analysis" | "corrective-action-recommendation" | "kpi-forecasting" | "executive-reports";
+    feature: "ai-query" | "investigation-assistant" | "root-cause-analysis" | "hazard-detection" | "risk-prediction" | "chatbot" | "compliance-assistant" | "training-recommendation" | "permit-validation" | "inspection-assistant" | "safety-observation-analysis" | "environmental-monitoring" | "predictive-analytics" | "dashboard-insights" | "document-search" | "toolbox-talk-generator" | "safety-alert-generator" | "trend-analysis" | "corrective-action-recommendation" | "kpi-forecasting" | "executive-reports";
     rating: number;
     predictionId?: string | undefined;
     feedbackText?: string | undefined;
 }, {
-    feature: "investigation-assistant" | "root-cause-analysis" | "hazard-detection" | "risk-prediction" | "chatbot" | "compliance-assistant" | "training-recommendation" | "permit-validation" | "inspection-assistant" | "safety-observation-analysis" | "environmental-monitoring" | "predictive-analytics" | "dashboard-insights" | "document-search" | "toolbox-talk-generator" | "safety-alert-generator" | "trend-analysis" | "corrective-action-recommendation" | "kpi-forecasting" | "executive-reports";
+    feature: "ai-query" | "investigation-assistant" | "root-cause-analysis" | "hazard-detection" | "risk-prediction" | "chatbot" | "compliance-assistant" | "training-recommendation" | "permit-validation" | "inspection-assistant" | "safety-observation-analysis" | "environmental-monitoring" | "predictive-analytics" | "dashboard-insights" | "document-search" | "toolbox-talk-generator" | "safety-alert-generator" | "trend-analysis" | "corrective-action-recommendation" | "kpi-forecasting" | "executive-reports";
     rating: number;
     predictionId?: string | undefined;
     feedbackText?: string | undefined;
@@ -712,14 +728,14 @@ export declare const RiskScoreOutputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     riskLevel: "Critical" | "Low" | "Medium" | "High";
     riskScore: number;
-    components?: Record<string, number> | undefined;
     trend?: "improving" | "stable" | "deteriorating" | undefined;
+    components?: Record<string, number> | undefined;
     explanation?: string[] | undefined;
 }, {
     riskLevel: "Critical" | "Low" | "Medium" | "High";
     riskScore: number;
-    components?: Record<string, number> | undefined;
     trend?: "improving" | "stable" | "deteriorating" | undefined;
+    components?: Record<string, number> | undefined;
     explanation?: string[] | undefined;
 }>;
 export declare const ChatbotResponseSchema: z.ZodObject<{
@@ -887,13 +903,13 @@ export declare const AlertOutputSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     summary: string;
     actions: string[];
-    grade: "critical" | "notice" | "warning";
+    grade: "notice" | "critical" | "warning";
     headline: string;
     recipients?: string[] | undefined;
 }, {
     summary: string;
     actions: string[];
-    grade: "critical" | "notice" | "warning";
+    grade: "notice" | "critical" | "warning";
     headline: string;
     recipients?: string[] | undefined;
 }>;
@@ -918,8 +934,8 @@ export declare const TrendAnalysisOutputSchema: z.ZodObject<{
     }>, "many">>;
     insight: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    metric: string;
     trend: "stable" | "increasing" | "decreasing" | "volatile";
+    metric: string;
     changePercent: number;
     statisticalSignificant: boolean;
     seasonalityDetected: boolean;
@@ -930,8 +946,8 @@ export declare const TrendAnalysisOutputSchema: z.ZodObject<{
         pValue?: number | undefined;
     }[] | undefined;
 }, {
-    metric: string;
     trend: "stable" | "increasing" | "decreasing" | "volatile";
+    metric: string;
     changePercent: number;
     statisticalSignificant: boolean;
     seasonalityDetected: boolean;

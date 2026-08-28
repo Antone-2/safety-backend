@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { authenticateUser, requireRole } from "../middleware/auth.js";
-import { AuditService } from "../services/audit.service.js";
+import { authenticateUser, requirePermission } from "../shared/middleware/auth.middleware.js";
+import { AuditService, AuditSchema } from "../services/audit.service.js";
+import { validate } from "../shared/middleware/validation.middleware.js";
 const router = Router();
 const service = new AuditService();
-router.get("/", authenticateUser, async (req, res) => {
+router.get("/", authenticateUser, requirePermission("audit:read"), async (req, res) => {
     try {
         const filters = {};
         if (String(req.query.site))
@@ -21,7 +22,7 @@ router.get("/", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch audits" });
     }
 });
-router.get("/dashboard", authenticateUser, async (_req, res) => {
+router.get("/dashboard", authenticateUser, requirePermission("audit:read"), async (_req, res) => {
     try {
         const stats = await service.getStats();
         res.json(stats);
@@ -30,7 +31,7 @@ router.get("/dashboard", authenticateUser, async (_req, res) => {
         res.status(500).json({ error: "Failed to fetch audit dashboard" });
     }
 });
-router.get("/:id", authenticateUser, async (req, res) => {
+router.get("/:id", authenticateUser, requirePermission("audit:read"), async (req, res) => {
     try {
         const record = await service.getById(String(req.params.id));
         if (!record)
@@ -41,7 +42,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         res.status(500).json({ error: "Failed to fetch audit" });
     }
 });
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
+router.post("/", authenticateUser, requirePermission("audit:create"), validate(AuditSchema), async (req, res) => {
     try {
         const record = await service.createAudit({ ...req.body, createdBy: req.user?.name || "System" });
         res.status(201).json(record);
@@ -50,7 +51,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
         res.status(500).json({ error: "Failed to create audit" });
     }
 });
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req, res) => {
+router.patch("/:id", authenticateUser, requirePermission("audit:update"), validate(AuditSchema.partial()), async (req, res) => {
     try {
         const record = await service.update(String(req.params.id), req.body);
         res.json(record);
@@ -59,7 +60,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
         res.status(500).json({ error: "Failed to update audit" });
     }
 });
-router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
+router.delete("/:id", authenticateUser, requirePermission("audit:delete"), async (req, res) => {
     try {
         const result = await service.delete(String(req.params.id));
         res.json({ success: result });

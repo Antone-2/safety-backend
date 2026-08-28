@@ -2,7 +2,7 @@ import fs from "fs";
 import { Router } from "express";
 import { getDb, saveDb } from "../lib/database.js";
 import { REPORT_SOURCE_GOOGLE_SHEETS } from "../lib/types.js";
-import { getDbClient } from "../shared/infrastructure/database/postgres.client.js";
+import { getDbClient, withTransactionRetry } from "../shared/infrastructure/database/postgres.client.js";
 import { broadcastReport } from "../modules/reports/reports.module.js";
 import { invalidateReportsCache } from "../modules/reports/reports.cache.js";
 import { getGoogleDocsBaseUrl, getGoogleSheetsBaseUrl, getPlaceholderImageUrl } from "../lib/config.js";
@@ -18,6 +18,25 @@ let postgresAvailableForGoogleSheets = true;
 const googleSheetsQuotaCooldownUntil = { timestamp: 0 };
 export function setGoogleSheetsPostgresAvailability(available) {
     postgresAvailableForGoogleSheets = available;
+}
+async function refreshGoogleSheetsPostgresAvailability() {
+    if (postgresAvailableForGoogleSheets)
+        return true;
+    try {
+        const client = await getDbClient(0);
+        try {
+            await client.query("SELECT 1 FROM reports LIMIT 1");
+            await client.query("SELECT 1 FROM google_sheets_sync_state LIMIT 1");
+            postgresAvailableForGoogleSheets = true;
+            return true;
+        }
+        finally {
+            client.release();
+        }
+    }
+    catch {
+        return false;
+    }
 }
 function assertGoogleSheetsPostgresAvailable() {
     if (!postgresAvailableForGoogleSheets) {
@@ -435,6 +454,8 @@ export function replaceGoogleSheetReportsInSqlite(db, reports) {
 }
 export function buildReportIdForImportedRecord(imported) {
     const rowKey = [
+        normalizeImportedValue(imported.sourceTimestampRaw || imported.date),
+        Number.isFinite(imported.sourceRowNumber) ? String(imported.sourceRowNumber) : "",
         normalizeImportedValue(imported.date),
         normalizeImportedValue(imported.location),
         normalizeImportedValue(imported.reporter),
@@ -534,7 +555,7 @@ function getMatchingCell(headers, row, aliases, fallbackIndex) {
     }
     return "";
 }
-export function buildReportRecordFromRow(headers, row, defaults) {
+export function buildReportRecordFromRow(headers, row, defaults, sourceRowNumber) {
     const location = getMatchingCell(headers, row, ["location", "site", "branch", "facility", "plant", "warehouse", "office"], 1) || defaults.locations[0];
     const reporter = getMatchingCell(headers, row, ["reporter", "reporter name", "submitted by", "submitted by name", "name", "your name", "full name", "person reporting", "employee", "employee name", "staff", "staff name"], 2) || "Anonymous";
     const categoryRaw = getMatchingCell(headers, row, ["category", "hazard", "incident type", "incident category", "hazard category", "type of incident"], 4) || defaults.categories[0];
@@ -555,6 +576,8 @@ export function buildReportRecordFromRow(headers, row, defaults) {
     const complianceRequired = severity === "Critical" || severity === "High";
     return {
         date,
+        sourceTimestampRaw: dateRaw,
+        sourceRowNumber,
         location,
         reporter: anonymous ? "Anonymous" : reporter,
         description,
@@ -614,13 +637,13 @@ async function updateSyncState(update) {
     }
 }
 async function replaceGoogleSheetReportsInPostgres(reports) {
-    const client = await getDbClient();
     const uniqueReports = dedupeGoogleSheetReportsById(reports);
     const incomingIds = uniqueReports
         .map((report) => String(report.id ?? "").trim())
         .filter(Boolean);
-    try {
-        await client.query("BEGIN");
+    // Wrap the whole replace operation in a transaction that retries on a fresh
+    // connection if the DB connection is transiently terminated mid-sync.
+    await withTransactionRetry(async (client) => {
         const existingIdsResult = await client.query("SELECT id FROM reports WHERE source = $1 OR source = $2", [REPORT_SOURCE_GOOGLE_SHEETS, "google_sheets"]);
         const existingIds = existingIdsResult.rows.map((row) => String(row.id ?? ""));
         const idsToDelete = getGoogleSheetReportIdsToDelete(existingIds, incomingIds);
@@ -737,21 +760,13 @@ async function replaceGoogleSheetReportsInPostgres(reports) {
                 await client.query("DELETE FROM reports WHERE id = $1 AND (source = $2 OR source = $3)", [id, REPORT_SOURCE_GOOGLE_SHEETS, "google_sheets"]);
             }
         }
-        await client.query("COMMIT");
-    }
-    catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-    }
-    finally {
-        client.release();
-    }
+    });
 }
 async function fetchReportPhotosFromDrive(reports) {
     const withPhotos = reports.filter((r) => r.photoUrl && r.photoUrl.trim());
     if (withPhotos.length === 0)
         return;
-    const CONCURRENCY = 5;
+    const CONCURRENCY = 2;
     let index = 0;
     let stored = 0;
     let failed = 0;
@@ -834,7 +849,7 @@ export async function runGoogleSheetsSync(options) {
             for (const [index, row] of dataRows.entries()) {
                 let imported;
                 try {
-                    imported = buildReportRecordFromRow(headers, row, defaults);
+                    imported = buildReportRecordFromRow(headers, row, defaults, index + 2);
                 }
                 catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
@@ -912,8 +927,8 @@ async function runGoogleSheetsSyncToSqlite(options) {
     }
     const headers = rows[0];
     const defaults = getDefaults();
-    const reports = rows.slice(1).map((row) => {
-        const imported = buildReportRecordFromRow(headers, row, defaults);
+    const reports = rows.slice(1).map((row, index) => {
+        const imported = buildReportRecordFromRow(headers, row, defaults, index + 2);
         const id = buildReportIdForImportedRecord(imported);
         return {
             id,
@@ -1022,10 +1037,10 @@ export function classifyGoogleFormsError(error) {
 }
 router.post("/import", async (req, res) => {
     const body = req.body ?? {};
-    const { spreadsheetId, apiKey } = body;
+    const { spreadsheetId } = body;
     if (!spreadsheetId)
         return res.status(400).json({ error: "spreadsheetId is required" });
-    const effectiveApiKey = apiKey || process.env.GOOGLE_API_KEY;
+    const effectiveApiKey = process.env.GOOGLE_API_KEY;
     if (!effectiveApiKey)
         return res.status(400).json({ error: "Google API key required" });
     try {
@@ -1037,8 +1052,8 @@ router.post("/import", async (req, res) => {
         const defaults = getDefaults();
         const db = await getDb();
         const importedReports = [];
-        for (const row of dataRows) {
-            const imported = buildReportRecordFromRow(headers, row, defaults);
+        for (const [index, row] of dataRows.entries()) {
+            const imported = buildReportRecordFromRow(headers, row, defaults, index + 2);
             const id = buildReportIdForImportedRecord(imported);
             const photoUrl = imported.photoUrl.trim() || getPlaceholderImageUrl(id.slice(-3), 80);
             importedReports.push({
@@ -1074,7 +1089,7 @@ router.post("/import", async (req, res) => {
     }
 });
 router.get("/status", async (_req, res) => {
-    if (!postgresAvailableForGoogleSheets) {
+    if (!(await refreshGoogleSheetsPostgresAvailability())) {
         return res.status(503).json({
             configured: Boolean(process.env.GOOGLE_FORM_ID && process.env.GOOGLE_API_KEY),
             status: "degraded",
@@ -1112,10 +1127,10 @@ router.get("/status", async (_req, res) => {
 router.post("/fetch", async (req, res) => {
     const body = req.body ?? {};
     const wait = Boolean(body.wait);
-    if (!postgresAvailableForGoogleSheets) {
+    if (!(await refreshGoogleSheetsPostgresAvailability())) {
         if (wait) {
             const formId = body.spreadsheetId || process.env.GOOGLE_FORM_ID;
-            const apiKey = body.apiKey || process.env.GOOGLE_API_KEY;
+            const apiKey = process.env.GOOGLE_API_KEY;
             const sheetName = body.sheetName || "Unsafe Acts/ Conditions (Responses)";
             if (!formId)
                 return res.status(400).json({ error: "Google Form ID not configured" });
@@ -1146,7 +1161,7 @@ router.post("/fetch", async (req, res) => {
         });
     }
     const formId = body.spreadsheetId || process.env.GOOGLE_FORM_ID;
-    const apiKey = body.apiKey || process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.GOOGLE_API_KEY;
     const sheetName = body.sheetName || "Unsafe Acts/ Conditions (Responses)";
     if (!formId)
         return res.status(400).json({ error: "Google Form ID not configured" });

@@ -141,17 +141,30 @@ export class DocumentsService {
     }
     async getAcknowledgementReport() {
         const docs = await this.repository.findAll({ status: "Approved" });
-        const report = [];
-        for (const doc of docs) {
-            const acks = await this.repository.findAcknowledgements(doc.id);
-            const lastAck = acks.length > 0 ? acks[0].acknowledgedAt : undefined;
-            report.push({
+        const documentIds = docs.map((doc) => doc.id);
+        const summaryFetcher = this.repository.findAcknowledgementSummaryByDocumentIds;
+        const acknowledgementSummary = summaryFetcher
+            ? await summaryFetcher.call(this.repository, documentIds)
+            : new Map(await Promise.all(documentIds.map(async (documentId) => {
+                const acknowledgements = await this.repository.findAcknowledgements(documentId);
+                return [
+                    documentId,
+                    {
+                        acknowledgements: acknowledgements.length,
+                        lastAcknowledgedAt: acknowledgements[0]?.acknowledgedAt,
+                    },
+                ];
+            })));
+        return docs
+            .map((doc) => {
+            const summary = acknowledgementSummary.get(doc.id);
+            return {
                 ...doc,
-                acknowledgements: acks.length,
-                lastAcknowledgedAt: lastAck,
-            });
-        }
-        return report.sort((a, b) => a.title.localeCompare(b.title));
+                acknowledgements: summary?.acknowledgements ?? 0,
+                lastAcknowledgedAt: summary?.lastAcknowledgedAt,
+            };
+        })
+            .sort((a, b) => a.title.localeCompare(b.title));
     }
     async createAccessLink(documentId, data, actor) {
         const existing = await this.repository.findById(documentId);

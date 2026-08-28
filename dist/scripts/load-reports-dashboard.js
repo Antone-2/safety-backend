@@ -61,6 +61,17 @@ function formatThresholdResult(label, passed, actual, expected) {
         expected,
     };
 }
+function formatAuthError(error, status) {
+    if (typeof error === "string" && error.trim())
+        return error;
+    if (error && typeof error === "object") {
+        if (typeof error.message === "string" && error.message.trim()) {
+            return error.message;
+        }
+        return JSON.stringify(error);
+    }
+    return `Login failed with status ${status}.`;
+}
 async function resolveToken(baseUrl) {
     const directToken = process.env.DASHBOARD_BENCH_TOKEN?.trim();
     if (directToken)
@@ -78,7 +89,7 @@ async function resolveToken(baseUrl) {
     });
     const payload = (await response.json().catch(() => ({})));
     if (!response.ok) {
-        throw new Error(payload.error || `Login failed with status ${response.status}.`);
+        throw new Error(formatAuthError(payload.error, response.status));
     }
     if (payload.requiresMfa || payload.mfaRequired) {
         throw new Error("Login requires MFA. Use DASHBOARD_BENCH_TOKEN from an authenticated session.");

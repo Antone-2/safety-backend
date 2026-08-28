@@ -63,3 +63,32 @@ export function getBullMqUnavailableMessage() {
     const version = getBullMqRedisVersion();
     return `BullMQ is unavailable${version ? ` on Redis ${version}` : ""}. Redis 5.0.0 or newer is required.`;
 }
+export async function getQueueStats() {
+    if (!bullConnection) {
+        return { available: false, reason: getBullMqUnavailableMessage(), queues: [] };
+    }
+    const stats = {};
+    const queues = {};
+    for (const [name, queue] of queueFactory.queues.entries()) {
+        try {
+            const [waiting, active, completed, failed, delayed] = await Promise.all([
+                queue.getWaitingCount(),
+                queue.getActiveCount(),
+                queue.getCompletedCount(),
+                queue.getFailedCount(),
+                queue.getDelayedCount(),
+            ]);
+            queues[name] = { waiting, active, completed, failed, delayed };
+        }
+        catch (error) {
+            queues[name] = {
+                error: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
+    return {
+        available: true,
+        redis: { host: bullConnection.host, port: bullConnection.port },
+        queues,
+    };
+}

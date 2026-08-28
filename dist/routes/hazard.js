@@ -6,7 +6,7 @@ const hazardService = new HazardService();
 router.get("/", authenticateUser, async (_req, res) => {
     try {
         const hazards = await hazardService.getAll();
-        res.json(hazards);
+        res.json({ data: hazards });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch hazards" });
@@ -15,7 +15,7 @@ router.get("/", authenticateUser, async (_req, res) => {
 router.get("/stats", authenticateUser, async (_req, res) => {
     try {
         const stats = await hazardService.getStats();
-        res.json(stats);
+        res.json({ data: stats });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch hazard stats" });
@@ -26,7 +26,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
         const hazard = await hazardService.getById(String(req.params.id));
         if (!hazard)
             return res.status(404).json({ error: "Hazard not found" });
-        res.json(hazard);
+        res.json({ data: hazard });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to fetch hazard" });
@@ -35,7 +35,7 @@ router.get("/:id", authenticateUser, async (req, res) => {
 router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const hazard = await hazardService.createReport({ ...req.body, createdBy: req.user?.name || "System" });
-        res.status(201).json(hazard);
+        res.status(201).json({ data: hazard });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to create hazard" });
@@ -44,7 +44,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
 router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req, res) => {
     try {
         const hazard = await hazardService.update(String(req.params.id), req.body);
-        res.json(hazard);
+        res.json({ data: hazard });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to update hazard" });
@@ -53,7 +53,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
 router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
     try {
         const result = await hazardService.delete(String(req.params.id));
-        res.json({ success: result });
+        res.json({ data: { success: result } });
     }
     catch (error) {
         res.status(500).json({ error: "Failed to delete hazard" });

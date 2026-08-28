@@ -8,7 +8,7 @@ const spillService = new SpillService();
 router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
   try {
     const spills = await spillService.getAll();
-    res.json(spills);
+    res.json({ data: spills });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch spill records" });
   }
@@ -17,7 +17,7 @@ router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
 router.get("/stats", authenticateUser, async (_req: AuthRequest, res) => {
   try {
     const stats = await spillService.getStats();
-    res.json(stats);
+    res.json({ data: stats });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch spill stats" });
   }
@@ -27,7 +27,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const spill = await spillService.getById(String(req.params.id));
     if (!spill) return res.status(404).json({ error: "Spill record not found" });
-    res.json(spill);
+    res.json({ data: spill });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch spill record" });
   }
@@ -36,7 +36,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
 router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const spill = await spillService.createSpill({ ...req.body, createdBy: req.user?.name || "System" });
-    res.status(201).json(spill);
+    res.status(201).json({ data: spill });
   } catch (error) {
     res.status(500).json({ error: "Failed to create spill record" });
   }
@@ -45,7 +45,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
 router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
   try {
     const spill = await spillService.update(String(req.params.id), req.body);
-    res.json(spill);
+    res.json({ data: spill });
   } catch (error) {
     res.status(500).json({ error: "Failed to update spill record" });
   }
@@ -54,7 +54,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
 router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
   try {
     const result = await spillService.delete(String(req.params.id));
-    res.json({ success: result });
+    res.json({ data: { success: result } });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete spill record" });
   }

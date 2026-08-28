@@ -16,7 +16,7 @@ export const CreateComplianceObligationSchema = z.object({
     lastComplianceDate: z.string().optional(),
     evidence: z.string().optional(),
     notes: z.string().max(1000).optional(),
-    createdBy: z.string().min(1).max(200),
+    createdBy: z.string().min(1).max(200).optional(),
 });
 export const UpdateComplianceObligationSchema = z.object({
     title: z.string().min(1).max(200).optional(),
@@ -46,7 +46,7 @@ export const CreateComplianceAuditSchema = z.object({
     criteria: z.string().max(2000).optional(),
     findings: z.array(z.unknown()).optional().default([]),
     reportUrl: z.string().optional(),
-    createdBy: z.string().min(1).max(200),
+    createdBy: z.string().min(1).max(200).optional(),
 });
 export const UpdateComplianceAuditSchema = z.object({
     title: z.string().min(1).max(200).optional(),
@@ -75,7 +75,7 @@ export const CreateLegalUpdateSchema = z.object({
     dueDate: z.string().optional(),
     status: LegalUpdateStatusSchema.default("New"),
     source: z.string().max(500).optional(),
-    createdBy: z.string().min(1).max(200),
+    createdBy: z.string().min(1).max(200).optional(),
 });
 export const UpdateLegalUpdateSchema = z.object({
     title: z.string().min(1).max(200).optional(),

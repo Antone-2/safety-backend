@@ -203,3 +203,47 @@ export const PERMIT_WORKFLOW: WorkflowDefinition = {
     },
   ],
 };
+
+export const MOC_WORKFLOW: WorkflowDefinition = {
+  name: "moc",
+  initialState: "Draft",
+  finalStates: ["Closed", "Rejected"],
+  transitions: [
+    {
+      from: "Draft",
+      event: "submit-review",
+      to: "Under Review",
+      requiredPermission: "moc:create",
+    },
+    {
+      from: "Under Review",
+      event: "approve",
+      to: "Approved",
+      requiredPermission: "moc:approve",
+    },
+    {
+      from: "Approved",
+      event: "start-implementation",
+      to: "Implementation",
+      requiredPermission: "moc:update",
+    },
+    {
+      from: "Implementation",
+      event: "complete-pssr",
+      to: "PSSR",
+      requiredPermission: "moc:approve",
+    },
+    {
+      from: "PSSR",
+      event: "close",
+      to: "Closed",
+      requiredPermission: "moc:approve",
+    },
+    {
+      from: "Under Review",
+      event: "reject",
+      to: "Rejected",
+      requiredPermission: "moc:approve",
+    },
+  ],
+};

@@ -3,7 +3,7 @@ import { cacheService } from "../../shared/infrastructure/redis/cache.service.js
 
 const REPORTS_CACHE_PREFIX = "reports";
 export const REPORTS_LIST_CACHE_TTL_SECONDS = 15;
-export const REPORTS_DASHBOARD_CACHE_TTL_SECONDS = 15;
+export const REPORTS_DASHBOARD_CACHE_TTL_SECONDS = 60;
 export const REPORTS_DETAIL_CACHE_TTL_SECONDS = 30;
 
 function normalizeValue(value: unknown): unknown {

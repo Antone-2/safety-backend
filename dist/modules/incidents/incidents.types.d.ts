@@ -36,6 +36,8 @@ export declare const IncidentSchema: z.ZodObject<{
     complianceRequired: z.ZodDefault<z.ZodBoolean>;
     complianceDueAt: z.ZodOptional<z.ZodString>;
     source: z.ZodDefault<z.ZodString>;
+    sourceKind: z.ZodOptional<z.ZodEnum<["database", "report-sync"]>>;
+    readonly: z.ZodOptional<z.ZodBoolean>;
     auditHistory: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     shift: string;
@@ -68,6 +70,8 @@ export declare const IncidentSchema: z.ZodObject<{
     witnessStatement?: string | undefined;
     regulatoryNotificationDate?: string | undefined;
     complianceDueAt?: string | undefined;
+    sourceKind?: "database" | "report-sync" | undefined;
+    readonly?: boolean | undefined;
     auditHistory?: string | undefined;
 }, {
     shift: string;
@@ -100,6 +104,8 @@ export declare const IncidentSchema: z.ZodObject<{
     regulatoryNotificationDate?: string | undefined;
     complianceRequired?: boolean | undefined;
     complianceDueAt?: string | undefined;
+    sourceKind?: "database" | "report-sync" | undefined;
+    readonly?: boolean | undefined;
     auditHistory?: string | undefined;
 }>;
 export declare const IncidentInputSchema: z.ZodObject<Omit<{
@@ -133,8 +139,10 @@ export declare const IncidentInputSchema: z.ZodObject<Omit<{
     complianceRequired: z.ZodDefault<z.ZodBoolean>;
     complianceDueAt: z.ZodOptional<z.ZodString>;
     source: z.ZodDefault<z.ZodString>;
+    sourceKind: z.ZodOptional<z.ZodEnum<["database", "report-sync"]>>;
+    readonly: z.ZodOptional<z.ZodBoolean>;
     auditHistory: z.ZodOptional<z.ZodString>;
-}, "id">, "strip", z.ZodTypeAny, {
+}, "id" | "sourceKind" | "readonly">, "strip", z.ZodTypeAny, {
     shift: string;
     type: "Unsafe Act" | "Unsafe Condition" | "Near Miss" | "First Aid" | "Medical Treatment" | "Lost Time" | "Fatality" | "Property Damage" | "Environmental";
     status: "Closed" | "Open" | "Investigating" | "Root Cause Analysis" | "CAPA Open";

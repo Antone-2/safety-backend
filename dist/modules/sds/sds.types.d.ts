@@ -47,7 +47,7 @@ export declare const CreateSdsSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Under Review" | "Expired" | "Active" | "Archived";
+    status: "Active" | "Under Review" | "Expired" | "Archived";
     createdBy: string;
     chemicalName: string;
     version?: string | undefined;
@@ -69,7 +69,7 @@ export declare const CreateSdsSchema: z.ZodObject<{
 }, {
     createdBy: string;
     chemicalName: string;
-    status?: "Under Review" | "Expired" | "Active" | "Archived" | undefined;
+    status?: "Active" | "Under Review" | "Expired" | "Archived" | undefined;
     version?: string | undefined;
     location?: string | undefined;
     ppeRequired?: string | undefined;
@@ -108,7 +108,7 @@ export declare const UpdateSdsSchema: z.ZodObject<{
     location: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Under Review" | "Expired" | "Active" | "Archived" | undefined;
+    status?: "Active" | "Under Review" | "Expired" | "Archived" | undefined;
     version?: string | null | undefined;
     location?: string | null | undefined;
     ppeRequired?: string | null | undefined;
@@ -127,7 +127,7 @@ export declare const UpdateSdsSchema: z.ZodObject<{
     spillProcedures?: string | null | undefined;
     nextReviewDate?: string | null | undefined;
 }, {
-    status?: "Under Review" | "Expired" | "Active" | "Archived" | undefined;
+    status?: "Active" | "Under Review" | "Expired" | "Archived" | undefined;
     version?: string | null | undefined;
     location?: string | null | undefined;
     ppeRequired?: string | null | undefined;

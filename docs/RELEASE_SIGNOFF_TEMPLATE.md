@@ -20,7 +20,7 @@ Use this document for each staging validation before a production release.
   `VITE_API_BASE` points to the intended API environment.
   File upload/CDN configuration is correct.
 - [ ] Backend config verified
-  `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, `FRONTEND_URL`, `APP_BASE_URL`, email provider, S3, and `GOOGLE_SHEETS_DATE_ORDER=dmy` are set correctly.
+  `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, `FRONTEND_URL`, email provider, S3, and `GOOGLE_SHEETS_DATE_ORDER=dmy` are set correctly.
 - [ ] Secrets source verified
   No production or staging secrets are coming from committed files.
 
@@ -79,4 +79,3 @@ Use this document for each staging validation before a production release.
 - Release decision: `GO` / `NO-GO`
 - Decision timestamp:
 - Notes:
-

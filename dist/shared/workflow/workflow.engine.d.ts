@@ -28,3 +28,4 @@ export declare class WorkflowEngine {
 export declare const INCIDENT_WORKFLOW: WorkflowDefinition;
 export declare const REPORT_WORKFLOW: WorkflowDefinition;
 export declare const PERMIT_WORKFLOW: WorkflowDefinition;
+export declare const MOC_WORKFLOW: WorkflowDefinition;

@@ -2012,6 +2012,13 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
     `,
   },
   {
+    id: "060_reports_reporter_index",
+    description: "Add index on reports.reporter for dashboard top reporters query",
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_reports_reporter ON reports(reporter);
+    `,
+  },
+  {
     id: "061_emergency_tables",
     description: "Create emergency plans, drills, and emergency contacts tables",
     sql: `
@@ -2184,7 +2191,8 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
             AND table_name = 'reports'
             AND column_name = 'date'
         ) THEN
-          EXECUTE 'CREATE INDEX IF NOT EXISTS idx_reports_date_ny ON reports ((CAST(date AT TIME ZONE ''America/New_York'' AS DATE)))';
+          EXECUTE format('DROP INDEX IF EXISTS %I', 'idx_reports_date_ny');
+          EXECUTE 'CREATE INDEX idx_reports_date_ny ON reports ((CAST(date AT TIME ZONE ''America/New_York'' AS DATE)))';
         END IF;
 
         IF EXISTS (
@@ -2194,7 +2202,8 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
             AND table_name = 'incidents'
             AND column_name = 'date'
         ) THEN
-          EXECUTE 'CREATE INDEX IF NOT EXISTS idx_incidents_date_ny ON incidents ((CAST(date AT TIME ZONE ''America/New_York'' AS DATE)))';
+          EXECUTE format('DROP INDEX IF EXISTS %I', 'idx_incidents_date_ny');
+          EXECUTE 'CREATE INDEX idx_incidents_date_ny ON incidents ((CAST(date AT TIME ZONE ''America/New_York'' AS DATE)))';
         END IF;
 
         IF EXISTS (
@@ -2204,7 +2213,8 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
             AND table_name = 'reports'
             AND column_name = 'due_at'
         ) THEN
-          EXECUTE 'CREATE INDEX IF NOT EXISTS idx_reports_due_at_ny ON reports ((CAST(due_at AT TIME ZONE ''America/New_York'' AS DATE)))';
+          EXECUTE format('DROP INDEX IF EXISTS %I', 'idx_reports_due_at_ny');
+          EXECUTE 'CREATE INDEX idx_reports_due_at_ny ON reports ((CAST(due_at AT TIME ZONE ''America/New_York'' AS DATE)))';
         END IF;
       END $$;
     `,
@@ -2302,6 +2312,483 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
       CREATE INDEX IF NOT EXISTS idx_bow_ties_created_at ON bow_ties(created_at DESC);
     `,
   },
+  {
+    id: "062_users_org_governance_fields",
+    description: "Add organization, delegation, and lifecycle support fields to users",
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_no TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS line_manager_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS supervisor_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS delegated_to_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS delegated_from TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS delegated_until TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS idx_users_employee_no ON users(employee_no);
+      CREATE INDEX IF NOT EXISTS idx_users_department ON users(department);
+      CREATE INDEX IF NOT EXISTS idx_users_line_manager_id ON users(line_manager_id);
+      CREATE INDEX IF NOT EXISTS idx_users_supervisor_id ON users(supervisor_id);
+      CREATE INDEX IF NOT EXISTS idx_users_delegated_to_user_id ON users(delegated_to_user_id);
+      CREATE INDEX IF NOT EXISTS idx_users_delegated_until ON users(delegated_until);
+      CREATE INDEX IF NOT EXISTS idx_users_last_login_at ON users(last_login_at);
+    `,
+  },
+  {
+    id: "063_inspections_foundation",
+    description: "Create inspection templates, inspections, and findings tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS inspection_templates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        area TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        checklist JSONB NOT NULL DEFAULT '[]'::jsonb,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_inspection_templates_site ON inspection_templates(site);
+      CREATE INDEX IF NOT EXISTS idx_inspection_templates_department ON inspection_templates(department);
+      CREATE INDEX IF NOT EXISTS idx_inspection_templates_active ON inspection_templates(active);
+
+      CREATE TABLE IF NOT EXISTS inspections (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        template_id UUID REFERENCES inspection_templates(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        inspection_date TIMESTAMPTZ NOT NULL,
+        due_date TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Scheduled',
+        inspector TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        area TEXT NOT NULL,
+        assigned_to TEXT,
+        recurrence TEXT,
+        notes TEXT,
+        checklist_total INTEGER NOT NULL DEFAULT 0,
+        checklist_completed INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_inspections_status ON inspections(status);
+      CREATE INDEX IF NOT EXISTS idx_inspections_due_date ON inspections(due_date);
+      CREATE INDEX IF NOT EXISTS idx_inspections_site_department ON inspections(site, department);
+      CREATE INDEX IF NOT EXISTS idx_inspections_template_id ON inspections(template_id);
+
+      CREATE TABLE IF NOT EXISTS inspection_findings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        inspection_id UUID NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+        checklist_item_id TEXT,
+        observation TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        action_owner TEXT,
+        due_date TIMESTAMPTZ,
+        status TEXT NOT NULL DEFAULT 'Open',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_inspection_findings_inspection_id ON inspection_findings(inspection_id);
+      CREATE INDEX IF NOT EXISTS idx_inspection_findings_status ON inspection_findings(status);
+      CREATE INDEX IF NOT EXISTS idx_inspection_findings_due_date ON inspection_findings(due_date);
+    `,
+  },
+  {
+    id: "064_safety_observations",
+    description: "Create safety observations / BBS table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS safety_observations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        category TEXT NOT NULL,
+        behavior TEXT NOT NULL,
+        location TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        observer_name TEXT NOT NULL,
+        observer_department TEXT,
+        observed_person TEXT,
+        observed_team TEXT,
+        shift TEXT,
+        observation_date TIMESTAMPTZ NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'Low',
+        status TEXT NOT NULL DEFAULT 'Open',
+        immediate_action TEXT,
+        coaching_note TEXT,
+        assigned_to TEXT,
+        due_date TIMESTAMPTZ,
+        follow_up_required BOOLEAN NOT NULL DEFAULT FALSE,
+        verification_note TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_safety_observations_type ON safety_observations(type);
+      CREATE INDEX IF NOT EXISTS idx_safety_observations_status ON safety_observations(status);
+      CREATE INDEX IF NOT EXISTS idx_safety_observations_site_department ON safety_observations(site, department);
+      CREATE INDEX IF NOT EXISTS idx_safety_observations_observation_date ON safety_observations(observation_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_safety_observations_assigned_to ON safety_observations(assigned_to);
+    `,
+  },
+  {
+    id: "065_moc_records",
+    description: "Create management of change records table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS moc_records (
+        id TEXT PRIMARY KEY,
+        moc_no TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        change_type TEXT NOT NULL,
+        area TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        requested_at TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Draft',
+        summary TEXT NOT NULL,
+        justification TEXT NOT NULL,
+        risk_review_summary TEXT,
+        risk_level TEXT NOT NULL DEFAULT 'Medium',
+        implementation_plan TEXT,
+        pssr_required BOOLEAN NOT NULL DEFAULT FALSE,
+        pssr_completed BOOLEAN NOT NULL DEFAULT FALSE,
+        approver TEXT,
+        approved_at TIMESTAMPTZ,
+        assigned_to TEXT,
+        due_date TIMESTAMPTZ,
+        closed_at TIMESTAMPTZ,
+        rejection_reason TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_moc_records_status ON moc_records(status);
+      CREATE INDEX IF NOT EXISTS idx_moc_records_change_type ON moc_records(change_type);
+      CREATE INDEX IF NOT EXISTS idx_moc_records_site ON moc_records(site);
+      CREATE INDEX IF NOT EXISTS idx_moc_records_department ON moc_records(department);
+      CREATE INDEX IF NOT EXISTS idx_moc_records_due_date ON moc_records(due_date);
+      CREATE INDEX IF NOT EXISTS idx_moc_records_requested_at ON moc_records(requested_at DESC);
+    `,
+  },
+  {
+    id: "066_organization_master_data",
+    description: "Create organization sites and departments master data tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS organization_sites (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        code TEXT UNIQUE,
+        name TEXT NOT NULL UNIQUE,
+        region TEXT,
+        country TEXT,
+        manager_name TEXT,
+        escalation_email TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_sites_active ON organization_sites(active);
+      CREATE INDEX IF NOT EXISTS idx_organization_sites_name ON organization_sites(name);
+
+      CREATE TABLE IF NOT EXISTS organization_departments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        site_id UUID NOT NULL REFERENCES organization_sites(id) ON DELETE CASCADE,
+        code TEXT,
+        name TEXT NOT NULL,
+        manager_name TEXT,
+        escalation_email TEXT,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(site_id, name)
+      );
+      CREATE INDEX IF NOT EXISTS idx_organization_departments_site_id ON organization_departments(site_id);
+      CREATE INDEX IF NOT EXISTS idx_organization_departments_active ON organization_departments(active);
+      CREATE INDEX IF NOT EXISTS idx_organization_departments_name ON organization_departments(name);
+    `,
+  },
+  {
+    id: "067_exposure_monitoring",
+    description: "Create occupational hygiene / exposure monitoring records table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS exposure_monitoring_records (
+        id TEXT PRIMARY KEY,
+        sample_no TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        exposure_type TEXT NOT NULL,
+        sampling_method TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        area TEXT NOT NULL,
+        job_title TEXT,
+        monitored_group TEXT,
+        sampled_person TEXT,
+        sample_date TIMESTAMPTZ NOT NULL,
+        analysis_date TIMESTAMPTZ,
+        parameter TEXT NOT NULL,
+        unit TEXT NOT NULL,
+        result_value NUMERIC NOT NULL DEFAULT 0,
+        limit_value NUMERIC NOT NULL DEFAULT 0,
+        action_level NUMERIC,
+        exceedance BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'Planned',
+        risk_level TEXT NOT NULL DEFAULT 'Medium',
+        controls_in_place TEXT,
+        recommendations TEXT,
+        corrective_action_owner TEXT,
+        corrective_action_due_date TIMESTAMPTZ,
+        medical_surveillance_required BOOLEAN NOT NULL DEFAULT FALSE,
+        linked_health_record_id TEXT,
+        laboratory_name TEXT,
+        certificate_url TEXT,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_exposure_monitoring_site_department ON exposure_monitoring_records(site, department);
+      CREATE INDEX IF NOT EXISTS idx_exposure_monitoring_type ON exposure_monitoring_records(exposure_type);
+      CREATE INDEX IF NOT EXISTS idx_exposure_monitoring_status ON exposure_monitoring_records(status);
+      CREATE INDEX IF NOT EXISTS idx_exposure_monitoring_exceedance ON exposure_monitoring_records(exceedance);
+      CREATE INDEX IF NOT EXISTS idx_exposure_monitoring_due_date ON exposure_monitoring_records(corrective_action_due_date);
+      CREATE INDEX IF NOT EXISTS idx_exposure_monitoring_sample_date ON exposure_monitoring_records(sample_date DESC);
+    `,
+  },
+  {
+    id: "068_visitor_access_records",
+    description: "Create visitor registration, access, and induction records table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS visitor_access_records (
+        id TEXT PRIMARY KEY,
+        visitor_no TEXT NOT NULL UNIQUE,
+        full_name TEXT NOT NULL,
+        company_name TEXT,
+        id_number TEXT,
+        phone TEXT,
+        email TEXT,
+        host_name TEXT NOT NULL,
+        host_user_id TEXT,
+        site TEXT NOT NULL,
+        department TEXT,
+        area_to_visit TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        visit_date TIMESTAMPTZ NOT NULL,
+        check_in_at TIMESTAMPTZ,
+        check_out_at TIMESTAMPTZ,
+        access_status TEXT NOT NULL DEFAULT 'Planned',
+        induction_status TEXT NOT NULL DEFAULT 'Pending',
+        induction_completed_at TIMESTAMPTZ,
+        induction_expiry_date TIMESTAMPTZ,
+        badge_no TEXT,
+        vehicle_reg_no TEXT,
+        access_card_issued BOOLEAN NOT NULL DEFAULT FALSE,
+        ppe_issued TEXT,
+        restrictions TEXT,
+        emergency_contact_name TEXT,
+        emergency_contact_phone TEXT,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_visitor_access_visit_date ON visitor_access_records(visit_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_visitor_access_status ON visitor_access_records(access_status);
+      CREATE INDEX IF NOT EXISTS idx_visitor_induction_status ON visitor_access_records(induction_status);
+      CREATE INDEX IF NOT EXISTS idx_visitor_site_host ON visitor_access_records(site, host_name);
+      CREATE INDEX IF NOT EXISTS idx_visitor_checkin_checkout ON visitor_access_records(check_in_at, check_out_at);
+    `,
+  },
+  {
+    id: "069_safety_alerts",
+    description: "Create safety alerts and acknowledgement tracking tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS safety_alerts (
+        id TEXT PRIMARY KEY,
+        alert_no TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'Medium',
+        status TEXT NOT NULL DEFAULT 'Draft',
+        summary TEXT NOT NULL,
+        immediate_actions TEXT,
+        lessons_learned TEXT NOT NULL,
+        source_type TEXT,
+        source_ref TEXT,
+        audience TEXT,
+        sites TEXT[],
+        departments TEXT[],
+        effective_from TIMESTAMPTZ NOT NULL,
+        effective_until TIMESTAMPTZ,
+        acknowledgement_required BOOLEAN NOT NULL DEFAULT FALSE,
+        published_by TEXT,
+        published_at TIMESTAMPTZ,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_safety_alerts_status ON safety_alerts(status);
+      CREATE INDEX IF NOT EXISTS idx_safety_alerts_category ON safety_alerts(category);
+      CREATE INDEX IF NOT EXISTS idx_safety_alerts_severity ON safety_alerts(severity);
+      CREATE INDEX IF NOT EXISTS idx_safety_alerts_effective_from ON safety_alerts(effective_from DESC);
+
+      CREATE TABLE IF NOT EXISTS safety_alert_acknowledgements (
+        id TEXT PRIMARY KEY,
+        alert_id TEXT NOT NULL REFERENCES safety_alerts(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        user_name TEXT NOT NULL,
+        user_email TEXT,
+        acknowledged_at TIMESTAMPTZ NOT NULL,
+        comments TEXT,
+        UNIQUE(alert_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_safety_alert_ack_alert ON safety_alert_acknowledgements(alert_id);
+      CREATE INDEX IF NOT EXISTS idx_safety_alert_ack_user ON safety_alert_acknowledgements(user_id);
+    `,
+  },
+  {
+    id: "070_calibration_records",
+    description: "Create calibration and safety-critical device assurance records table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS calibration_records (
+        id TEXT PRIMARY KEY,
+        calibration_no TEXT NOT NULL UNIQUE,
+        equipment_id TEXT,
+        equipment_name TEXT NOT NULL,
+        equipment_type TEXT,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        location TEXT,
+        criticality TEXT NOT NULL DEFAULT 'High',
+        calibration_type TEXT NOT NULL DEFAULT 'Routine',
+        status TEXT NOT NULL DEFAULT 'Planned',
+        last_calibration_date TIMESTAMPTZ,
+        due_date TIMESTAMPTZ NOT NULL,
+        performed_by TEXT,
+        certificate_no TEXT,
+        certificate_url TEXT,
+        tolerance TEXT,
+        result_summary TEXT,
+        passed BOOLEAN NOT NULL DEFAULT TRUE,
+        out_of_tolerance BOOLEAN NOT NULL DEFAULT FALSE,
+        action_required TEXT,
+        action_owner TEXT,
+        action_due_date TIMESTAMPTZ,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_calibration_records_due_date ON calibration_records(due_date ASC);
+      CREATE INDEX IF NOT EXISTS idx_calibration_records_status ON calibration_records(status);
+      CREATE INDEX IF NOT EXISTS idx_calibration_records_criticality ON calibration_records(criticality);
+      CREATE INDEX IF NOT EXISTS idx_calibration_records_equipment_id ON calibration_records(equipment_id);
+      CREATE INDEX IF NOT EXISTS idx_calibration_records_out_of_tolerance ON calibration_records(out_of_tolerance);
+      CREATE INDEX IF NOT EXISTS idx_calibration_records_site_department ON calibration_records(site, department);
+    `,
+  },
+  {
+    id: "071_legal_register",
+    description: "Create legal register and obligation assurance lifecycle tables",
+    sql: `
+      CREATE TABLE IF NOT EXISTS legal_register_entries (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        legislation TEXT NOT NULL,
+        jurisdiction TEXT NOT NULL,
+        authority TEXT NOT NULL,
+        effective_date TEXT NOT NULL,
+        review_date TEXT,
+        summary TEXT NOT NULL,
+        scope JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status TEXT NOT NULL DEFAULT 'Active',
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_legal_register_entries_status ON legal_register_entries(status);
+      CREATE INDEX IF NOT EXISTS idx_legal_register_entries_legislation ON legal_register_entries(legislation);
+
+      CREATE TABLE IF NOT EXISTS legal_obligations (
+        id TEXT PRIMARY KEY,
+        register_entry_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        requirement TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        responsibility TEXT NOT NULL,
+        site TEXT NOT NULL,
+        department TEXT NOT NULL,
+        due_date TIMESTAMPTZ,
+        lifecycle TEXT NOT NULL DEFAULT 'Draft',
+        last_review_date TIMESTAMPTZ,
+        next_review_date TIMESTAMPTZ,
+        evidence_count INTEGER NOT NULL DEFAULT 0,
+        open_actions_count INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_legal_obligations_register_entry ON legal_obligations(register_entry_id);
+      CREATE INDEX IF NOT EXISTS idx_legal_obligations_lifecycle ON legal_obligations(lifecycle);
+      CREATE INDEX IF NOT EXISTS idx_legal_obligations_due_date ON legal_obligations(due_date ASC);
+      CREATE INDEX IF NOT EXISTS idx_legal_obligations_site_department ON legal_obligations(site, department);
+
+      CREATE TABLE IF NOT EXISTS obligation_reviews (
+        id TEXT PRIMARY KEY,
+        obligation_id TEXT NOT NULL REFERENCES legal_obligations(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Planned',
+        review_date TEXT NOT NULL,
+        reviewer TEXT NOT NULL,
+        findings TEXT NOT NULL,
+        conclusion TEXT NOT NULL,
+        follow_up_required BOOLEAN NOT NULL DEFAULT FALSE,
+        follow_up_date TIMESTAMPTZ,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_obligation_reviews_obligation ON obligation_reviews(obligation_id);
+      CREATE INDEX IF NOT EXISTS idx_obligation_reviews_status ON obligation_reviews(status);
+
+      CREATE TABLE IF NOT EXISTS obligation_evidence (
+        id TEXT PRIMARY KEY,
+        obligation_id TEXT NOT NULL REFERENCES legal_obligations(id) ON DELETE CASCADE,
+        review_id TEXT REFERENCES obligation_reviews(id) ON DELETE SET NULL,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        description TEXT,
+        uploaded_by TEXT NOT NULL,
+        uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_obligation_evidence_obligation ON obligation_evidence(obligation_id);
+      CREATE INDEX IF NOT EXISTS idx_obligation_evidence_review ON obligation_evidence(review_id);
+
+      CREATE TABLE IF NOT EXISTS obligation_actions (
+        id TEXT PRIMARY KEY,
+        obligation_id TEXT NOT NULL REFERENCES legal_obligations(id) ON DELETE CASCADE,
+        review_id TEXT REFERENCES obligation_reviews(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Open',
+        completed_at TIMESTAMPTZ,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_obligation_actions_obligation ON obligation_actions(obligation_id);
+      CREATE INDEX IF NOT EXISTS idx_obligation_actions_status ON obligation_actions(status);
+      CREATE INDEX IF NOT EXISTS idx_obligation_actions_due_date ON obligation_actions(due_date ASC);
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {
@@ -2312,6 +2799,20 @@ async function ensureMigrationsTable(client: PoolClient) {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+}
+
+function isDuplicateObjectError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const detail = (error as { detail?: string })?.detail ?? "";
+  const table = (error as { table?: string })?.table ?? "";
+  return (
+    msg.includes("duplicate key") ||
+    msg.includes("already exists") ||
+    detail.includes("already exists") ||
+    table.includes("pg_class_relname_nsp") ||
+    table.includes("pg_type_typname_nsp") ||
+    table.includes("schema_migrations_pkey")
+  );
 }
 
 export async function runPostgresMigrations(
@@ -2327,40 +2828,53 @@ export async function runPostgresMigrations(
     setupClient.release();
   }
 
-  // Apply each migration in its OWN transaction. A single failing migration is
-  // logged and skipped instead of rolling back every migration — otherwise one
-  // broken migration would prevent foundation tables (e.g. `capa`) from ever
-  // being created while earlier tables (from a previous run) survive.
+  // Apply each migration in its OWN transaction using a SINGLE connection
+  // for both the existence check and the migration SQL. This avoids the race
+  // condition where a separate check connection fails to see a record
+  // committed by a concurrent retry, causing duplicate-key crashes.
   for (const migration of POSTGRES_MIGRATIONS) {
-    const checkClient = await pool.connect();
-    let alreadyApplied = false;
+    const client = await pool.connect();
     try {
-      const existing = await checkClient.query(
+      await client.query("BEGIN");
+
+      const existing = await client.query(
         "SELECT id FROM schema_migrations WHERE id = $1",
         [migration.id],
       );
-      alreadyApplied = (existing.rowCount ?? 0) > 0;
-    } finally {
-      checkClient.release();
-    }
-    if (alreadyApplied) continue;
+      const alreadyApplied = (existing.rowCount ?? 0) > 0;
 
-    const runClient = await pool.connect();
-    try {
-      await runClient.query("BEGIN");
-      await runClient.query(migration.sql);
-      await runClient.query(
-        "INSERT INTO schema_migrations (id, description) VALUES ($1, $2)",
+      if (alreadyApplied) {
+        await client.query("ROLLBACK");
+        continue;
+      }
+
+      try {
+        await client.query(migration.sql);
+      } catch (error) {
+        // If the SQL fails because objects (tables, indexes, types) already
+        // exist from a previous partially-committed run, record the migration
+        // as applied rather than leaving it in a perpetual retry loop.
+        if (!isDuplicateObjectError(error)) throw error;
+        console.warn(
+          `[migrations] ${migration.id}: SQL objects already exist, recording as applied`,
+        );
+      }
+
+      // ON CONFLICT DO NOTHING makes the insert idempotent even if a
+      // concurrent retry raced past the SELECT above.
+      await client.query(
+        "INSERT INTO schema_migrations (id, description) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
         [migration.id, migration.description],
       );
-      await runClient.query("COMMIT");
+      await client.query("COMMIT");
       applied.push(migration.id);
       console.log(`[migrations] Applied ${migration.id}`);
     } catch (error) {
-      await runClient.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => {});
       console.error(`[migrations] FAILED to apply ${migration.id}:`, error);
+      throw error;
     } finally {
-      runClient.release();
+      client.release();
     }
   }
 

@@ -1,0 +1,126 @@
+import { z } from "zod";
+
+export const ExposureTypeSchema = z.enum([
+  "Noise",
+  "Dust",
+  "Fume",
+  "Vapour",
+  "Chemical",
+  "Heat Stress",
+  "Lighting",
+  "Radiation",
+  "Other",
+]);
+
+export const SamplingMethodSchema = z.enum([
+  "Personal",
+  "Area",
+  "Grab",
+  "Continuous",
+  "Dosimetry",
+  "Observation",
+]);
+
+export const ExposureStatusSchema = z.enum(["Planned", "Sampled", "Reviewed", "Closed"]);
+export const ExposureRiskLevelSchema = z.enum(["Low", "Medium", "High", "Critical"]);
+
+export type ExposureType = z.infer<typeof ExposureTypeSchema>;
+export type SamplingMethod = z.infer<typeof SamplingMethodSchema>;
+export type ExposureStatus = z.infer<typeof ExposureStatusSchema>;
+export type ExposureRiskLevel = z.infer<typeof ExposureRiskLevelSchema>;
+
+export interface ExposureMonitoringRecord {
+  id: string;
+  sampleNo: string;
+  title: string;
+  exposureType: ExposureType;
+  samplingMethod: SamplingMethod;
+  site: string;
+  department: string;
+  area: string;
+  jobTitle?: string;
+  monitoredGroup?: string;
+  sampledPerson?: string;
+  sampleDate: string;
+  analysisDate?: string;
+  parameter: string;
+  unit: string;
+  resultValue: number;
+  limitValue: number;
+  actionLevel?: number;
+  exceedance: boolean;
+  status: ExposureStatus;
+  riskLevel: ExposureRiskLevel;
+  controlsInPlace?: string;
+  recommendations?: string;
+  correctiveActionOwner?: string;
+  correctiveActionDueDate?: string;
+  medicalSurveillanceRequired: boolean;
+  linkedHealthRecordId?: string;
+  laboratoryName?: string;
+  certificateUrl?: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CreateExposureMonitoringSchema = z.object({
+  title: z.string().min(1).max(200),
+  exposureType: ExposureTypeSchema,
+  samplingMethod: SamplingMethodSchema,
+  site: z.string().min(1).max(200),
+  department: z.string().min(1).max(100),
+  area: z.string().min(1).max(200),
+  jobTitle: z.string().max(160).optional(),
+  monitoredGroup: z.string().max(160).optional(),
+  sampledPerson: z.string().max(200).optional(),
+  sampleDate: z.string().min(1),
+  analysisDate: z.string().optional(),
+  parameter: z.string().min(1).max(120),
+  unit: z.string().min(1).max(40),
+  resultValue: z.number().nonnegative(),
+  limitValue: z.number().nonnegative(),
+  actionLevel: z.number().nonnegative().optional(),
+  status: ExposureStatusSchema.default("Planned"),
+  riskLevel: ExposureRiskLevelSchema.default("Medium"),
+  controlsInPlace: z.string().max(2000).optional(),
+  recommendations: z.string().max(2000).optional(),
+  correctiveActionOwner: z.string().max(200).optional(),
+  correctiveActionDueDate: z.string().optional(),
+  medicalSurveillanceRequired: z.boolean().default(false),
+  linkedHealthRecordId: z.string().max(120).optional(),
+  laboratoryName: z.string().max(200).optional(),
+  certificateUrl: z.string().optional(),
+  notes: z.string().max(1000).optional(),
+  createdBy: z.string().min(1).max(200),
+});
+
+export const UpdateExposureMonitoringSchema = CreateExposureMonitoringSchema.partial().extend({
+  jobTitle: z.string().max(160).optional().nullable(),
+  monitoredGroup: z.string().max(160).optional().nullable(),
+  sampledPerson: z.string().max(200).optional().nullable(),
+  analysisDate: z.string().optional().nullable(),
+  actionLevel: z.number().nonnegative().optional().nullable(),
+  controlsInPlace: z.string().max(2000).optional().nullable(),
+  recommendations: z.string().max(2000).optional().nullable(),
+  correctiveActionOwner: z.string().max(200).optional().nullable(),
+  correctiveActionDueDate: z.string().optional().nullable(),
+  linkedHealthRecordId: z.string().max(120).optional().nullable(),
+  laboratoryName: z.string().max(200).optional().nullable(),
+  certificateUrl: z.string().optional().nullable(),
+  notes: z.string().max(1000).optional().nullable(),
+});
+
+export type CreateExposureMonitoringInput = z.infer<typeof CreateExposureMonitoringSchema>;
+export type UpdateExposureMonitoringInput = z.infer<typeof UpdateExposureMonitoringSchema>;
+
+export interface ExposureMonitoringStats {
+  total: number;
+  planned: number;
+  sampled: number;
+  reviewed: number;
+  exceedances: number;
+  medicalSurveillanceRequired: number;
+  overdueActions: number;
+}

@@ -189,20 +189,40 @@ export class DocumentsService {
 
   async getAcknowledgementReport() {
     const docs = await this.repository.findAll({ status: "Approved" });
-    const report: (Document & {
-      acknowledgements: number;
-      lastAcknowledgedAt?: string;
-    })[] = [];
-    for (const doc of docs) {
-      const acks = await this.repository.findAcknowledgements(doc.id);
-      const lastAck = acks.length > 0 ? acks[0].acknowledgedAt : undefined;
-      report.push({
-        ...doc,
-        acknowledgements: acks.length,
-        lastAcknowledgedAt: lastAck,
-      });
-    }
-    return report.sort((a, b) => a.title.localeCompare(b.title));
+    const documentIds = docs.map((doc) => doc.id);
+    const summaryFetcher = (
+      this.repository as DocumentsRepository & {
+        findAcknowledgementSummaryByDocumentIds?: (
+          ids: string[],
+        ) => Promise<Map<string, { acknowledgements: number; lastAcknowledgedAt?: string }>>;
+      }
+    ).findAcknowledgementSummaryByDocumentIds;
+    const acknowledgementSummary = summaryFetcher
+      ? await summaryFetcher.call(this.repository, documentIds)
+      : new Map(
+          await Promise.all(
+            documentIds.map(async (documentId) => {
+              const acknowledgements = await this.repository.findAcknowledgements(documentId);
+              return [
+                documentId,
+                {
+                  acknowledgements: acknowledgements.length,
+                  lastAcknowledgedAt: acknowledgements[0]?.acknowledgedAt,
+                },
+              ] as const;
+            }),
+          ),
+        );
+    return docs
+      .map((doc) => {
+        const summary = acknowledgementSummary.get(doc.id);
+        return {
+          ...doc,
+          acknowledgements: summary?.acknowledgements ?? 0,
+          lastAcknowledgedAt: summary?.lastAcknowledgedAt,
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
   }
 
   async createAccessLink(

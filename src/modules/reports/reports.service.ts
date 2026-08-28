@@ -56,10 +56,40 @@ export type ReportFilters = {
   all?: boolean;
 };
 
+const DASHBOARD_ANALYTICS_SAMPLE_LIMIT = Math.max(
+  50,
+  Math.min(200, Number(process.env.REPORTS_DASHBOARD_ANALYTICS_LIMIT || 150) || 150),
+);
+
 export type TopReporterEntry = {
   reporter: string;
   reportCount: number;
 };
+
+export type LeaderboardFilters = {
+  month?: string;
+  reporter?: string;
+};
+
+export function buildLeaderboardFilter(filters: LeaderboardFilters) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+
+  if (filters.month) {
+    params.push(filters.month.trim());
+    where.push(`month = $${params.length}`);
+  }
+
+  if (filters.reporter && filters.reporter.trim()) {
+    params.push(filters.reporter.trim());
+    where.push(`LOWER(TRIM(reporter)) = LOWER(TRIM($${params.length}))`);
+  }
+
+  return {
+    whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
+    params,
+  };
+}
 
 type ReportRow = Record<string, any>;
 type CommentRow = {
@@ -611,9 +641,10 @@ export class ReportsService {
         return await this.listPg(filters, page, limit);
       } catch (error) {
         console.warn(
-          "Reports list falling back to SQLite:",
+          "Reports list failed in PostgreSQL-only mode:",
           error instanceof Error ? error.message : String(error),
         );
+        throw error;
       }
     }
     return this.listSqlite(filters, page, limit);
@@ -628,8 +659,8 @@ export class ReportsService {
     );
     const rows = filters.all
       ? await pgPool.query(
-          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC`,
-          params,
+          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT $${params.length + 1}`,
+          [...params, 500],
         )
       : await pgPool.query(
           `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -661,8 +692,8 @@ export class ReportsService {
     const rows = filters.all
       ? allRows(
           db,
-          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC`,
-          params,
+          `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT ?`,
+          [...params, 500],
         )
       : allRows(
           db,
@@ -676,6 +707,34 @@ export class ReportsService {
       page,
       limit: filters.all ? rows.length : limit,
     };
+  }
+
+  async listDashboardAnalytics(
+    filters: ReportFilters = {},
+    maxRows = DASHBOARD_ANALYTICS_SAMPLE_LIMIT,
+  ) {
+    const safeLimit = Math.max(1, Math.min(500, Math.trunc(maxRows) || DASHBOARD_ANALYTICS_SAMPLE_LIMIT));
+    if (isPgAvailable()) {
+      const { whereSql, params } = buildPgFilter(filters);
+      const rows = await pgPool.query(
+        `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT $${params.length + 1}`,
+        [...params, safeLimit],
+      );
+      return rows.rows
+        .map((row) => mapReport(row))
+        .filter((row): row is NonNullable<ReturnType<typeof mapReport>> => row !== null);
+    }
+
+    const db = await getDb();
+    const { whereSql, params } = buildSqliteFilter(filters);
+    const rows = allRows(
+      db,
+      `SELECT * FROM reports WHERE ${whereSql} ORDER BY date DESC LIMIT ?`,
+      [...params, safeLimit],
+    );
+    return rows
+      .map((row) => mapReport(row))
+      .filter((row): row is NonNullable<ReturnType<typeof mapReport>> => row !== null);
   }
 
   async getById(id: string) {
@@ -985,9 +1044,10 @@ export class ReportsService {
         );
       } catch (error) {
         console.warn(
-          "PostgreSQL assignment update failed; falling back to SQLite:",
+          "PostgreSQL assignment update failed in PostgreSQL-only mode:",
           error instanceof Error ? error.message : String(error),
         );
+        throw error;
       }
     }
     return this.updateAssignmentSqlite(id, assignedTo, assignedToCopy, request);
@@ -1936,17 +1996,272 @@ export class ReportsService {
     return this.bulkUpdateStatusSqlite(cleanIds, status, request);
   }
 
-  private async bulkUpdateStatusPg(ids: string[], status: string, request?: any) {
-    const beforeStatuses = new Map<string, string | undefined>();
-    for (const id of ids) {
-      const existing = await this.getById(id);
-      if (existing) beforeStatuses.set(id, existing.status);
+  async getLeaderboard(month?: string, reporter?: string) {
+    const safeMonth = typeof month === "string" ? month.trim() : "";
+    const safeReporter = typeof reporter === "string" ? reporter.trim() : "";
+
+    if (isPgAvailable()) {
+      const currentMonthSql = `
+        SELECT
+          CASE
+            WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+            ELSE 'Unnamed reporter'
+          END AS reporter,
+          COUNT(*)::int AS report_count
+        FROM reports
+        WHERE COALESCE(anonymous, FALSE) = FALSE
+          AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+          AND ${REPORT_LOCAL_DATE_SQL} >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE
+          AND ${REPORT_LOCAL_DATE_SQL} < (date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE + INTERVAL '1 month')
+          ${safeReporter ? `AND LOWER(TRIM(reporter)) = LOWER(TRIM($1))` : ""}
+        GROUP BY 1
+        ORDER BY report_count DESC, reporter ASC
+        LIMIT 15
+      `;
+      const currentMonthParams = safeReporter ? [safeReporter] : [];
+      const currentMonth = await pgPool.query<{ reporter: string; report_count: number }>(currentMonthSql, currentMonthParams);
+
+      const availableMonths = await pgPool.query<{ month: string }>(`
+        SELECT DISTINCT TO_CHAR((date AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE, 'YYYY-MM') AS month
+        FROM reports
+        WHERE COALESCE(anonymous, FALSE) = FALSE
+          AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+        ORDER BY month DESC
+      `);
+
+      const availableReporters = await pgPool.query<{ reporter: string }>(`
+        SELECT DISTINCT CASE
+          WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+          ELSE 'Unnamed reporter'
+        END AS reporter
+        FROM reports
+        WHERE COALESCE(anonymous, FALSE) = FALSE
+          AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+        ORDER BY reporter ASC
+      `);
+
+      const monthlyRows = await pgPool.query<{
+        month: string;
+        reporter: string;
+        report_count: number;
+        points: number;
+        rank: number;
+      }>(`
+        WITH monthly_reporter_metrics AS (
+          SELECT
+            TO_CHAR((date AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE, 'YYYY-MM') AS month,
+            CASE
+              WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+              ELSE 'Unnamed reporter'
+            END AS reporter,
+            COUNT(*)::int AS report_count,
+            SUM(CASE
+              WHEN severity = 'Critical' THEN 3
+              WHEN severity = 'Low' THEN 1
+              ELSE 2
+            END)::int AS points
+          FROM reports
+          WHERE COALESCE(anonymous, FALSE) = FALSE
+            AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+            ${safeMonth ? `AND TO_CHAR((date AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE, 'YYYY-MM') = $1` : ""}
+            ${safeReporter ? `AND LOWER(TRIM(reporter)) = LOWER(TRIM($${safeMonth ? 2 : 1}))` : ""}
+          GROUP BY 1, 2
+        )
+        SELECT month, reporter, report_count, points,
+               ROW_NUMBER() OVER (${safeMonth ? "ORDER BY points DESC, report_count DESC, reporter ASC" : "PARTITION BY month ORDER BY points DESC, report_count DESC, reporter ASC"}) AS rank
+        FROM monthly_reporter_metrics
+        ${safeMonth ? "ORDER BY rank ASC" : "ORDER BY month DESC, rank ASC"}
+        LIMIT 15
+      `, safeMonth || safeReporter ? [safeMonth, safeReporter].filter(Boolean) : []);
+
+      const monthlyByMonth = new Map<string, Array<{ reporter: string; rank: number; reportCount: number; points: number }>>();
+      for (const row of monthlyRows.rows) {
+        if (Number(row.rank) > 15) continue;
+        const list = monthlyByMonth.get(row.month) ?? [];
+        list.push({
+          reporter: row.reporter,
+          rank: Number(row.rank),
+          reportCount: Number(row.report_count ?? 0),
+          points: Number(row.points ?? 0),
+        });
+        monthlyByMonth.set(row.month, list);
+      }
+
+      const allTime = await pgPool.query<{
+        reporter: string;
+        total_reports: number;
+        total_points: number;
+      }>(`
+        WITH monthly_reporter_metrics AS (
+          SELECT
+            CASE
+              WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+              ELSE 'Unnamed reporter'
+            END AS reporter,
+            COUNT(*)::int AS report_count,
+            SUM(CASE
+              WHEN severity = 'Critical' THEN 3
+              WHEN severity = 'Low' THEN 1
+              ELSE 2
+            END)::int AS points
+          FROM reports
+          WHERE COALESCE(anonymous, FALSE) = FALSE
+            AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+            ${safeReporter ? `AND LOWER(TRIM(reporter)) = LOWER(TRIM($1))` : ""}
+          GROUP BY 1
+        )
+        SELECT reporter, SUM(report_count) AS total_reports, SUM(points) AS total_points
+        FROM monthly_reporter_metrics
+        GROUP BY reporter
+        ORDER BY total_points DESC, total_reports DESC
+        LIMIT 15
+      `, safeReporter ? [safeReporter] : []);
+
+      return {
+        availableMonths: availableMonths.rows.map((row) => row.month),
+        availableReporters: availableReporters.rows.map((row) => row.reporter),
+        currentMonth: currentMonth.rows.map((row) => ({
+          reporter: row.reporter,
+          reportCount: Number(row.report_count ?? 0),
+        })),
+        monthlyByMonth: Array.from(monthlyByMonth.entries()).map(([month, reporters]) => ({
+          month,
+          reporters,
+        })),
+        allTime: allTime.rows.map((row) => ({
+          reporter: row.reporter,
+          totalReports: Number(row.total_reports ?? 0),
+          totalPoints: Number(row.total_points ?? 0),
+        })),
+      };
     }
 
+    const db = await getDb();
+    const currentMonthStart = getStartOfSheetMonthUtc().toISOString();
+    const currentMonthEnd = getStartOfSheetMonthUtc(new Date(), 1).toISOString();
+
+    const currentMonthRows = allRows(
+      db,
+      `SELECT
+         CASE
+           WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter)
+           ELSE 'Unnamed reporter'
+         END AS reporter,
+         COUNT(*) AS report_count
+       FROM reports
+       WHERE COALESCE(anonymous, 0) = 0
+         AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+         AND date >= ?
+         AND date < ?
+         ${safeReporter ? "AND LOWER(TRIM(reporter)) = LOWER(TRIM(?))" : ""}
+       GROUP BY reporter
+       ORDER BY report_count DESC, reporter ASC
+       LIMIT 15`,
+      safeReporter ? [currentMonthStart, currentMonthEnd, safeReporter] : [currentMonthStart, currentMonthEnd],
+    ) as Array<{ reporter?: unknown; report_count?: unknown }>;
+
+    const availableMonthsRows = allRows(
+      db,
+      `SELECT DISTINCT strftime('%Y-%m', datetime(date, 'utc')) AS month
+       FROM reports
+       WHERE COALESCE(anonymous, 0) = 0
+         AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+       ORDER BY month DESC`,
+    ) as Array<{ month?: unknown }>;
+
+    const availableReportersRows = allRows(
+      db,
+      `SELECT DISTINCT CASE
+         WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter)
+         ELSE 'Unnamed reporter'
+       END AS reporter
+       FROM reports
+       WHERE COALESCE(anonymous, 0) = 0
+         AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+       ORDER BY reporter ASC`,
+    ) as Array<{ reporter?: unknown }>;
+
+    const monthClause = safeMonth ? "WHERE strftime('%Y-%m', datetime(date, 'utc')) = ?" : "";
+    const reporterClause = safeReporter ? (safeMonth ? "AND LOWER(TRIM(reporter)) = LOWER(TRIM(?))" : "WHERE LOWER(TRIM(reporter)) = LOWER(TRIM(?))") : "";
+    const monthlyRows = allRows(
+      db,
+      `SELECT month, reporter, report_count, points,
+              ROW_NUMBER() OVER (ORDER BY points DESC, report_count DESC, reporter ASC) AS rank
+       FROM (
+         SELECT strftime('%Y-%m', datetime(date, 'utc')) AS month,
+                CASE WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter) ELSE 'Unnamed reporter' END AS reporter,
+                COUNT(*) AS report_count,
+                SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points
+         FROM reports
+         WHERE COALESCE(anonymous, 0) = 0
+           AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+           ${safeMonth ? "AND strftime('%Y-%m', datetime(date, 'utc')) = ?" : ""}
+           ${safeReporter ? "AND LOWER(TRIM(reporter)) = LOWER(TRIM(?))" : ""}
+         GROUP BY month, reporter
+       )
+       ORDER BY rank ASC
+       LIMIT 15`,
+      safeMonth || safeReporter ? [safeMonth, safeReporter].filter(Boolean) : undefined,
+    ) as Array<{ month?: unknown; reporter?: unknown; report_count?: unknown; points?: unknown; rank?: unknown }>;
+
+    const monthlyByMonth = new Map<string, Array<{ reporter: string; rank: number; reportCount: number; points: number }>>();
+    for (const row of monthlyRows) {
+      if (Number(row.rank ?? 0) > 15) continue;
+      const list = monthlyByMonth.get(String(row.month ?? "")) ?? [];
+      list.push({
+        reporter: String(row.reporter ?? "Unnamed reporter"),
+        rank: Number(row.rank ?? 0),
+        reportCount: Number(row.report_count ?? 0),
+        points: Number(row.points ?? 0),
+      });
+      monthlyByMonth.set(String(row.month ?? ""), list);
+    }
+
+    const allTimeRows = allRows(
+      db,
+      `SELECT reporter, SUM(report_count) AS total_reports, SUM(points) AS total_points
+       FROM (
+         SELECT CASE WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter) ELSE 'Unnamed reporter' END AS reporter,
+                COUNT(*) AS report_count,
+                SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points
+         FROM reports
+         WHERE COALESCE(anonymous, 0) = 0
+           AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+           ${safeReporter ? "AND LOWER(TRIM(reporter)) = LOWER(TRIM(?))" : ""}
+         GROUP BY reporter
+       )
+       GROUP BY reporter
+       ORDER BY total_points DESC, total_reports DESC
+       LIMIT 15`,
+      safeReporter ? [safeReporter] : undefined,
+    ) as Array<{ reporter?: unknown; total_reports?: unknown; total_points?: unknown }>;
+
+    return {
+      availableMonths: availableMonthsRows.map((row) => String(row.month ?? "")),
+      availableReporters: availableReportersRows.map((row) => String(row.reporter ?? ""))
+        .filter(Boolean),
+      currentMonth: currentMonthRows.map((row) => ({
+        reporter: String(row.reporter ?? "Unnamed reporter"),
+        reportCount: Number(row.report_count ?? 0),
+      })),
+      monthlyByMonth: Array.from(monthlyByMonth.entries()).map(([month, reporters]) => ({
+        month,
+        reporters,
+      })),
+      allTime: allTimeRows.map((row) => ({
+        reporter: String(row.reporter ?? "Unnamed reporter"),
+        totalReports: Number(row.total_reports ?? 0),
+        totalPoints: Number(row.total_points ?? 0),
+      })),
+    };
+  }
+
+  private async bulkUpdateStatusPg(ids: string[], status: string, request?: any) {
     const result = await pgPool.query(
       "UPDATE reports SET status = $1, updated_at = NOW() WHERE id = ANY($2::text[]) RETURNING id",
       [status, ids],
     );
+    const updatedIds = result.rows.map((row) => String(row.id));
 
     if (request) {
       await writeAuditLogBestEffort({
@@ -1962,7 +2277,7 @@ export class ReportsService {
       });
     }
 
-    for (const id of ids) {
+    for (const id of updatedIds) {
       await syncReportWorkflowState({
         reportId: id,
         state: status,
@@ -1970,7 +2285,7 @@ export class ReportsService {
       });
     }
 
-    return { updated: result.rowCount ?? 0, ids: result.rows.map((r) => r.id) };
+    return { updated: result.rowCount ?? 0, ids: updatedIds };
   }
 
   private async bulkUpdateStatusSqlite(ids: string[], status: string, request?: any) {

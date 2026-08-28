@@ -7,6 +7,8 @@ export declare class AiService {
     private rag;
     private repository;
     private reports;
+    private compliance;
+    private training;
     private model;
     private operationalQueryEngine;
     private reportQueryEngine;

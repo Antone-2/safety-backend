@@ -61,8 +61,8 @@ export declare const CreateEquipmentSchema: z.ZodObject<{
     name: string;
     site: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     category: string;
     assetTag: string;
     photoUrl?: string | undefined;
@@ -83,8 +83,8 @@ export declare const CreateEquipmentSchema: z.ZodObject<{
     name: string;
     site: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     category: string;
     assetTag: string;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;

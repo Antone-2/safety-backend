@@ -6,6 +6,7 @@ import { logger } from "../utils/logger.js";
 import { hasPermission, recordAuthFailure } from "./rbac.middleware.js";
 import { allRows, getDb } from "../../lib/database.js";
 import { pgPool } from "../infrastructure/database/postgres.client.js";
+import { isJwtDenylisted } from "./jwt-denylist.middleware.js";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -46,8 +47,9 @@ function sessionFingerprint(req: Request) {
   const userAgent = req.get("user-agent") || "unknown";
   const language = req.get("accept-language") || "unknown";
   const platform = req.get("sec-ch-ua-platform") || "unknown";
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
   return createHash("sha256")
-    .update(`${userAgent}:${language}:${platform}`)
+    .update(`${userAgent}:${language}:${platform}:${ip}`)
     .digest("hex");
 }
 
@@ -69,12 +71,29 @@ function shouldTouchSession(sessionId: string, now = Date.now()): boolean {
   return true;
 }
 
+function getConfiguredDemoIdentity() {
+  if (process.env.ENABLE_DEMO_LOGIN !== "true") return null;
+
+  const email = (process.env.DEMO_EMAIL || "").trim().toLowerCase();
+  if (!email) return null;
+
+  return {
+    id: "demo-user",
+    email,
+    name: process.env.DEMO_NAME?.trim() || "Demo User",
+    role: process.env.DEMO_ROLE?.trim() || "EHS-manager",
+    jti: "demo-session",
+  };
+}
+
 type SessionRow = {
   id: string;
   device_fingerprint?: string | null;
   user_agent?: string | null;
   deviceFingerprint?: string | null;
   userAgent?: string | null;
+  ip_address?: string | null;
+  ipAddress?: string | null;
 };
 
 export async function authenticateUser(
@@ -93,31 +112,37 @@ export async function authenticateUser(
       .json({ error: "Missing or invalid authorization header" });
   }
 
-  if (process.env.NODE_ENV === "development" && token === "demo-token") {
-    req.user = {
-      id: "demo-user",
-      email: "demo@crownpaints.co.ke",
-      name: "Demo User",
-      role: "EHS-manager",
-      jti: "demo-session",
-    };
+  const demoIdentity = getConfiguredDemoIdentity();
+  if (token === "demo-token" && demoIdentity) {
+    req.user = demoIdentity;
     return next();
   }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthRequest["user"] & {
       userId?: string;
+      type?: string;
+      exp?: number;
     };
     req.user = decoded
       ? { ...decoded, id: decoded.id || decoded.userId || "" }
       : decoded;
     if (!decoded?.jti)
       return res.status(401).json({ error: "Session is invalid" });
+    if (decoded.exp && await isJwtDenylisted(decoded.jti)) {
+      return res.status(401).json({ error: "Session has been revoked" });
+    }
+    if (
+      decoded.type === "offline-dev-session" &&
+      getEnv().NODE_ENV !== "production"
+    ) {
+      return next();
+    }
     let session: SessionRow | undefined;
     if (isPgConfigured()) {
       try {
         const result = await pgPool.query<SessionRow>(
-          `SELECT id, device_fingerprint, user_agent
+          `SELECT id, device_fingerprint, user_agent, ip_address
            FROM auth_sessions
            WHERE id = $1 AND revoked_at IS NULL AND expires_at > NOW()
            LIMIT 1`,
@@ -133,7 +158,7 @@ export async function authenticateUser(
       const db = await getDb();
       session = allRows(
         db,
-        "SELECT id, deviceFingerprint AS deviceFingerprint, userAgent AS userAgent FROM auth_sessions WHERE id = ? AND revokedAt IS NULL AND expiresAt > ?",
+        "SELECT id, deviceFingerprint AS deviceFingerprint, userAgent AS userAgent, ipAddress AS ipAddress FROM auth_sessions WHERE id = ? AND revokedAt IS NULL AND expiresAt > ?",
         [decoded.jti, new Date().toISOString()],
       )[0] as SessionRow | undefined;
     }
@@ -146,6 +171,8 @@ export async function authenticateUser(
     const legacyFingerprint = legacySessionFingerprint(req);
     const storedFingerprint = session.device_fingerprint ?? session.deviceFingerprint;
     const storedUserAgent = session.user_agent ?? session.userAgent;
+    const storedIp = session.ip_address ?? session.ipAddress;
+    const currentIp = req.ip || req.socket.remoteAddress || "unknown";
 
     if (
       storedFingerprint &&
@@ -154,6 +181,10 @@ export async function authenticateUser(
       storedUserAgent !== (req.get("user-agent") || "")
     ) {
       return res.status(401).json({ error: "Session device changed. Please sign in again." });
+    }
+
+    if (storedIp && storedIp !== currentIp) {
+      return res.status(401).json({ error: "Session IP changed. Please sign in again." });
     }
 
     const touchSession = shouldTouchSession(decoded.jti);

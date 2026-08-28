@@ -105,6 +105,34 @@ export class RiskRepository {
         }
         return column;
     }
+    selectReportColumn(columns, alias, ...candidates) {
+        const column = this.requireColumn(columns, "reports", ...candidates);
+        return `${column} AS ${alias}`;
+    }
+    async getRiskReportsSql() {
+        const columns = await this.getTableColumns("reports");
+        const createdAt = this.requireColumn(columns, "reports", "created_at", "createdAt", "createdat", "date");
+        const updatedAt = this.resolveColumn(columns, "updated_at", "updatedAt", "updatedat", "created_at", "createdAt", "createdat", "date") ??
+            createdAt;
+        return `SELECT
+      ${this.selectReportColumn(columns, "id", "id")},
+      ${this.selectReportColumn(columns, "location", "location")},
+      ${this.selectReportColumn(columns, "department", "department")},
+      ${this.selectReportColumn(columns, "description", "description")},
+      ${this.selectReportColumn(columns, "severity", "severity")},
+      ${this.selectReportColumn(columns, "category", "category")},
+      ${this.selectReportColumn(columns, "type", "type")},
+      ${this.selectReportColumn(columns, "source", "source")},
+      ${this.selectReportColumn(columns, "reporter", "reporter")},
+      ${createdAt} AS created_at,
+      ${updatedAt} AS updated_at
+      FROM reports
+      WHERE
+        COALESCE(${this.requireColumn(columns, "reports", "location")}, '') <> ''
+        OR COALESCE(${this.requireColumn(columns, "reports", "description")}, '') <> ''
+        OR COALESCE(${this.requireColumn(columns, "reports", "category")}, '') <> ''
+      ORDER BY ${createdAt} DESC`;
+    }
     // Risk Matrices
     async getMatrices() {
         const result = await this.pool.query(`SELECT * FROM risk_matrices ORDER BY created_at DESC`);
@@ -170,6 +198,10 @@ export class RiskRepository {
         }
         const result = await this.pool.query(`SELECT * FROM risk_registers WHERE id = $1`, [id]);
         return result.rows[0] ? asRegister(result.rows[0]) : null;
+    }
+    async deleteRegister(id) {
+        const result = await this.pool.query(`DELETE FROM risk_registers WHERE id = $1`, [id]);
+        return (result.rowCount ?? 0) > 0;
     }
     async createRegister(data) {
         const result = await this.pool.query(`INSERT INTO risk_registers (
@@ -284,6 +316,14 @@ export class RiskRepository {
             now(),
         ]);
         return asBowTie(result.rows[0]);
+    }
+    async getRiskReportCandidates() {
+        const columns = await this.getTableColumns("reports");
+        if (columns.size === 0) {
+            return [];
+        }
+        const result = await this.pool.query(await this.getRiskReportsSql());
+        return result.rows;
     }
     // Dashboard
     async getRiskDashboard() {

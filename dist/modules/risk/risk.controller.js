@@ -73,6 +73,25 @@ export function createRiskController(service) {
             });
             res.json({ data: register });
         },
+        async deleteRegister(req, res) {
+            const existing = await service.getRegisterById(String(req.params.id));
+            if (!existing)
+                throw new NotFoundError("Risk register");
+            if ("readonly" in existing) {
+                throw new NotFoundError("Risk register");
+            }
+            const deleted = await service.deleteRegister(String(req.params.id));
+            if (!deleted)
+                throw new NotFoundError("Risk register");
+            await writeAuditLog({
+                action: "risk.register.deleted",
+                resourceType: "risk_register",
+                resourceId: String(req.params.id),
+                actor: req.user,
+                request: req,
+            });
+            res.json({ data: { ok: true, deleted: String(req.params.id) } });
+        },
         async getBowTies(_req, res) {
             const bowties = await service.getBowTies();
             res.json({ data: bowties });
@@ -108,6 +127,7 @@ export function createRiskRouter() {
     router.post("/registers", rbacMiddleware("risk:create"), validate(CreateRiskRegisterSchema), controller.createRegister);
     router.get("/registers/:id", rbacMiddleware("risk:read"), controller.getRegisterById);
     router.patch("/registers/:id", rbacMiddleware("risk:update"), validate(UpdateRiskRegisterSchema), controller.updateRegister);
+    router.delete("/registers/:id", rbacMiddleware("risk:delete"), controller.deleteRegister);
     router.get("/bow-ties", rbacMiddleware("risk:read"), controller.getBowTies);
     router.post("/bow-ties", rbacMiddleware("risk:create"), validate(CreateBowTieSchema), controller.createBowTie);
     router.get("/dashboard", rbacMiddleware("risk:read"), controller.getDashboard);

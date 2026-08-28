@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { authenticateUser, requireRole, type AuthRequest } from "../middleware/auth.js";
-import { AuditService } from "../services/audit.service.js";
+import { authenticateUser, requirePermission, type AuthRequest } from "../shared/middleware/auth.middleware.js";
+import { AuditService, AuditSchema } from "../services/audit.service.js";
+import { validate } from "../shared/middleware/validation.middleware.js";
 
 const router = Router();
 const service = new AuditService();
 
-router.get("/", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/", authenticateUser, requirePermission("audit:read"), async (req: AuthRequest, res) => {
   try {
     const filters: Record<string, any> = {};
     if (String(req.query.site)) filters.site = String(req.query.site);
@@ -19,7 +20,7 @@ router.get("/", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.get("/dashboard", authenticateUser, async (_req: AuthRequest, res) => {
+router.get("/dashboard", authenticateUser, requirePermission("audit:read"), async (_req: AuthRequest, res) => {
   try {
     const stats = await service.getStats();
     res.json(stats);
@@ -28,7 +29,7 @@ router.get("/dashboard", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/:id", authenticateUser, requirePermission("audit:read"), async (req: AuthRequest, res) => {
   try {
     const record = await service.getById(String(req.params.id));
     if (!record) return res.status(404).json({ error: "Audit not found" });
@@ -38,7 +39,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
+router.post("/", authenticateUser, requirePermission("audit:create"), validate(AuditSchema), async (req: AuthRequest, res) => {
   try {
     const record = await service.createAudit({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);
@@ -47,7 +48,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
   }
 });
 
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
+router.patch("/:id", authenticateUser, requirePermission("audit:update"), validate(AuditSchema.partial()), async (req: AuthRequest, res) => {
   try {
     const record = await service.update(String(req.params.id), req.body);
     res.json(record);
@@ -56,7 +57,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
   }
 });
 
-router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+router.delete("/:id", authenticateUser, requirePermission("audit:delete"), async (req: AuthRequest, res) => {
   try {
     const result = await service.delete(String(req.params.id));
     res.json({ success: result });

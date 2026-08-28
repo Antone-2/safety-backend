@@ -232,8 +232,20 @@ describe("backend foundation contracts", () => {
     expect(frontendDataSource).toContain('buildUrl("/api/esg/energy"');
     expect(frontendDataSource).toContain('buildUrl("/api/esg/water"');
     expect(frontendDataSource).toContain('buildUrl("/api/esg/dashboard"');
+    expect(frontendDataSource).toContain('buildUrl("/api/reports/monthly-ehs"');
     expect(frontendDataSource).toContain('buildUrl(`/api/reports/${encodeURIComponent(reportId)}/corrective-action-requests`)');
     expect(frontendDataSource).toContain('buildUrl(`/api/reports/corrective-action-requests/${encodeURIComponent(token)}`)');
     expect(frontendDataSource).toContain('buildUrl(`/api/reports/corrective-action-requests/${encodeURIComponent(token)}/submit`)');
+  });
+
+  it("keeps the monthly EHS aggregation endpoint wired through backend and frontend", () => {
+    expect(backendIndexSource).toContain('mountAll(API_PREFIXES, "/reports", createReportsRouter())');
+    expect(
+      readFileSync(
+        path.resolve(import.meta.dirname, "../../src/modules/reports/reports.module.ts"),
+        "utf8",
+      ),
+    ).toContain('router.get(\n    "/monthly-ehs",');
+    expect(frontendDataSource).toContain('buildUrl("/api/reports/monthly-ehs"');
   });
 });

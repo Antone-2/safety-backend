@@ -36,10 +36,42 @@ export declare class DocumentsService {
         userAgent?: string;
     }): Promise<DocumentAcknowledgement>;
     getAcknowledgements(documentId: string): Promise<DocumentAcknowledgement[]>;
-    getAcknowledgementReport(): Promise<(Document & {
+    getAcknowledgementReport(): Promise<{
         acknowledgements: number;
-        lastAcknowledgedAt?: string;
-    })[]>;
+        lastAcknowledgedAt: string | undefined;
+        id: string;
+        title: string;
+        code?: string;
+        category: string;
+        type: import("./documents.types.js").DocumentType;
+        version: string;
+        status: import("./documents.types.js").DocumentStatus;
+        content?: string;
+        fileUrl?: string;
+        fileName?: string;
+        fileSize?: number;
+        mimeType?: string;
+        author: string;
+        reviewer?: string;
+        approver?: string;
+        reviewDate?: string;
+        approvalDate?: string;
+        effectiveDate: string;
+        expiryDate?: string;
+        site: string;
+        department: string;
+        tags: string[];
+        parentId?: string;
+        createdBy: string;
+        documentNo?: string;
+        owner?: string;
+        reviewCycleDays?: number;
+        nextReviewDate?: string;
+        obsoleteReason?: string;
+        classification: string;
+        createdAt: string;
+        updatedAt: string;
+    }[]>;
     createAccessLink(documentId: string, data: CreateAccessLinkInput, actor?: {
         name?: string;
         email?: string;

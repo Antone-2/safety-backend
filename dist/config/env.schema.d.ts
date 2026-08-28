@@ -8,6 +8,7 @@ export declare const EnvSchema: z.ZodObject<{
     DATABASE_PATH: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     DATABASE_URL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     REQUIRE_POSTGRES: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    BOOTSTRAP_PG_MAX_ATTEMPTS: z.ZodOptional<z.ZodNumber>;
     DB_USER: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     DB_PASSWORD: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     DB_HOST: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
@@ -56,16 +57,19 @@ export declare const EnvSchema: z.ZodObject<{
     AI_MODEL: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     OPENAI_API_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     AI_API_KEY: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    TIMEZONE: z.ZodDefault<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     NODE_ENV: "development" | "production" | "test";
     PORT: number;
     JWT_SECRET: string;
     S3_REGION: string;
+    TIMEZONE: string;
     LOG_LEVEL?: string | undefined;
     FRONTEND_URL?: string | undefined;
     DATABASE_PATH?: string | undefined;
     DATABASE_URL?: string | undefined;
     REQUIRE_POSTGRES?: string | undefined;
+    BOOTSTRAP_PG_MAX_ATTEMPTS?: number | undefined;
     DB_USER?: string | undefined;
     DB_PASSWORD?: string | undefined;
     DB_HOST?: string | undefined;
@@ -122,6 +126,7 @@ export declare const EnvSchema: z.ZodObject<{
     DATABASE_PATH?: unknown;
     DATABASE_URL?: unknown;
     REQUIRE_POSTGRES?: unknown;
+    BOOTSTRAP_PG_MAX_ATTEMPTS?: number | undefined;
     DB_USER?: unknown;
     DB_PASSWORD?: unknown;
     DB_HOST?: unknown;
@@ -170,5 +175,6 @@ export declare const EnvSchema: z.ZodObject<{
     AI_MODEL?: unknown;
     OPENAI_API_KEY?: unknown;
     AI_API_KEY?: unknown;
+    TIMEZONE?: string | undefined;
 }>;
 export type Env = z.infer<typeof EnvSchema>;

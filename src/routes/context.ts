@@ -8,7 +8,7 @@ const service = new ContextService();
 router.get("/analysis", authenticateUser, async (_req: AuthRequest, res) => {
   try {
     const records = await service.getContexts();
-    res.json(records);
+    res.json({ data: records });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch context analysis" });
   }
@@ -18,7 +18,7 @@ router.get("/analysis/:id", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const record = await service.getContextById(String(req.params.id));
     if (!record) return res.status(404).json({ error: "Context analysis not found" });
-    res.json(record);
+    res.json({ data: record });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch context analysis" });
   }
@@ -27,7 +27,7 @@ router.get("/analysis/:id", authenticateUser, async (req: AuthRequest, res) => {
 router.post("/analysis", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const record = await service.createContext({ ...req.body, createdBy: req.user?.name || "System" });
-    res.status(201).json(record);
+    res.status(201).json({ data: record });
   } catch (error) {
     res.status(500).json({ error: "Failed to create context analysis" });
   }
@@ -36,7 +36,7 @@ router.post("/analysis", authenticateUser, requireRole(["super-admin", "EHS-mana
 router.get("/parties", authenticateUser, async (_req: AuthRequest, res) => {
   try {
     const records = await service.getParties();
-    res.json(records);
+    res.json({ data: records });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch interested parties" });
   }
@@ -46,7 +46,7 @@ router.get("/parties/:id", authenticateUser, async (req: AuthRequest, res) => {
   try {
     const record = await service.getPartyById(String(req.params.id));
     if (!record) return res.status(404).json({ error: "Interested party not found" });
-    res.json(record);
+    res.json({ data: record });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch interested party" });
   }
@@ -55,7 +55,7 @@ router.get("/parties/:id", authenticateUser, async (req: AuthRequest, res) => {
 router.post("/parties", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
   try {
     const record = await service.createParty({ ...req.body, createdBy: req.user?.name || "System" });
-    res.status(201).json(record);
+    res.status(201).json({ data: record });
   } catch (error) {
     res.status(500).json({ error: "Failed to create interested party" });
   }
@@ -63,7 +63,7 @@ router.post("/parties", authenticateUser, requireRole(["super-admin", "EHS-manag
 
 router.delete("/parties/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
   try {
-    res.json({ success: true });
+    res.json({ data: { success: true, deleted: String(req.params.id) } });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete interested party" });
   }

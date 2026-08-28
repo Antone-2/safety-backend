@@ -152,7 +152,7 @@ Use [RELEASE_TICKET_TEMPLATE.md](D:/crown safety/safety-backend/docs/RELEASE_TIC
 1. Confirm frontend environment variables point to the real API host:
    `VITE_API_BASE`, file upload/CDN URLs, and any Google Sheets display config.
 2. Confirm backend environment variables are present and production-safe:
-   `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, `FRONTEND_URL`, `APP_BASE_URL`, SMTP/Brevo, S3, and `GOOGLE_SHEETS_DATE_ORDER=dmy`.
+   `JWT_SECRET`, `DATABASE_URL`, `REDIS_URL`, `FRONTEND_URL`, SMTP/Brevo, S3, and `GOOGLE_SHEETS_DATE_ORDER=dmy`.
 3. Run database safety checks:
    `npm run db:migrate:dry`
    `npm run db:migrate:backup`

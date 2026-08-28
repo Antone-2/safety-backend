@@ -1,3 +1,5 @@
+import { getEnv } from "../../config/index.js";
+const TIMEZONE = getEnv().TIMEZONE;
 export function formatDate(date) {
     const d = typeof date === "string" ? new Date(date) : date;
     return d.toISOString();
@@ -13,9 +15,9 @@ export function addHours(date, hours) {
     return result;
 }
 export function isOverdue(dueDate) {
-    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const nyDue = new Date(new Date(dueDate).toLocaleString("en-US", { timeZone: "America/New_York" }));
-    return nyDue < nyNow;
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
+    const due = new Date(new Date(dueDate).toLocaleString("en-US", { timeZone: TIMEZONE }));
+    return due < now;
 }
 export function toUtcIso(value) {
     if (!value)
@@ -24,7 +26,7 @@ export function toUtcIso(value) {
     const parsed = new Date(text);
     if (Number.isNaN(parsed.getTime()))
         return new Date().toISOString();
-    const nyDate = new Date(parsed.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const offset = nyDate.getTime() - parsed.getTime();
+    const localDate = new Date(parsed.toLocaleString("en-US", { timeZone: TIMEZONE }));
+    const offset = localDate.getTime() - parsed.getTime();
     return new Date(parsed.getTime() - offset).toISOString();
 }

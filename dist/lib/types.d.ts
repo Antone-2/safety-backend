@@ -217,6 +217,26 @@ export interface SettingsPayload {
         teamsWebhook: string;
         zapierKey: string;
     };
+    integrationStatus?: Record<string, {
+        configured?: boolean;
+        lastTestAt?: string;
+        lastTestStatus?: "success" | "failed";
+        lastTestMessage?: string;
+        lastSyncAt?: string;
+        lastSyncStatus?: "idle" | "success" | "failed";
+        lastSyncMessage?: string;
+        secretUpdatedAt?: string;
+        updatedBy?: string;
+    }>;
+    integrationHistory?: Array<{
+        id: string;
+        integration: string;
+        event: "config.updated" | "config.cleared" | "test.success" | "test.failed" | "sync.recorded";
+        status: "success" | "failed" | "info";
+        at: string;
+        actor: string;
+        message: string;
+    }>;
     notificationContacts?: {
         email: string;
         phone: string;
@@ -555,14 +575,14 @@ export declare const CreateJsaSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     description?: string | undefined;
 }, {
     title: string;
     department: string;
-    location: string;
     createdBy: string;
+    location: string;
     description?: string | undefined;
 }>;
 export type CreateJsaInput = z.infer<typeof CreateJsaSchema>;

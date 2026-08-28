@@ -43,6 +43,8 @@ export interface RiskRegister {
   reviewDate?: string;
   reviewedBy?: string;
   status: string;
+  sourceKind?: "database" | "report-sync";
+  readonly?: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

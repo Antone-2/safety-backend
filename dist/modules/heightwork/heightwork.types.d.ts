@@ -49,11 +49,11 @@ export declare const CreateHeightWorkSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status: "Planned" | "In Progress" | "Completed" | "Cancelled" | "Permit Issued";
     supervisor: string;
+    createdBy: string;
     location: string;
     photos: string[];
     startDate: string;
     endDate: string;
-    createdBy: string;
     building: string;
     taskDescription: string;
     height: number;
@@ -68,10 +68,10 @@ export declare const CreateHeightWorkSchema: z.ZodObject<{
     incidentReport?: string | undefined;
 }, {
     supervisor: string;
+    createdBy: string;
     location: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     building: string;
     taskDescription: string;
     height: number;

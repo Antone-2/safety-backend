@@ -26,6 +26,22 @@ export type Permission =
   | "permits:update"
   | "permits:approve"
   | "audit:read"
+  | "audit:create"
+  | "audit:update"
+  | "audit:delete"
+  | "inspections:read"
+  | "inspections:create"
+  | "inspections:update"
+  | "inspections:delete"
+  | "observations:read"
+  | "observations:create"
+  | "observations:update"
+  | "observations:delete"
+  | "moc:read"
+  | "moc:create"
+  | "moc:update"
+  | "moc:approve"
+  | "moc:delete"
   | "settings:read"
   | "settings:update"
   | "training:read"
@@ -59,6 +75,22 @@ export type Permission =
   | "health:create"
   | "health:update"
   | "health:delete"
+  | "exposure-monitoring:read"
+  | "exposure-monitoring:create"
+  | "exposure-monitoring:update"
+  | "exposure-monitoring:delete"
+  | "visitors:read"
+  | "visitors:create"
+  | "visitors:update"
+  | "visitors:delete"
+  | "safety-alerts:read"
+  | "safety-alerts:create"
+  | "safety-alerts:update"
+  | "safety-alerts:delete"
+  | "calibrations:read"
+  | "calibrations:create"
+  | "calibrations:update"
+  | "calibrations:delete"
   | "fire:read"
   | "fire:create"
   | "fire:update"
@@ -98,6 +130,7 @@ export type Permission =
   | "investigations:read"
   | "investigations:create"
   | "investigations:update"
+  | "investigations:delete"
   | "heightwork:read"
   | "heightwork:create"
   | "heightwork:update"
@@ -138,6 +171,22 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "permits:update",
     "permits:approve",
     "audit:read",
+    "audit:create",
+    "audit:update",
+    "audit:delete",
+    "inspections:read",
+    "inspections:create",
+    "inspections:update",
+    "inspections:delete",
+    "observations:read",
+    "observations:create",
+    "observations:update",
+    "observations:delete",
+    "moc:read",
+    "moc:create",
+    "moc:update",
+    "moc:approve",
+    "moc:delete",
     "settings:read",
     "settings:update",
     "training:read",
@@ -171,6 +220,22 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "health:create",
     "health:update",
     "health:delete",
+    "exposure-monitoring:read",
+    "exposure-monitoring:create",
+    "exposure-monitoring:update",
+    "exposure-monitoring:delete",
+    "visitors:read",
+    "visitors:create",
+    "visitors:update",
+    "visitors:delete",
+    "safety-alerts:read",
+    "safety-alerts:create",
+    "safety-alerts:update",
+    "safety-alerts:delete",
+    "calibrations:read",
+    "calibrations:create",
+    "calibrations:update",
+    "calibrations:delete",
     "fire:read",
     "fire:create",
     "fire:update",
@@ -210,6 +275,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "investigations:read",
     "investigations:create",
     "investigations:update",
+    "investigations:delete",
     "heightwork:read",
     "heightwork:create",
     "heightwork:update",
@@ -231,6 +297,17 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "capa:read",
     "permits:read",
     "audit:read",
+    "audit:create",
+    "audit:update",
+    "inspections:read",
+    "inspections:create",
+    "inspections:update",
+    "observations:read",
+    "observations:create",
+    "observations:update",
+    "moc:read",
+    "moc:create",
+    "moc:update",
     "training:read",
     "documents:read",
     "ppe:read",
@@ -239,6 +316,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "compliance:read",
     "environmental:read",
     "health:read",
+    "exposure-monitoring:read",
+    "visitors:read",
+    "safety-alerts:read",
+    "calibrations:read",
     "fire:read",
     "spill:read",
     "sds:read",
@@ -261,6 +342,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "reports:read",
     "capa:read",
     "permits:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
+    "moc:approve",
     "training:read",
     "training:update",
     "documents:read",
@@ -275,6 +360,14 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "environmental:read",
     "environmental:update",
     "health:read",
+    "exposure-monitoring:read",
+    "exposure-monitoring:update",
+    "visitors:read",
+    "visitors:update",
+    "safety-alerts:read",
+    "safety-alerts:update",
+    "calibrations:read",
+    "calibrations:update",
     "fire:read",
     "spill:read",
     "sds:read",
@@ -299,6 +392,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "reports:read",
     "capa:read",
     "permits:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
+    "moc:approve",
     "permits:approve",
     "training:read",
     "training:update",
@@ -312,6 +409,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "contractors:update",
     "environmental:read",
     "health:read",
+    "exposure-monitoring:read",
+    "visitors:read",
+    "safety-alerts:read",
+    "calibrations:read",
     "fire:read",
     "spill:read",
     "sds:read",
@@ -334,6 +435,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "reports:read",
     "capa:read",
     "permits:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
+    "moc:create",
     "permits:create",
     "training:read",
     "training:create",
@@ -342,6 +447,9 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "equipment:read",
     "contractors:read",
     "environmental:read",
+    "visitors:read",
+    "safety-alerts:read",
+    "calibrations:read",
     "spill:read",
     "sds:read",
     "scaffolding:read",
@@ -362,6 +470,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "reports:read",
     "reports:create",
     "permits:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
+    "moc:create",
     "permits:create",
     "training:read",
     "training:create",
@@ -370,6 +482,9 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "equipment:read",
     "contractors:read",
     "environmental:read",
+    "visitors:read",
+    "safety-alerts:read",
+    "calibrations:read",
     "spill:read",
     "sds:read",
     "scaffolding:read",
@@ -389,6 +504,9 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "reports:read",
     "capa:read",
     "audit:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
     "training:read",
     "documents:read",
     "ppe:read",
@@ -397,6 +515,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "compliance:read",
     "environmental:read",
     "health:read",
+    "exposure-monitoring:read",
+    "visitors:read",
+    "safety-alerts:read",
+    "calibrations:read",
     "fire:read",
     "spill:read",
     "sds:read",
@@ -419,6 +541,9 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "capa:read",
     "permits:read",
     "audit:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
     "training:read",
     "documents:read",
     "ppe:read",
@@ -427,6 +552,10 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "compliance:read",
     "environmental:read",
     "health:read",
+    "exposure-monitoring:read",
+    "visitors:read",
+    "safety-alerts:read",
+    "calibrations:read",
     "fire:read",
     "spill:read",
     "sds:read",
@@ -446,8 +575,14 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "incidents:read",
     "reports:read",
     "permits:read",
+    "inspections:read",
+    "observations:read",
+    "moc:read",
     "training:read",
     "equipment:read",
+    "exposure-monitoring:read",
+    "visitors:read",
+    "safety-alerts:read",
     "fire:read",
     "scaffolding:read",
     "hazard:read",
@@ -552,6 +687,9 @@ export const ROUTE_PERMISSION_MATRIX: Record<string, Permission> = {
   "/api/reports/assign": "reports:assign",
   "/api/reports/approve": "reports:approve",
   "/api/capa": "capa:read",
+  "/api/inspections": "inspections:read",
+  "/api/observations": "observations:read",
+  "/api/moc": "moc:read",
   "/api/capa/create": "capa:create",
   "/api/capa/verify": "capa:verify",
   "/api/permits": "permits:read",
@@ -569,6 +707,10 @@ export const ROUTE_PERMISSION_MATRIX: Record<string, Permission> = {
   "/api/compliance": "compliance:read",
   "/api/environmental": "environmental:read",
   "/api/health": "health:read",
+  "/api/exposure-monitoring": "exposure-monitoring:read",
+  "/api/visitors": "visitors:read",
+  "/api/safety-alerts": "safety-alerts:read",
+  "/api/calibrations": "calibrations:read",
   "/api/fire": "fire:read",
   "/api/spill": "spill:read",
   "/api/sds": "sds:read",

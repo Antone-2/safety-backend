@@ -29,6 +29,7 @@ export const EnvSchema = z.object({
   DATABASE_PATH: optionalString,
   DATABASE_URL: optionalString,
   REQUIRE_POSTGRES: optionalString,
+  BOOTSTRAP_PG_MAX_ATTEMPTS: z.coerce.number().optional(),
   DB_USER: optionalString,
   DB_PASSWORD: optionalString,
   DB_HOST: optionalString,
@@ -77,6 +78,7 @@ export const EnvSchema = z.object({
   AI_MODEL: optionalString,
   OPENAI_API_KEY: optionalString,
   AI_API_KEY: optionalString,
+  TIMEZONE: z.string().default("Africa/Nairobi"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

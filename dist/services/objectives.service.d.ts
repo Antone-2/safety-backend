@@ -27,14 +27,14 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "In Progress" | "Cancelled" | "Not Started" | "On Track" | "At Risk" | "Off Track" | "Achieved";
+    status: "In Progress" | "Cancelled" | "At Risk" | "Not Started" | "On Track" | "Off Track" | "Achieved";
     owner: string;
     title: string;
     site: string;
     department: string;
+    createdBy: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     category: string;
     progress: number;
     linkedRisks: string;
@@ -56,11 +56,11 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     title: string;
     site: string;
     department: string;
+    createdBy: string;
     startDate: string;
     endDate: string;
-    createdBy: string;
     category: string;
-    status?: "In Progress" | "Cancelled" | "Not Started" | "On Track" | "At Risk" | "Off Track" | "Achieved" | undefined;
+    status?: "In Progress" | "Cancelled" | "At Risk" | "Not Started" | "On Track" | "Off Track" | "Achieved" | undefined;
     id?: string | undefined;
     description?: string | undefined;
     evidence?: string | undefined;

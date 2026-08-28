@@ -53,6 +53,48 @@ function parseJson(value: unknown, fallback: any) {
   }
 }
 
+function deriveChatSessionTitle(
+  history: Array<{ role?: string; content?: string }>,
+  explicitTitle?: string | null,
+) {
+  const title = String(explicitTitle ?? "").trim();
+  if (title) return title;
+  const latestUserMessage = [...history]
+    .reverse()
+    .find((entry) => entry?.role === "user" && entry?.content);
+  return (
+    String(latestUserMessage?.content ?? "Untitled chat")
+      .trim()
+      .slice(0, 80) || "Untitled chat"
+  );
+}
+
+function summarizeChatSession(
+  history: Array<{ role?: string; content?: string }>,
+  latestResponse: any,
+) {
+  const latestAssistantMessage = [...history]
+    .reverse()
+    .find((entry) => entry?.role === "assistant" && entry?.content);
+  const preview =
+    String(
+      latestAssistantMessage?.content ??
+        latestResponse?.content ??
+        history[history.length - 1]?.content ??
+        "",
+    )
+      .trim()
+      .slice(0, 140) || undefined;
+  const sourceCount = Array.isArray(latestResponse?.sources)
+    ? latestResponse.sources.length
+    : 0;
+  return {
+    preview,
+    sourceCount,
+    hasSources: sourceCount > 0,
+  };
+}
+
 function mapGuardrailRow(row: Record<string, unknown>) {
   return {
     id: row.id as string,
@@ -199,6 +241,280 @@ export class AiRepository {
       ...r,
       output_json: parseJson(r.output_json, {}),
     }));
+  }
+
+  async saveChatSession(input: {
+    conversationId: string;
+    userId: string;
+    history: Array<{ role: string; content: string }>;
+    latestResponse?: unknown;
+    title?: string;
+    pinned?: boolean;
+  }) {
+    if (isPgAvailable()) {
+      await pgPool.query(
+        `INSERT INTO ai_chat_sessions (conversation_id, user_id, title, pinned, history_json, latest_response_json, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, NOW(), NOW())
+         ON CONFLICT (conversation_id) DO UPDATE
+         SET user_id = EXCLUDED.user_id,
+             title = COALESCE(ai_chat_sessions.title, EXCLUDED.title),
+             pinned = COALESCE(ai_chat_sessions.pinned, EXCLUDED.pinned),
+             history_json = EXCLUDED.history_json,
+             latest_response_json = EXCLUDED.latest_response_json,
+             updated_at = NOW()`,
+        [
+          input.conversationId,
+          input.userId,
+          input.title ?? null,
+          input.pinned ? 1 : 0,
+          JSON.stringify(input.history),
+          JSON.stringify(input.latestResponse ?? null),
+        ],
+      );
+      return input.conversationId;
+    }
+
+    const db = await getDb();
+    db.prepare(
+      `INSERT OR REPLACE INTO ai_chat_sessions
+       (conversation_id, user_id, title, pinned, history_json, latest_response_json, created_at, updated_at)
+       VALUES (?, ?, COALESCE((SELECT title FROM ai_chat_sessions WHERE conversation_id = ?), ?), COALESCE((SELECT pinned FROM ai_chat_sessions WHERE conversation_id = ?), ?), ?, ?, COALESCE((SELECT created_at FROM ai_chat_sessions WHERE conversation_id = ?), ?), ?)`,
+    ).run([
+      input.conversationId,
+      input.userId,
+      input.conversationId,
+      input.title ?? null,
+      input.conversationId,
+      input.pinned ? 1 : 0,
+      JSON.stringify(input.history),
+      JSON.stringify(input.latestResponse ?? null),
+      input.conversationId,
+      now(),
+      now(),
+    ]);
+    saveDb(db);
+    return input.conversationId;
+  }
+
+  async getLatestChatSession(userId: string) {
+    if (isPgAvailable()) {
+      const result = await pgPool.query(
+        `SELECT * FROM ai_chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        [userId],
+      );
+      const row = result.rows[0];
+      return row
+        ? {
+            conversationId: row.conversation_id as string,
+            userId: row.user_id as string,
+            title: deriveChatSessionTitle(
+              parseJson(row.history_json, []),
+              row.title as string | null | undefined,
+            ),
+            pinned: Boolean(row.pinned),
+            history: parseJson(row.history_json, []),
+            result: parseJson(row.latest_response_json, null),
+            createdAt: row.created_at as string,
+            updatedAt: row.updated_at as string,
+          }
+        : null;
+    }
+
+    const db = await getDb();
+    const row = db
+      .prepare(
+        "SELECT * FROM ai_chat_sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+      )
+      .getAsObject([userId]) as any;
+    return row && row.conversation_id
+      ? {
+          conversationId: row.conversation_id as string,
+          userId: row.user_id as string,
+          title: deriveChatSessionTitle(
+            parseJson(row.history_json, []),
+            row.title as string | null | undefined,
+          ),
+          pinned: Boolean(row.pinned),
+          history: parseJson(row.history_json, []),
+          result: parseJson(row.latest_response_json, null),
+          createdAt: row.created_at as string,
+          updatedAt: row.updated_at as string,
+        }
+      : null;
+  }
+
+  async getChatSession(userId: string, conversationId: string) {
+    if (isPgAvailable()) {
+      const result = await pgPool.query(
+        `SELECT * FROM ai_chat_sessions WHERE user_id = $1 AND conversation_id = $2 LIMIT 1`,
+        [userId, conversationId],
+      );
+      const row = result.rows[0];
+      return row
+        ? {
+            conversationId: row.conversation_id as string,
+            userId: row.user_id as string,
+            history: parseJson(row.history_json, []),
+            result: parseJson(row.latest_response_json, null),
+            createdAt: row.created_at as string,
+            updatedAt: row.updated_at as string,
+          }
+        : null;
+    }
+
+    const db = await getDb();
+    const row = db
+      .prepare(
+        "SELECT * FROM ai_chat_sessions WHERE user_id = ? AND conversation_id = ? LIMIT 1",
+      )
+      .getAsObject([userId, conversationId]) as any;
+    return row && row.conversation_id
+      ? {
+          conversationId: row.conversation_id as string,
+          userId: row.user_id as string,
+          history: parseJson(row.history_json, []),
+          result: parseJson(row.latest_response_json, null),
+          createdAt: row.created_at as string,
+          updatedAt: row.updated_at as string,
+        }
+      : null;
+  }
+
+  async listChatSessions(userId: string, limit = 10) {
+    if (isPgAvailable()) {
+      const result = await pgPool.query(
+        `SELECT conversation_id, user_id, history_json, latest_response_json, created_at, updated_at
+         , title, pinned
+         FROM ai_chat_sessions
+         WHERE user_id = $1
+         ORDER BY pinned DESC, updated_at DESC
+         LIMIT $2`,
+        [userId, limit],
+      );
+      return result.rows.map((row) => {
+        const history = parseJson(row.history_json, []) as Array<{
+          role?: string;
+          content?: string;
+        }>;
+        const latestResponse = parseJson(row.latest_response_json, null);
+        const summary = summarizeChatSession(history, latestResponse);
+        return {
+          conversationId: row.conversation_id as string,
+          userId: row.user_id as string,
+          title: deriveChatSessionTitle(
+            history,
+            row.title as string | null | undefined,
+          ),
+          pinned: Boolean(row.pinned),
+          preview: summary.preview,
+          sourceCount: summary.sourceCount,
+          hasSources: summary.hasSources,
+          messageCount: history.length,
+          createdAt: row.created_at as string,
+          updatedAt: row.updated_at as string,
+        };
+      });
+    }
+
+    const db = await getDb();
+    const rows = allRows(
+      db,
+      "SELECT conversation_id, user_id, title, pinned, history_json, latest_response_json, created_at, updated_at FROM ai_chat_sessions WHERE user_id = ? ORDER BY pinned DESC, updated_at DESC LIMIT ?",
+      [userId, limit],
+    ) as Array<Record<string, unknown>>;
+    return rows.map((row) => {
+      const history = parseJson(row.history_json, []) as Array<{
+        role?: string;
+        content?: string;
+      }>;
+      const latestResponse = parseJson(row.latest_response_json, null);
+      const summary = summarizeChatSession(history, latestResponse);
+      return {
+        conversationId: row.conversation_id as string,
+        userId: row.user_id as string,
+        title: deriveChatSessionTitle(
+          history,
+          row.title as string | null | undefined,
+        ),
+        pinned: Boolean(row.pinned),
+        preview: summary.preview,
+        sourceCount: summary.sourceCount,
+        hasSources: summary.hasSources,
+        messageCount: history.length,
+        createdAt: row.created_at as string,
+        updatedAt: row.updated_at as string,
+      };
+    });
+  }
+
+  async updateChatSessionTitle(userId: string, conversationId: string, title: string) {
+    if (isPgAvailable()) {
+      const result = await pgPool.query(
+        `UPDATE ai_chat_sessions
+         SET title = $3, updated_at = NOW()
+         WHERE user_id = $1 AND conversation_id = $2`,
+        [userId, conversationId, title],
+      );
+      return Number(result.rowCount ?? 0) > 0;
+    }
+
+    const db = await getDb();
+    const existing = db
+      .prepare(
+        "SELECT conversation_id FROM ai_chat_sessions WHERE user_id = ? AND conversation_id = ? LIMIT 1",
+      )
+      .getAsObject([userId, conversationId]) as { conversation_id?: string };
+    db.prepare(
+      "UPDATE ai_chat_sessions SET title = ?, updated_at = ? WHERE user_id = ? AND conversation_id = ?",
+    ).run([title, now(), userId, conversationId]);
+    saveDb(db);
+    return Boolean(existing?.conversation_id);
+  }
+
+  async updateChatSessionPinned(userId: string, conversationId: string, pinned: boolean) {
+    if (isPgAvailable()) {
+      const result = await pgPool.query(
+        `UPDATE ai_chat_sessions
+         SET pinned = $3, updated_at = NOW()
+         WHERE user_id = $1 AND conversation_id = $2`,
+        [userId, conversationId, pinned ? 1 : 0],
+      );
+      return Number(result.rowCount ?? 0) > 0;
+    }
+
+    const db = await getDb();
+    const existing = db
+      .prepare(
+        "SELECT conversation_id FROM ai_chat_sessions WHERE user_id = ? AND conversation_id = ? LIMIT 1",
+      )
+      .getAsObject([userId, conversationId]) as { conversation_id?: string };
+    db.prepare(
+      "UPDATE ai_chat_sessions SET pinned = ?, updated_at = ? WHERE user_id = ? AND conversation_id = ?",
+    ).run([pinned ? 1 : 0, now(), userId, conversationId]);
+    saveDb(db);
+    return Boolean(existing?.conversation_id);
+  }
+
+  async deleteChatSession(userId: string, conversationId: string) {
+    if (isPgAvailable()) {
+      const result = await pgPool.query(
+        `DELETE FROM ai_chat_sessions WHERE user_id = $1 AND conversation_id = $2`,
+        [userId, conversationId],
+      );
+      return Number(result.rowCount ?? 0) > 0;
+    }
+
+    const db = await getDb();
+    const existing = db
+      .prepare(
+        "SELECT conversation_id FROM ai_chat_sessions WHERE user_id = ? AND conversation_id = ? LIMIT 1",
+      )
+      .getAsObject([userId, conversationId]) as { conversation_id?: string };
+    db
+      .prepare("DELETE FROM ai_chat_sessions WHERE user_id = ? AND conversation_id = ?")
+      .run([userId, conversationId]);
+    saveDb(db);
+    return Boolean(existing?.conversation_id);
   }
 
   async saveDocument(document: {

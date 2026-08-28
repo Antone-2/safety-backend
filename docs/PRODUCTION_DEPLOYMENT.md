@@ -13,7 +13,6 @@ REQUIRE_REDIS=true
 DATABASE_URL=<Render PostgreSQL internal URL>
 REDIS_URL=<Render Redis internal URL>
 FRONTEND_URL=https://<your-vercel-domain>
-APP_BASE_URL=https://<your-vercel-domain>
 ```
 
 The `REQUIRE_*` flags make startup fail instead of silently using temporary storage. Build with `npm ci && npm run build`, start with `npm start`, and do not use SQLite as the production user store.
@@ -24,10 +23,11 @@ Configure Brevo (preferred):
 
 ```env
 BREVO_API_KEY=<secret>
-EMAIL_FROM=Crown Safety <no-reply@example.com>
+BREVO_SENDER_EMAIL=no-reply@example.com
+BREVO_SENDER_NAME=Crown Safety
 ```
 
-Alternatively configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS`. Verify the sender/domain with the provider. Never commit secrets to `.env`; rotate any key that has appeared in Git history.
+Alternatively configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`. Verify the sender/domain with the provider. Never commit secrets to `.env`; rotate any key that has appeared in Git history.
 
 ## Google Sheets
 

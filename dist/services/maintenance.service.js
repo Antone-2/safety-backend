@@ -1,37 +1,6 @@
-import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { pgPool, queryWithRetry } from "../shared/infrastructure/database/postgres.client.js";
 import { logger } from "../shared/utils/logger.js";
 const HOUR_MS = 60 * 60 * 1000;
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function isConnectionTimeoutLike(error) {
-    const message = error instanceof Error
-        ? error.message
-        : typeof error === "string"
-            ? error
-            : "";
-    // pg-pool + pg often surface timeouts with these phrases.
-    return (/timeout/i.test(message) &&
-        /(connection terminated|terminat(ed)?|connect|client|pool)/i.test(message));
-}
-async function queryWithRetry(query, opts) {
-    let lastErr;
-    for (let attempt = 0; attempt <= opts.retries; attempt++) {
-        try {
-            return await query();
-        }
-        catch (err) {
-            lastErr = err;
-            const shouldRetry = isConnectionTimeoutLike(err);
-            const isLast = attempt === opts.retries;
-            if (!shouldRetry || isLast)
-                throw err;
-            const delay = opts.baseDelayMs * Math.pow(2, attempt);
-            await sleep(delay);
-        }
-    }
-    throw lastErr;
-}
 export async function runDatabaseMaintenance() {
     // Run sequentially to reduce concurrent load on the pool during background work.
     const otps = await queryWithRetry(() => pgPool.query("DELETE FROM auth_otp_challenges WHERE expires_at < NOW()"), { retries: 2, baseDelayMs: 500 });

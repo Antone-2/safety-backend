@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { getEnv } from "../config/index.js";
+
+const TIMEZONE = getEnv().TIMEZONE;
 
 const now = () => new Date().toISOString();
 
@@ -209,7 +212,7 @@ export class AnalyticsGovernanceService {
     );
     const reports = result.rows;
     const open = reports.filter((row) => row.status !== "Closed").length;
-    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
     const overdue = reports.filter(
       (row) =>
         row.due_at &&
@@ -258,10 +261,10 @@ export class AnalyticsGovernanceService {
       ).length;
       if (missing) warnings.push(`${missing} report(s) are missing ${field}.`);
     }
-    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
     const future = rows.filter((row) => {
       if (!row.date) return false;
-      const nyDate = new Date(new Date(row.date).toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const nyDate = new Date(new Date(row.date).toLocaleString("en-US", { timeZone: TIMEZONE }));
       return nyDate > nyNow;
     }).length;
     if (future) warnings.push(`${future} report(s) have future dates.`);

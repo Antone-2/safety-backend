@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
+import { getEnv } from "../config/index.js";
+const TIMEZONE = getEnv().TIMEZONE;
 const now = () => new Date().toISOString();
 function stringify(value, fallback) {
     return JSON.stringify(value ?? fallback);
@@ -159,7 +161,7 @@ export class AnalyticsGovernanceService {
         const result = await pgPool.query("SELECT * FROM reports ORDER BY date DESC LIMIT 1000");
         const reports = result.rows;
         const open = reports.filter((row) => row.status !== "Closed").length;
-        const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
         const overdue = reports.filter((row) => row.due_at &&
             row.status !== "Closed" &&
             new Date(row.due_at) < nyNow).length;
@@ -202,11 +204,11 @@ export class AnalyticsGovernanceService {
             if (missing)
                 warnings.push(`${missing} report(s) are missing ${field}.`);
         }
-        const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const nyNow = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
         const future = rows.filter((row) => {
             if (!row.date)
                 return false;
-            const nyDate = new Date(new Date(row.date).toLocaleString("en-US", { timeZone: "America/New_York" }));
+            const nyDate = new Date(new Date(row.date).toLocaleString("en-US", { timeZone: TIMEZONE }));
             return nyDate > nyNow;
         }).length;
         if (future)

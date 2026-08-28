@@ -54,6 +54,71 @@ export function createAiController(service: AiService) {
       res.json(result);
     },
 
+    async latestChatbotSession(req: AuthRequest, res: Response) {
+      const repository = service.getRepository();
+      const session = req.user?.id
+        ? await repository.getLatestChatSession(req.user.id)
+        : null;
+      res.json({ success: true, data: session });
+    },
+
+    async listChatbotSessions(req: AuthRequest, res: Response) {
+      const repository = service.getRepository();
+      const sessions = req.user?.id
+        ? await repository.listChatSessions(
+            req.user.id,
+            typeof req.query.limit === "string" ? Number(req.query.limit) : 10,
+          )
+        : [];
+      res.json({ success: true, data: sessions });
+    },
+
+    async getChatbotSession(req: AuthRequest, res: Response) {
+      const repository = service.getRepository();
+      const session =
+        req.user?.id && typeof req.params.conversationId === "string"
+          ? await repository.getChatSession(req.user.id, req.params.conversationId)
+          : null;
+      res.json({ success: true, data: session });
+    },
+
+    async deleteChatbotSession(req: AuthRequest, res: Response) {
+      const repository = service.getRepository();
+      const deleted =
+        req.user?.id && typeof req.params.conversationId === "string"
+          ? await repository.deleteChatSession(req.user.id, req.params.conversationId)
+          : false;
+      res.json({ success: true, data: { deleted } });
+    },
+
+    async renameChatbotSession(req: AuthRequest, res: Response) {
+      const repository = service.getRepository();
+      const data = req.body as z.infer<typeof schemas.ChatSessionTitleUpdateSchema>;
+      const updated =
+        req.user?.id && typeof req.params.conversationId === "string"
+          ? await repository.updateChatSessionTitle(
+              req.user.id,
+              req.params.conversationId,
+              data.title,
+            )
+          : false;
+      res.json({ success: true, data: { updated } });
+    },
+
+    async pinChatbotSession(req: AuthRequest, res: Response) {
+      const repository = service.getRepository();
+      const data = req.body as z.infer<typeof schemas.ChatSessionPinnedUpdateSchema>;
+      const updated =
+        req.user?.id && typeof req.params.conversationId === "string"
+          ? await repository.updateChatSessionPinned(
+              req.user.id,
+              req.params.conversationId,
+              data.pinned,
+            )
+          : false;
+      res.json({ success: true, data: { updated } });
+    },
+
     async query(req: AuthRequest, res: Response) {
       const data = req.body as z.infer<typeof schemas.AiQueryInputSchema>;
       const result = await service.query(data, req.user);
@@ -242,6 +307,20 @@ export function createAiRouter() {
     "/chatbot/chat",
     validate(schemas.ChatbotInputSchema),
     controller.chatbot,
+  );
+  router.get("/chatbot/session/latest", controller.latestChatbotSession);
+  router.get("/chatbot/sessions", controller.listChatbotSessions);
+  router.get("/chatbot/session/:conversationId", controller.getChatbotSession);
+  router.delete("/chatbot/session/:conversationId", controller.deleteChatbotSession);
+  router.patch(
+    "/chatbot/session/:conversationId/title",
+    validate(schemas.ChatSessionTitleUpdateSchema),
+    controller.renameChatbotSession,
+  );
+  router.patch(
+    "/chatbot/session/:conversationId/pinned",
+    validate(schemas.ChatSessionPinnedUpdateSchema),
+    controller.pinChatbotSession,
   );
   router.post(
     "/compliance-assistant",

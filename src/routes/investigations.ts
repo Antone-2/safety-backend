@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { authenticateUser, requireRole, type AuthRequest } from "../middleware/auth.js";
-import { InvestigationService } from "../services/investigation.service.js";
+import { authenticateUser, requirePermission, type AuthRequest } from "../shared/middleware/auth.middleware.js";
+import { InvestigationService, InvestigationSchema } from "../services/investigation.service.js";
+import { validate } from "../shared/middleware/validation.middleware.js";
 
 const router = Router();
 const service = new InvestigationService();
@@ -14,7 +15,7 @@ router.get("/", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/dashboard", authenticateUser, async (_req: AuthRequest, res) => {
+router.get("/dashboard", authenticateUser, requirePermission("investigations:read"), async (_req: AuthRequest, res) => {
   try {
     const stats = await service.getStats();
     res.json(stats);
@@ -23,7 +24,7 @@ router.get("/dashboard", authenticateUser, async (_req: AuthRequest, res) => {
   }
 });
 
-router.get("/incident/:incidentId", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/incident/:incidentId", authenticateUser, requirePermission("investigations:read"), async (req: AuthRequest, res) => {
   try {
     const records = await service.getByIncidentId(String(req.params.incidentId));
     res.json(records);
@@ -32,7 +33,7 @@ router.get("/incident/:incidentId", authenticateUser, async (req: AuthRequest, r
   }
 });
 
-router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/:id", authenticateUser, requirePermission("investigations:read"), async (req: AuthRequest, res) => {
   try {
     const record = await service.getById(String(req.params.id));
     if (!record) return res.status(404).json({ error: "Investigation not found" });
@@ -42,7 +43,7 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager"]), async (req: AuthRequest, res) => {
+router.post("/", authenticateUser, requirePermission("investigations:create"), validate(InvestigationSchema), async (req: AuthRequest, res) => {
   try {
     const record = await service.createInvestigation({ ...req.body, createdBy: req.user?.name || "System" });
     res.status(201).json(record);
@@ -51,7 +52,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
   }
 });
 
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
+router.patch("/:id", authenticateUser, requirePermission("investigations:update"), validate(InvestigationSchema.partial()), async (req: AuthRequest, res) => {
   try {
     const record = await service.update(String(req.params.id), req.body);
     res.json(record);
@@ -60,7 +61,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
   }
 });
 
-router.post("/:id/evidence", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
+router.post("/:id/evidence", authenticateUser, requirePermission("investigations:update"), async (req: AuthRequest, res) => {
   try {
     const record = await service.addEvidence(String(req.params.id), req.body);
     res.json(record);
@@ -69,7 +70,7 @@ router.post("/:id/evidence", authenticateUser, requireRole(["super-admin", "EHS-
   }
 });
 
-router.post("/:id/complete", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer"]), async (req: AuthRequest, res) => {
+router.post("/:id/complete", authenticateUser, requirePermission("investigations:update"), async (req: AuthRequest, res) => {
   try {
     const record = await service.completeInvestigation(String(req.params.id), req.body);
     res.json(record);
@@ -78,7 +79,7 @@ router.post("/:id/complete", authenticateUser, requireRole(["super-admin", "EHS-
   }
 });
 
-router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+router.delete("/:id", authenticateUser, requirePermission("investigations:delete"), async (req: AuthRequest, res) => {
   try {
     const result = await service.delete(String(req.params.id));
     res.json({ success: result });

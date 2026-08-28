@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
-import { IncidentService, IncidentSchema, IncidentInput } from "../services/incident.service.js";
-import { authenticateUser, requireRole, type AuthRequest } from "../middleware/auth.js";
+import { IncidentService, IncidentSchema } from "../services/incident.service.js";
+import { authenticateUser, requirePermission, type AuthRequest } from "../shared/middleware/auth.middleware.js";
+import { validate } from "../shared/middleware/validation.middleware.js";
 
 const router = Router();
 const incidentService = new IncidentService();
 
-router.get("/", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/", authenticateUser, requirePermission("incidents:read"), async (req: AuthRequest, res) => {
   try {
     const filters: Record<string, any> = {};
     if (String(req.query.status)) filters.status = String(String(req.query.status));
@@ -20,7 +21,7 @@ router.get("/", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/:id", authenticateUser, requirePermission("incidents:read"), async (req: AuthRequest, res) => {
   try {
     const incident = await incidentService.getById(String(req.params.id));
     if (!incident) return res.status(404).json({ error: "Incident not found" });
@@ -30,9 +31,9 @@ router.get("/:id", authenticateUser, async (req: AuthRequest, res) => {
   }
 });
 
-router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin", "supervisor"]), async (req: AuthRequest, res) => {
+router.post("/", authenticateUser, requirePermission("incidents:create"), validate(IncidentSchema), async (req: AuthRequest, res) => {
   try {
-    const data = req.body as IncidentInput;
+    const data = req.body;
     const incident = await incidentService.createIncident(data);
     res.status(201).json(incident);
   } catch (error) {
@@ -44,7 +45,7 @@ router.post("/", authenticateUser, requireRole(["super-admin", "EHS-manager", "E
   }
 });
 
-router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager", "EHS-officer", "plant-manager", "factory-manager", "depot-admin"]), async (req: AuthRequest, res) => {
+router.patch("/:id", authenticateUser, requirePermission("incidents:update"), validate(IncidentSchema.partial()), async (req: AuthRequest, res) => {
   try {
     const incident = await incidentService.update(String(req.params.id), req.body);
     res.json(incident);
@@ -53,7 +54,7 @@ router.patch("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"
   }
 });
 
-router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req: AuthRequest, res) => {
+router.delete("/:id", authenticateUser, requirePermission("incidents:delete"), async (req: AuthRequest, res) => {
   try {
     const deleted = await incidentService.delete(String(req.params.id));
     if (!deleted) return res.status(404).json({ error: "Incident not found" });
@@ -63,7 +64,7 @@ router.delete("/:id", authenticateUser, requireRole(["super-admin", "EHS-manager
   }
 });
 
-router.get("/stats/summary", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/stats/summary", authenticateUser, requirePermission("incidents:read"), async (req: AuthRequest, res) => {
   try {
     const stats = await incidentService.getStats();
     res.json(stats);
@@ -72,7 +73,7 @@ router.get("/stats/summary", authenticateUser, async (req: AuthRequest, res) => 
   }
 });
 
-router.get("/overdue/list", authenticateUser, async (req: AuthRequest, res) => {
+router.get("/overdue/list", authenticateUser, requirePermission("incidents:read"), async (req: AuthRequest, res) => {
   try {
     const overdue = await incidentService.getOverdue();
     res.json(overdue);
