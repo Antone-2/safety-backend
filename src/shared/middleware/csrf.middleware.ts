@@ -19,8 +19,8 @@ function hasRefreshCookie(req: Request) {
   return Boolean(
     req.headers.cookie
       ?.split(";")
-      .map((part) => part.trim())
-      .some((part) => part.startsWith("ehs_refresh=")),
+      .map((part: string) => part.trim())
+      .some((part: string) => part.startsWith("ehs_refresh=")),
   );
 }
 
@@ -42,8 +42,8 @@ export function csrfProtectionMiddleware(
   const header = req.get("x-csrf-token");
   const cookieToken = req.headers.cookie
     ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("ehs_csrf="))
+    .map((part: string) => part.trim())
+    .find((part: string) => part.startsWith("ehs_csrf="))
     ?.slice("ehs_csrf=".length);
 
   if (!header || !cookieToken || header !== decodeURIComponent(cookieToken)) {

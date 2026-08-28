@@ -7,7 +7,7 @@ export const logger = pino({
   level: env.LOG_LEVEL || (env.NODE_ENV === "production" ? "info" : "debug"),
   redact: ["password", "token", "authorization", "cookie", "secret"],
   formatters: {
-    log: (log) => {
+    log: (log: Record<string, unknown>) => {
       return {
         ...log,
         service: "safety-backend",

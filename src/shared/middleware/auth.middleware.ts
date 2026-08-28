@@ -24,8 +24,8 @@ export function getCookieValue(req: Request, name: string) {
   if (!cookieHeader) return "";
   const cookie = cookieHeader
     .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`));
+    .map((part: string) => part.trim())
+    .find((part: string) => part.startsWith(`${name}=`));
   return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
 }
 

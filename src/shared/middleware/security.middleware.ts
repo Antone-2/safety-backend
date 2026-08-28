@@ -5,7 +5,7 @@ export function buildSecurityHeaders(): Record<string, string> {
     "'self'",
     ...(process.env.FRONTEND_URL || "")
       .split(",")
-      .map((value) => value.trim())
+      .map((value: string) => value.trim())
       .filter(Boolean),
   ].join(" ");
   const headers: Record<string, string> = {
