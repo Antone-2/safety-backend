@@ -8,6 +8,50 @@ import { allRows, getDb } from "../../lib/database.js";
 import { pgPool } from "../infrastructure/database/postgres.client.js";
 import { isJwtDenylisted } from "./jwt-denylist.middleware.js";
 
+export function normalizeRole(role: string | undefined | null): string {
+  const normalized = String(role ?? "").trim().toLowerCase();
+
+  switch (normalized) {
+    case "super-admin":
+    case "super admin":
+    case "superadmin":
+      return "super-admin";
+    case "ehs-manager":
+    case "ehs manager":
+    case "admin":
+      return "EHS-manager";
+    case "ehs-officer":
+    case "ehs officer":
+      return "EHS-officer";
+    case "gm":
+    case "general manager":
+      return "gm";
+    case "plant-manager":
+    case "plant manager":
+      return "plant-manager";
+    case "factory-manager":
+    case "factory manager":
+      return "factory-manager";
+    case "supervisor":
+      return "supervisor";
+    case "depot-admin":
+    case "depot admin":
+    case "user":
+      return "depot-admin";
+    case "she-committee-member":
+    case "she committee member":
+    case "committee":
+      return "she-committee-member";
+    case "maintenance-manager":
+    case "maintenance manager":
+      return "maintenance-manager";
+    case "issuer":
+      return "issuer";
+    default:
+      return "depot-admin";
+  }
+}
+
 export interface AuthRequest extends Request {
   user?: {
     id: string;
@@ -114,7 +158,7 @@ export async function authenticateUser(
 
   const demoIdentity = getConfiguredDemoIdentity();
   if (token === "demo-token" && demoIdentity) {
-    req.user = demoIdentity;
+    req.user = { ...demoIdentity, role: normalizeRole(demoIdentity.role) };
     return next();
   }
 
@@ -125,7 +169,7 @@ export async function authenticateUser(
       exp?: number;
     };
     req.user = decoded
-      ? { ...decoded, id: decoded.id || decoded.userId || "" }
+      ? { ...decoded, id: decoded.id || decoded.userId || "", role: normalizeRole(decoded.role) }
       : decoded;
     if (!decoded?.jti)
       return res.status(401).json({ error: "Session is invalid" });

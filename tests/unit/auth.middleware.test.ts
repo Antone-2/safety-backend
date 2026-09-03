@@ -25,6 +25,7 @@ vi.mock("../../src/shared/middleware/rbac.middleware.js", () => ({
 }));
 
 import { authenticateUser } from "../../src/shared/middleware/auth.middleware.js";
+import { pgPool } from "../../src/shared/infrastructure/database/postgres.client.js";
 
 describe("authenticateUser", () => {
   beforeEach(() => {
@@ -53,6 +54,29 @@ describe("authenticateUser", () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it("normalizes legacy role names like admin and ehs manager", async () => {
+    vi.mocked(jwt.verify).mockReturnValue({ id: "user-1", jti: "session-1", email: "user@example.com", role: "admin" } as any);
+    vi.mocked(pgPool.query).mockResolvedValue({ rows: [{ id: "session-1" }], rowCount: 1 } as any);
+
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as any;
+    const next = vi.fn();
+    const req = {
+      headers: { authorization: "Bearer token" },
+      query: {},
+      get: vi.fn(() => "test"),
+      ip: "127.0.0.1",
+      socket: { remoteAddress: "127.0.0.1" },
+    } as any;
+
+    await authenticateUser(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.user?.role).toBe("EHS-manager");
   });
 
   it("accepts the configured demo token when demo login is enabled", async () => {
