@@ -512,9 +512,9 @@ export type UpdatePermitInput = z.infer<typeof UpdatePermitSchema>;
 export declare const AdvancePermitStatusSchema: z.ZodObject<{
     status: z.ZodEnum<["applicant", "supervisor", "EHS", "issuer", "approval", "active", "closed"]>;
 }, "strip", z.ZodTypeAny, {
-    status: "supervisor" | "issuer" | "active" | "closed" | "applicant" | "approval" | "EHS";
+    status: "supervisor" | "issuer" | "active" | "approval" | "closed" | "applicant" | "EHS";
 }, {
-    status: "supervisor" | "issuer" | "active" | "closed" | "applicant" | "approval" | "EHS";
+    status: "supervisor" | "issuer" | "active" | "approval" | "closed" | "applicant" | "EHS";
 }>;
 export type AdvancePermitStatusInput = z.infer<typeof AdvancePermitStatusSchema>;
 export declare const JsaStatusSchema: z.ZodEnum<["draft", "in-review", "active", "completed", "archived"]>;
@@ -553,17 +553,17 @@ export declare const JsaStepSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     id: string;
     description: string;
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
     hazards: string[];
     controls: string[];
     existingRisk: "Critical" | "Low" | "Medium" | "High";
-    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }, {
     id: string;
     description: string;
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
     hazards: string[];
     controls: string[];
     existingRisk: "Critical" | "Low" | "Medium" | "High";
-    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }>;
 export type JsaStepInput = z.infer<typeof JsaStepSchema>;
 export declare const CreateJsaSchema: z.ZodObject<{
@@ -602,22 +602,22 @@ export declare const UpdateJsaSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }, {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }>, "many">>;
     reviewedBy: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     reviewedAt: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
+    status?: "active" | "completed" | "draft" | "in-review" | "archived" | undefined;
     title?: string | undefined;
     department?: string | undefined;
     description?: string | null | undefined;
@@ -627,13 +627,13 @@ export declare const UpdateJsaSchema: z.ZodObject<{
     steps?: {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[] | undefined;
 }, {
-    status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
+    status?: "active" | "completed" | "draft" | "in-review" | "archived" | undefined;
     title?: string | undefined;
     department?: string | undefined;
     description?: string | null | undefined;
@@ -643,10 +643,10 @@ export declare const UpdateJsaSchema: z.ZodObject<{
     steps?: {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[] | undefined;
 }>;
 export type UpdateJsaInput = z.infer<typeof UpdateJsaSchema>;
@@ -724,9 +724,6 @@ export declare const CreateRiskMatrixSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     name: string;
-    createdBy: string;
-    likelihoodScale: Record<number, string>;
-    severityScale: Record<number, string>;
     levels: {
         label: string;
         minLikelihood: number;
@@ -735,13 +732,13 @@ export declare const CreateRiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[];
+    createdBy: string;
+    likelihoodScale: Record<number, string>;
+    severityScale: Record<number, string>;
     isDefault: boolean;
     description?: string | undefined;
 }, {
     name: string;
-    createdBy: string;
-    likelihoodScale: Record<number, string>;
-    severityScale: Record<number, string>;
     levels: {
         label: string;
         minLikelihood: number;
@@ -750,6 +747,9 @@ export declare const CreateRiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[];
+    createdBy: string;
+    likelihoodScale: Record<number, string>;
+    severityScale: Record<number, string>;
     description?: string | undefined;
     isDefault?: boolean | undefined;
 }>;
@@ -785,8 +785,6 @@ export declare const UpdateRiskMatrixSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     name?: string | undefined;
     description?: string | null | undefined;
-    likelihoodScale?: Record<number, string> | undefined;
-    severityScale?: Record<number, string> | undefined;
     levels?: {
         label: string;
         minLikelihood: number;
@@ -795,12 +793,12 @@ export declare const UpdateRiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[] | undefined;
+    likelihoodScale?: Record<number, string> | undefined;
+    severityScale?: Record<number, string> | undefined;
     isDefault?: boolean | undefined;
 }, {
     name?: string | undefined;
     description?: string | null | undefined;
-    likelihoodScale?: Record<number, string> | undefined;
-    severityScale?: Record<number, string> | undefined;
     levels?: {
         label: string;
         minLikelihood: number;
@@ -809,6 +807,8 @@ export declare const UpdateRiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[] | undefined;
+    likelihoodScale?: Record<number, string> | undefined;
+    severityScale?: Record<number, string> | undefined;
     isDefault?: boolean | undefined;
 }>;
 export type UpdateRiskMatrixInput = z.infer<typeof UpdateRiskMatrixSchema>;

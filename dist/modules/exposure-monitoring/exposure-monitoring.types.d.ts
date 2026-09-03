@@ -87,8 +87,8 @@ export declare const CreateExposureMonitoringSchema: z.ZodObject<{
     resultValue: number;
     limitValue: number;
     medicalSurveillanceRequired: boolean;
-    jobTitle?: string | undefined;
     notes?: string | undefined;
+    jobTitle?: string | undefined;
     recommendations?: string | undefined;
     certificateUrl?: string | undefined;
     monitoredGroup?: string | undefined;
@@ -114,8 +114,8 @@ export declare const CreateExposureMonitoringSchema: z.ZodObject<{
     resultValue: number;
     limitValue: number;
     status?: "Planned" | "Closed" | "Sampled" | "Reviewed" | undefined;
-    jobTitle?: string | undefined;
     notes?: string | undefined;
+    jobTitle?: string | undefined;
     recommendations?: string | undefined;
     certificateUrl?: string | undefined;
     riskLevel?: "Critical" | "Low" | "Medium" | "High" | undefined;
@@ -165,9 +165,9 @@ export declare const UpdateExposureMonitoringSchema: z.ZodObject<{
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     jobTitle?: string | null | undefined;
     createdBy?: string | undefined;
-    notes?: string | null | undefined;
     recommendations?: string | null | undefined;
     certificateUrl?: string | null | undefined;
     unit?: string | undefined;
@@ -194,9 +194,9 @@ export declare const UpdateExposureMonitoringSchema: z.ZodObject<{
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     jobTitle?: string | null | undefined;
     createdBy?: string | undefined;
-    notes?: string | null | undefined;
     recommendations?: string | null | undefined;
     certificateUrl?: string | null | undefined;
     unit?: string | undefined;

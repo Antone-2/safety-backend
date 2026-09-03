@@ -49,10 +49,10 @@ export declare const CreateComplianceObligationSchema: z.ZodObject<{
     frequency: string;
     responsibility: string;
     dueDate?: string | undefined;
-    createdBy?: string | undefined;
-    evidence?: string | undefined;
-    lastComplianceDate?: string | undefined;
     notes?: string | undefined;
+    evidence?: string | undefined;
+    createdBy?: string | undefined;
+    lastComplianceDate?: string | undefined;
 }, {
     title: string;
     site: string;
@@ -63,10 +63,10 @@ export declare const CreateComplianceObligationSchema: z.ZodObject<{
     responsibility: string;
     status?: "Compliant" | "Non-Compliant" | "Pending" | undefined;
     dueDate?: string | undefined;
-    createdBy?: string | undefined;
-    evidence?: string | undefined;
-    lastComplianceDate?: string | undefined;
     notes?: string | undefined;
+    evidence?: string | undefined;
+    createdBy?: string | undefined;
+    lastComplianceDate?: string | undefined;
 }>;
 export type CreateComplianceObligationInput = z.infer<typeof CreateComplianceObligationSchema> & {
     createdBy: string;
@@ -90,26 +90,26 @@ export declare const UpdateComplianceObligationSchema: z.ZodObject<{
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     evidence?: string | null | undefined;
     legislation?: string | undefined;
     requirement?: string | undefined;
     frequency?: string | undefined;
     responsibility?: string | undefined;
     lastComplianceDate?: string | null | undefined;
-    notes?: string | null | undefined;
 }, {
     status?: "Compliant" | "Non-Compliant" | "Pending" | undefined;
     dueDate?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     evidence?: string | null | undefined;
     legislation?: string | undefined;
     requirement?: string | undefined;
     frequency?: string | undefined;
     responsibility?: string | undefined;
     lastComplianceDate?: string | null | undefined;
-    notes?: string | null | undefined;
 }>;
 export type UpdateComplianceObligationInput = z.infer<typeof UpdateComplianceObligationSchema>;
 export interface ComplianceAudit {
@@ -255,7 +255,7 @@ export declare const CreateLegalUpdateSchema: z.ZodObject<{
     source: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "Closed" | "Under Review" | "New" | "Action Required" | "Implemented";
+    status: "Under Review" | "Closed" | "New" | "Action Required" | "Implemented";
     title: string;
     summary: string;
     legislation: string;
@@ -273,7 +273,7 @@ export declare const CreateLegalUpdateSchema: z.ZodObject<{
     legislation: string;
     jurisdiction: string;
     effectiveDate: string;
-    status?: "Closed" | "Under Review" | "New" | "Action Required" | "Implemented" | undefined;
+    status?: "Under Review" | "Closed" | "New" | "Action Required" | "Implemented" | undefined;
     dueDate?: string | undefined;
     source?: string | undefined;
     createdBy?: string | undefined;
@@ -297,7 +297,7 @@ export declare const UpdateLegalUpdateSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["New", "Under Review", "Action Required", "Implemented", "Closed"]>>;
     source: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Closed" | "Under Review" | "New" | "Action Required" | "Implemented" | undefined;
+    status?: "Under Review" | "Closed" | "New" | "Action Required" | "Implemented" | undefined;
     dueDate?: string | null | undefined;
     title?: string | undefined;
     source?: string | null | undefined;
@@ -309,7 +309,7 @@ export declare const UpdateLegalUpdateSchema: z.ZodObject<{
     impactAssessment?: string | null | undefined;
     actionRequired?: string | null | undefined;
 }, {
-    status?: "Closed" | "Under Review" | "New" | "Action Required" | "Implemented" | undefined;
+    status?: "Under Review" | "Closed" | "New" | "Action Required" | "Implemented" | undefined;
     dueDate?: string | null | undefined;
     title?: string | undefined;
     source?: string | null | undefined;

@@ -2,6 +2,8 @@ import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { CreateReportSchema, StatusSchema } from "../../lib/types.js";
+import { findUserByIdentifier, SUPERVISOR_ROLES } from "../../lib/users.js";
+import { assignmentsService } from "../assignments/assignments.service.js";
 import { authenticateUser, requirePermission, } from "../../shared/middleware/auth.middleware.js";
 import { cacheService } from "../../shared/infrastructure/redis/cache.service.js";
 import { metricsService } from "../../shared/metrics/metrics.service.js";
@@ -14,6 +16,10 @@ import { getMonthlyEhsReport } from "./monthly-ehs-report.service.js";
 const BulkReportStatusSchema = z.object({
     ids: z.array(z.string().min(1)).min(1).max(100),
     status: StatusSchema,
+});
+const ReportAssignmentSchema = z.object({
+    assignedTo: z.string().trim().toLowerCase().email(),
+    assignedToCopy: z.array(z.string().trim().toLowerCase().email()).max(100).optional().default([]),
 });
 const CorrectiveActionRequestCreateSchema = z.object({
     recipientEmail: z.string().email(),
@@ -600,6 +606,20 @@ export function createReportsRouter() {
             res.status(500).json({ error: "Failed to load leaderboard" });
         }
     });
+    router.get("/leaderboard/by-location", authenticateUser, requirePermission("reports:read"), async (req, res) => {
+        const cacheKey = buildReportsCacheKey("leaderboard-by-location", {
+            role: req.user?.role ?? "unknown",
+        });
+        try {
+            setCachedJsonHeaders(res, REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+            const data = await cacheService.getOrSet(cacheKey, () => reportsService.getLeaderboardByLocation(), REPORTS_DASHBOARD_CACHE_TTL_SECONDS);
+            res.json({ data });
+        }
+        catch (error) {
+            console.error("Failed to load leaderboard by location", error);
+            res.status(500).json({ error: "Failed to load leaderboard by location" });
+        }
+    });
     router.get("/generate", authenticateUser, requirePermission("reports:read"), async (req, res) => {
         try {
             const rows = await reportsService.generateExport({
@@ -861,25 +881,43 @@ export function createReportsRouter() {
     });
     router.patch("/:id/assign", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
         const id = routeParam(req, "id");
-        const assignedTo = String(req.body?.assignedTo ?? "")
-            .trim()
-            .toLowerCase();
-        const assignedToCopy = Array.isArray(req.body?.assignedToCopy)
-            ? Array.from(new Set(req.body.assignedToCopy
-                .map((item) => String(item).trim().toLowerCase())
-                .filter((item) => Boolean(item))))
-            : [];
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(assignedTo)) {
-            return res.status(400).json({
-                error: "Primary assignment recipient must be a valid email address",
-            });
+        const parsed = ReportAssignmentSchema.safeParse(req.body);
+        if (!parsed.success)
+            return res.status(400).json({ error: parsed.error.errors });
+        const assignedTo = parsed.data.assignedTo;
+        const assignedToCopy = Array.from(new Set(parsed.data.assignedToCopy.filter((email) => email !== assignedTo)));
+        const assignee = await findUserByIdentifier(assignedTo);
+        if (!assignee || !SUPERVISOR_ROLES.includes(assignee.role)) {
+            return res.status(400).json({ error: "Primary assignee must be an active user with an assignable supervisor role" });
         }
         const updated = await reportsService.updateAssignment(id, assignedTo, assignedToCopy, req);
         if (!updated)
             return res.status(404).json({ error: "Not found" });
+        let workAssignment;
+        try {
+            workAssignment = await assignmentsService.syncReportAssignment({
+                reportId: id,
+                assigneeEmail: assignedTo,
+                copiedEmails: assignedToCopy,
+                reason: typeof req.body?.assignmentReason === "string" ? req.body.assignmentReason.trim() : undefined,
+                dueAt: updated.dueAt,
+                priority: ["Low", "Medium", "High", "Critical"].includes(String(updated.severity))
+                    ? String(updated.severity)
+                    : undefined,
+            }, req);
+        }
+        catch (error) {
+            console.error("Failed to synchronize first-class assignment", error);
+            await assignmentsService.enqueueReportAssignmentSync({
+                reportId: id, assigneeEmail: assignedTo, copiedEmails: assignedToCopy,
+                reason: typeof req.body?.assignmentReason === "string" ? req.body.assignmentReason.trim() : undefined,
+                dueAt: updated.dueAt,
+                priority: ["Low", "Medium", "High", "Critical"].includes(String(updated.severity)) ? String(updated.severity) : undefined,
+            }, req, error);
+        }
         await invalidateReportsCache();
         broadcastReport(updated);
-        res.json({ data: updated });
+        res.json({ data: { ...updated, workAssignment } });
     });
     router.post("/:id/corrective-action-requests", authenticateUser, requirePermission("reports:assign"), async (req, res) => {
         const id = routeParam(req, "id");

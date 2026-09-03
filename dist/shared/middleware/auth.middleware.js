@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { getEnv } from "../../config/index.js";
+import { logger } from "../utils/logger.js";
 import { hasPermission, recordAuthFailure } from "./rbac.middleware.js";
 import { allRows, getDb } from "../../lib/database.js";
 import { pgPool } from "../infrastructure/database/postgres.client.js";
@@ -130,7 +131,11 @@ export async function authenticateUser(req, res, next) {
             return res.status(401).json({ error: "Session device changed. Please sign in again." });
         }
         if (storedIp && storedIp !== currentIp) {
-            return res.status(401).json({ error: "Session IP changed. Please sign in again." });
+            logger.warn({
+                sessionId: decoded.jti,
+                storedIp,
+                currentIp,
+            }, "Authenticated session IP changed");
         }
         const touchSession = shouldTouchSession(decoded.jti);
         if (touchSession && isPgConfigured()) {

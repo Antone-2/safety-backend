@@ -200,8 +200,8 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     date: string;
     description: string;
-    createdBy: string;
     severity: "Critical" | "Low" | "Medium" | "High";
+    createdBy: string;
     location: string;
     contractorId: string;
     incidentType: string;
@@ -210,8 +210,8 @@ export declare const CreateContractorIncidentSchema: z.ZodObject<{
 }, {
     date: string;
     description: string;
-    createdBy: string;
     severity: "Critical" | "Low" | "Medium" | "High";
+    createdBy: string;
     location: string;
     contractorId: string;
     incidentType: string;

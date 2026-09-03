@@ -50,3 +50,4 @@ export function createNotificationsRouter() {
 export function createSettingsRouter() {
     return settingsRouter;
 }
+export * from "./assignments/assignments.module.js";

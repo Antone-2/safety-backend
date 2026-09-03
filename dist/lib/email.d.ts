@@ -261,6 +261,7 @@ export declare function sendOtpEmail(input: {
     mode: string;
     message: string;
 }>;
+export declare function sendSms(to: string, body: string): Promise<boolean>;
 export declare function sendSmsNotification(report: {
     id: string;
     severity: string;
@@ -326,6 +327,7 @@ export interface AssignmentDeliveryResult {
     mode: "brevo" | "smtp" | "internal" | "failed";
     error?: string;
 }
+export declare function sendWhatsApp(to: string, body: string): Promise<boolean>;
 export declare function buildReportAssignmentNotification(report: {
     id: string;
     severity: string;

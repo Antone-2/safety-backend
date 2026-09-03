@@ -42,8 +42,8 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     linkedCapaIds: string;
     id?: string | undefined;
     description?: string | undefined;
-    evidence?: string | undefined;
     notes?: string | undefined;
+    evidence?: string | undefined;
     reviewedBy?: string | undefined;
     unit?: string | undefined;
     targetValue?: number | undefined;
@@ -63,8 +63,8 @@ export declare const EHSObjectiveSchema: z.ZodObject<{
     status?: "In Progress" | "Cancelled" | "At Risk" | "Not Started" | "On Track" | "Off Track" | "Achieved" | undefined;
     id?: string | undefined;
     description?: string | undefined;
-    evidence?: string | undefined;
     notes?: string | undefined;
+    evidence?: string | undefined;
     reviewedBy?: string | undefined;
     unit?: string | undefined;
     targetValue?: number | undefined;

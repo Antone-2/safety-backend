@@ -92,9 +92,6 @@ export declare const CreateRiskMatrixSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     name: string;
-    createdBy: string;
-    likelihoodScale: Record<number, string>;
-    severityScale: Record<number, string>;
     levels: {
         label: string;
         minLikelihood: number;
@@ -103,13 +100,13 @@ export declare const CreateRiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[];
+    createdBy: string;
+    likelihoodScale: Record<number, string>;
+    severityScale: Record<number, string>;
     isDefault: boolean;
     description?: string | undefined;
 }, {
     name: string;
-    createdBy: string;
-    likelihoodScale: Record<number, string>;
-    severityScale: Record<number, string>;
     levels: {
         label: string;
         minLikelihood: number;
@@ -118,6 +115,9 @@ export declare const CreateRiskMatrixSchema: z.ZodObject<{
         maxSeverity: number;
         color: string;
     }[];
+    createdBy: string;
+    likelihoodScale: Record<number, string>;
+    severityScale: Record<number, string>;
     description?: string | undefined;
     isDefault?: boolean | undefined;
 }>;
@@ -142,8 +142,8 @@ export declare const CreateRiskRegisterSchema: z.ZodObject<{
     status: string;
     title: string;
     department: string;
-    createdBy: string;
     severity: number;
+    createdBy: string;
     location: string;
     activity: string;
     hazard: string;
@@ -157,8 +157,8 @@ export declare const CreateRiskRegisterSchema: z.ZodObject<{
 }, {
     title: string;
     department: string;
-    createdBy: string;
     severity: number;
+    createdBy: string;
     location: string;
     activity: string;
     hazard: string;

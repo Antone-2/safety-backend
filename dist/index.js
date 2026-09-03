@@ -17,6 +17,8 @@ import { logger } from "./shared/utils/logger.js";
 import { startMonthlyLeaderboardScheduler } from "./services/leaderboard.service.js";
 import { startDatabaseMaintenanceScheduler } from "./services/maintenance.service.js";
 import { startCorrectiveActionReminderScheduler } from "./services/corrective-action-request.service.js";
+import { startAssignmentSlaScheduler } from "./services/assignment-sla.service.js";
+import { startAssignmentSyncScheduler } from "./modules/assignments/assignments.service.js";
 import * as Sentry from "@sentry/node";
 import { createAuthRouter } from "./modules/auth/auth.module.js";
 import { createUsersRouter } from "./modules/users/users.module.js";
@@ -24,7 +26,7 @@ import permissionMatrixRouter from "./routes/permission-matrix.js";
 import { createIncidentsRouter } from "./modules/incidents/incidents.controller.js";
 import { createPermitsRouter } from "./modules/permits/permits.module.js";
 import { createCapaRouter } from "./modules/capa/capa.module.js";
-import { createSdsRouter, createFireRouter, createInvestigationsRouter, createTrainingRouter, createPpeRouter, createEquipmentRouter, createContractorsRouter, createComplianceRouter, createEnvironmentalRouter, createHealthRouter, createHeightWorkRouter, createScaffoldRouter, createGovernanceRouter, createAnalyticsRouter, createReportsRouter, createNotificationsRouter, createDocumentsRouter, createSettingsRouter, createAiRouter, createWibaRouter, createWorkplaceRegistrationRouter, createRiskRouter, createKpiRouter, createInspectionsRouter, createObservationsRouter, createMocRouter, createOrganizationRouter, createExposureMonitoringRouter, createVisitorsRouter, createSafetyAlertsRouter, createCalibrationsRouter, createLegalRegisterRouter, } from "./modules/index.js";
+import { createSdsRouter, createFireRouter, createInvestigationsRouter, createTrainingRouter, createPpeRouter, createEquipmentRouter, createContractorsRouter, createComplianceRouter, createEnvironmentalRouter, createHealthRouter, createHeightWorkRouter, createScaffoldRouter, createGovernanceRouter, createAnalyticsRouter, createReportsRouter, createNotificationsRouter, createDocumentsRouter, createSettingsRouter, createAiRouter, createWibaRouter, createWorkplaceRegistrationRouter, createRiskRouter, createKpiRouter, createInspectionsRouter, createObservationsRouter, createMocRouter, createOrganizationRouter, createExposureMonitoringRouter, createVisitorsRouter, createSafetyAlertsRouter, createCalibrationsRouter, createLegalRegisterRouter, createAssignmentsRouter, } from "./modules/index.js";
 import googleFormsRouter, { setGoogleSheetsPostgresAvailability, startGoogleSheetsScheduler, } from "./routes/google-forms.js";
 import referenceRouter from "./routes/reference.js";
 import operationsRouter from "./routes/operations.js";
@@ -133,6 +135,7 @@ app.get("/ready", async (_req, res) => {
 mountAll(API_PREFIXES, "/auth", createAuthRouter());
 mountAll(API_PREFIXES, "/users", createUsersRouter());
 mountAll(API_PREFIXES, "/reports", createReportsRouter());
+mountAll(API_PREFIXES, "/assignments", createAssignmentsRouter());
 mountAll(API_PREFIXES, "/google-forms", googleFormsRouter);
 mountAll(API_PREFIXES, "/reference", referenceRouter);
 mountAll(API_PREFIXES, "/incidents", createIncidentsRouter());
@@ -279,6 +282,8 @@ async function bootstrap() {
             startMonthlyLeaderboardScheduler();
             startDatabaseMaintenanceScheduler();
             startCorrectiveActionReminderScheduler();
+            startAssignmentSlaScheduler();
+            startAssignmentSyncScheduler();
         }
         if (bullMqReady) {
             await import("./jobs/scheduler.js");

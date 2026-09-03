@@ -221,15 +221,15 @@ export declare const CreateInspectionSchema: z.ZodObject<{
         total: z.ZodDefault<z.ZodNumber>;
         completed: z.ZodDefault<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        total: number;
         completed: number;
+        total: number;
     }, {
-        total?: number | undefined;
         completed?: number | undefined;
+        total?: number | undefined;
     }>>>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "In Progress" | "Completed" | "Overdue" | "Cancelled" | "Scheduled";
+    status: "In Progress" | "Completed" | "Cancelled" | "Overdue" | "Scheduled";
     dueDate: string;
     title: string;
     site: string;
@@ -247,12 +247,12 @@ export declare const CreateInspectionSchema: z.ZodObject<{
     inspectionDate: string;
     area: string;
     checklistCompletion: {
-        total: number;
         completed: number;
+        total: number;
     };
-    assignedTo?: string | undefined;
-    notes?: string | undefined;
     templateId?: string | undefined;
+    notes?: string | undefined;
+    assignedTo?: string | undefined;
     recurrence?: string | undefined;
 }, {
     dueDate: string;
@@ -263,9 +263,10 @@ export declare const CreateInspectionSchema: z.ZodObject<{
     inspector: string;
     inspectionDate: string;
     area: string;
-    status?: "In Progress" | "Completed" | "Overdue" | "Cancelled" | "Scheduled" | undefined;
-    assignedTo?: string | undefined;
+    status?: "In Progress" | "Completed" | "Cancelled" | "Overdue" | "Scheduled" | undefined;
+    templateId?: string | undefined;
     notes?: string | undefined;
+    assignedTo?: string | undefined;
     findings?: {
         severity: "Critical" | "Low" | "Medium" | "High";
         observation: string;
@@ -274,11 +275,10 @@ export declare const CreateInspectionSchema: z.ZodObject<{
         actionOwner?: string | undefined;
         checklistItemId?: string | undefined;
     }[] | undefined;
-    templateId?: string | undefined;
     recurrence?: string | undefined;
     checklistCompletion?: {
-        total?: number | undefined;
         completed?: number | undefined;
+        total?: number | undefined;
     } | undefined;
 }>;
 export type CreateInspectionInput = z.infer<typeof CreateInspectionSchema>;
@@ -321,20 +321,21 @@ export declare const UpdateInspectionSchema: z.ZodObject<{
         total: z.ZodNumber;
         completed: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        total: number;
         completed: number;
+        total: number;
     }, {
-        total: number;
         completed: number;
+        total: number;
     }>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "In Progress" | "Completed" | "Overdue" | "Cancelled" | "Scheduled" | undefined;
+    status?: "In Progress" | "Completed" | "Cancelled" | "Overdue" | "Scheduled" | undefined;
     dueDate?: string | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
-    assignedTo?: string | null | undefined;
+    templateId?: string | null | undefined;
     notes?: string | null | undefined;
+    assignedTo?: string | null | undefined;
     findings?: {
         status: "Closed" | "Open";
         severity: "Critical" | "Low" | "Medium" | "High";
@@ -345,21 +346,21 @@ export declare const UpdateInspectionSchema: z.ZodObject<{
     }[] | undefined;
     inspector?: string | undefined;
     inspectionDate?: string | undefined;
-    templateId?: string | null | undefined;
     area?: string | undefined;
     recurrence?: string | null | undefined;
     checklistCompletion?: {
-        total: number;
         completed: number;
+        total: number;
     } | undefined;
 }, {
-    status?: "In Progress" | "Completed" | "Overdue" | "Cancelled" | "Scheduled" | undefined;
+    status?: "In Progress" | "Completed" | "Cancelled" | "Overdue" | "Scheduled" | undefined;
     dueDate?: string | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
-    assignedTo?: string | null | undefined;
+    templateId?: string | null | undefined;
     notes?: string | null | undefined;
+    assignedTo?: string | null | undefined;
     findings?: {
         severity: "Critical" | "Low" | "Medium" | "High";
         observation: string;
@@ -370,12 +371,11 @@ export declare const UpdateInspectionSchema: z.ZodObject<{
     }[] | undefined;
     inspector?: string | undefined;
     inspectionDate?: string | undefined;
-    templateId?: string | null | undefined;
     area?: string | undefined;
     recurrence?: string | null | undefined;
     checklistCompletion?: {
-        total: number;
         completed: number;
+        total: number;
     } | undefined;
 }>;
 export type UpdateInspectionInput = z.infer<typeof UpdateInspectionSchema>;

@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import type { PoolClient } from "pg";
 
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 import { allRows, getDb, saveDb } from "../lib/database.js";
@@ -500,6 +501,7 @@ async function getCorrectiveActionNotificationHistory(
 
 async function createLinkedCapa(
   request: CorrectiveActionRequestRecord,
+  client?: PoolClient,
 ): Promise<string | null> {
   if (!isPgConfigured()) return null;
 
@@ -511,7 +513,7 @@ async function createLinkedCapa(
       .find(Boolean) ||
     new Date().toISOString();
 
-  const result = await pgPool.query(
+  const result = await (client ?? pgPool).query(
     `INSERT INTO capa (
       capa_no, type, status, priority, title, description, source, source_ref,
       linked_incident_id, root_cause, action_plan, owner, department, site, due_date,
@@ -1293,21 +1295,39 @@ export async function submitCorrectiveActionRequest(input: {
   let capaId: string | null = null;
 
   if (isPgConfigured()) {
-    capaId = await createLinkedCapa({
-      ...existing,
-      unsafeEventType: input.unsafeEventType,
-      immediateActionTaken: input.immediateActionTaken,
-      completedTasks: input.completedTasks,
-      rootCauseAnalysis: input.rootCauseAnalysis,
-      actionPlanDueDate: input.actionPlanDueDate ?? null,
-      actionPlanItems: input.actionPlanItems,
-      submittedAt: now,
-      updatedAt: now,
-      status: "submitted",
-    });
+    const client = await pgPool.connect();
+    let record: CorrectiveActionRequestRecord;
+    try {
+      await client.query("BEGIN");
+      const lockedResult = await client.query(
+        "SELECT * FROM corrective_action_requests WHERE access_token = $1 FOR UPDATE",
+        [input.token],
+      );
+      if (!lockedResult.rows[0]) throw new Error("Corrective action request not found");
+      const locked = mapRecord(lockedResult.rows[0]);
+      if (locked.status === "submitted") {
+        await client.query("COMMIT");
+        return locked;
+      }
 
-    const result = await pgPool.query(
-      `UPDATE corrective_action_requests
+      capaId = await createLinkedCapa(
+        {
+          ...locked,
+          unsafeEventType: input.unsafeEventType,
+          immediateActionTaken: input.immediateActionTaken,
+          completedTasks: input.completedTasks,
+          rootCauseAnalysis: input.rootCauseAnalysis,
+          actionPlanDueDate: input.actionPlanDueDate ?? null,
+          actionPlanItems: input.actionPlanItems,
+          submittedAt: now,
+          updatedAt: now,
+          status: "submitted",
+        },
+        client,
+      );
+
+      const result = await client.query(
+        `UPDATE corrective_action_requests
        SET status = 'submitted',
            unsafe_event_type = $1,
            report_description = $2,
@@ -1321,20 +1341,27 @@ export async function submitCorrectiveActionRequest(input: {
            updated_at = $9
        WHERE access_token = $10
        RETURNING *`,
-      [
-        input.unsafeEventType,
-        input.description,
-        input.immediateActionTaken,
-        input.completedTasks,
-        input.rootCauseAnalysis,
-        input.actionPlanDueDate ?? null,
-        JSON.stringify(input.actionPlanItems),
-        capaId,
-        now,
-        input.token,
-      ],
-    );
-    const record = mapRecord(result.rows[0]);
+        [
+          input.unsafeEventType,
+          input.description,
+          input.immediateActionTaken,
+          input.completedTasks,
+          input.rootCauseAnalysis,
+          input.actionPlanDueDate ?? null,
+          JSON.stringify(input.actionPlanItems),
+          capaId,
+          now,
+          input.token,
+        ],
+      );
+      record = mapRecord(result.rows[0]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     const summary = serializeActionPlan(record.actionPlanItems);
     const notifyRecipients = Array.from(
       new Set(

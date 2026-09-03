@@ -813,6 +813,17 @@ export class ReportsService {
         return notifications;
     }
     async updateAssignmentPg(id, assignedTo, assignedToCopy, request) {
+        const beforeResult = await pgPool.query("SELECT assigned_to, assigned_to_copy FROM reports WHERE id = $1 LIMIT 1", [id]);
+        const before = beforeResult.rows[0];
+        if (!before)
+            return null;
+        const previousCopies = Array.isArray(before.assigned_to_copy) ? before.assigned_to_copy.map(String) : [];
+        const unchanged = normalizeEmail(String(before.assigned_to || "")) === normalizeEmail(assignedTo) &&
+            JSON.stringify([...previousCopies].sort()) === JSON.stringify([...assignedToCopy].sort());
+        if (unchanged) {
+            const existing = await this.getById(id);
+            return existing ? { ...existing, assignmentNotifications: [] } : null;
+        }
         const row = await pgPool.query("UPDATE reports SET assigned_to = $1, assigned_to_copy = $2::jsonb, updated_at = NOW() WHERE id = $3 RETURNING *", [assignedTo || null, JSON.stringify(assignedToCopy), id]);
         if (!row.rows[0])
             return null;
@@ -822,8 +833,8 @@ export class ReportsService {
                 resourceType: "report",
                 resourceId: id,
                 changes: [
-                    { field: "assignedTo", before: undefined, after: assignedTo || null },
-                    { field: "assignedToCopy", before: undefined, after: assignedToCopy },
+                    { field: "assignedTo", before: before.assigned_to ?? null, after: assignedTo || null },
+                    { field: "assignedToCopy", before: previousCopies, after: assignedToCopy },
                 ],
                 context: { detail: `Assigned to: ${assignedTo || "Unassigned"}` },
                 actor: request.user,
@@ -854,6 +865,22 @@ export class ReportsService {
             .getAsObject([id]);
         if (!row)
             return null;
+        const previousAssignee = String(row.assignedTo ?? "");
+        let previousCopies = [];
+        try {
+            previousCopies = Array.isArray(row.assignedToCopy)
+                ? row.assignedToCopy.map(String)
+                : JSON.parse(String(row.assignedToCopy || "[]"));
+        }
+        catch {
+            previousCopies = [];
+        }
+        const unchanged = normalizeEmail(previousAssignee) === normalizeEmail(assignedTo) &&
+            JSON.stringify([...previousCopies].sort()) === JSON.stringify([...assignedToCopy].sort());
+        if (unchanged) {
+            const existing = await this.getById(id);
+            return existing ? { ...existing, assignmentNotifications: [] } : null;
+        }
         const assignedToCopyJson = JSON.stringify(assignedToCopy);
         const reportColumns = new Set(allRows(db, "PRAGMA table_info(reports)").map((column) => String(column.name)));
         const sets = ["assignedTo = ?"];
@@ -874,8 +901,8 @@ export class ReportsService {
                 resourceType: "report",
                 resourceId: id,
                 changes: [
-                    { field: "assignedTo", before: undefined, after: assignedTo || null },
-                    { field: "assignedToCopy", before: undefined, after: assignedToCopy },
+                    { field: "assignedTo", before: previousAssignee || null, after: assignedTo || null },
+                    { field: "assignedToCopy", before: previousCopies, after: assignedToCopy },
                 ],
                 context: { detail: `Assigned to: ${assignedTo || "Unassigned"}` },
                 actor: request.user,
@@ -1366,7 +1393,8 @@ export class ReportsService {
              WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
              ELSE 'Unnamed reporter'
            END AS reporter,
-           COUNT(*)::int AS report_count
+           COUNT(*)::int AS report_count,
+           STRING_AGG(DISTINCT location, ', ' ORDER BY location) AS locations
          FROM reports
          WHERE COALESCE(anonymous, FALSE) = FALSE
            AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
@@ -1378,6 +1406,7 @@ export class ReportsService {
             return result.rows.map((row) => ({
                 reporter: row.reporter,
                 reportCount: Number(row.report_count ?? 0),
+                locations: row.locations ?? "",
             }));
         }
         const db = await getDb();
@@ -1386,7 +1415,8 @@ export class ReportsService {
            WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter)
            ELSE 'Unnamed reporter'
          END AS reporter,
-         COUNT(*) AS reportCount
+         COUNT(*) AS reportCount,
+         GROUP_CONCAT(DISTINCT location, ', ' ORDER BY location) AS locations
        FROM reports
        WHERE COALESCE(anonymous, 0) = 0
          AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
@@ -1402,6 +1432,7 @@ export class ReportsService {
         return rows.map((row) => ({
             reporter: String(row.reporter ?? "Unnamed reporter"),
             reportCount: Number(row.reportCount ?? 0),
+            locations: String(row.locations ?? ""),
         }));
     }
     async legacySummary() {
@@ -1492,7 +1523,8 @@ export class ReportsService {
             WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
             ELSE 'Unnamed reporter'
           END AS reporter,
-          COUNT(*)::int AS report_count
+          COUNT(*)::int AS report_count,
+          STRING_AGG(DISTINCT location, ', ' ORDER BY location) AS locations
         FROM reports
         WHERE COALESCE(anonymous, FALSE) = FALSE
           AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
@@ -1535,7 +1567,8 @@ export class ReportsService {
               WHEN severity = 'Critical' THEN 3
               WHEN severity = 'Low' THEN 1
               ELSE 2
-            END)::int AS points
+            END)::int AS points,
+            STRING_AGG(DISTINCT location, ', ' ORDER BY location) AS locations
           FROM reports
           WHERE COALESCE(anonymous, FALSE) = FALSE
             AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
@@ -1543,7 +1576,7 @@ export class ReportsService {
             ${safeReporter ? `AND LOWER(TRIM(reporter)) = LOWER(TRIM($${safeMonth ? 2 : 1}))` : ""}
           GROUP BY 1, 2
         )
-        SELECT month, reporter, report_count, points,
+        SELECT month, reporter, report_count, points, locations,
                ROW_NUMBER() OVER (${safeMonth ? "ORDER BY points DESC, report_count DESC, reporter ASC" : "PARTITION BY month ORDER BY points DESC, report_count DESC, reporter ASC"}) AS rank
         FROM monthly_reporter_metrics
         ${safeMonth ? "ORDER BY rank ASC" : "ORDER BY month DESC, rank ASC"}
@@ -1559,6 +1592,7 @@ export class ReportsService {
                     rank: Number(row.rank),
                     reportCount: Number(row.report_count ?? 0),
                     points: Number(row.points ?? 0),
+                    locations: row.locations ?? "",
                 });
                 monthlyByMonth.set(row.month, list);
             }
@@ -1574,14 +1608,15 @@ export class ReportsService {
               WHEN severity = 'Critical' THEN 3
               WHEN severity = 'Low' THEN 1
               ELSE 2
-            END)::int AS points
+            END)::int AS points,
+            STRING_AGG(DISTINCT location, ', ' ORDER BY location) AS locations
           FROM reports
           WHERE COALESCE(anonymous, FALSE) = FALSE
             AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
             ${safeReporter ? `AND LOWER(TRIM(reporter)) = LOWER(TRIM($1))` : ""}
           GROUP BY 1
         )
-        SELECT reporter, SUM(report_count) AS total_reports, SUM(points) AS total_points
+        SELECT reporter, SUM(report_count) AS total_reports, SUM(points) AS total_points, STRING_AGG(DISTINCT locations, ', ' ORDER BY locations) AS locations
         FROM monthly_reporter_metrics
         GROUP BY reporter
         ORDER BY total_points DESC, total_reports DESC
@@ -1593,6 +1628,7 @@ export class ReportsService {
                 currentMonth: currentMonth.rows.map((row) => ({
                     reporter: row.reporter,
                     reportCount: Number(row.report_count ?? 0),
+                    locations: row.locations ?? "",
                 })),
                 monthlyByMonth: Array.from(monthlyByMonth.entries()).map(([month, reporters]) => ({
                     month,
@@ -1602,6 +1638,7 @@ export class ReportsService {
                     reporter: row.reporter,
                     totalReports: Number(row.total_reports ?? 0),
                     totalPoints: Number(row.total_points ?? 0),
+                    locations: row.locations ?? "",
                 })),
             };
         }
@@ -1613,7 +1650,8 @@ export class ReportsService {
            WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter)
            ELSE 'Unnamed reporter'
          END AS reporter,
-         COUNT(*) AS report_count
+         COUNT(*) AS report_count,
+         GROUP_CONCAT(DISTINCT location, ', ' ORDER BY location) AS locations
        FROM reports
        WHERE COALESCE(anonymous, 0) = 0
          AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
@@ -1638,13 +1676,14 @@ export class ReportsService {
        ORDER BY reporter ASC`);
         const monthClause = safeMonth ? "WHERE strftime('%Y-%m', datetime(date, 'utc')) = ?" : "";
         const reporterClause = safeReporter ? (safeMonth ? "AND LOWER(TRIM(reporter)) = LOWER(TRIM(?))" : "WHERE LOWER(TRIM(reporter)) = LOWER(TRIM(?))") : "";
-        const monthlyRows = allRows(db, `SELECT month, reporter, report_count, points,
+        const monthlyRows = allRows(db, `SELECT month, reporter, report_count, points, locations,
               ROW_NUMBER() OVER (ORDER BY points DESC, report_count DESC, reporter ASC) AS rank
        FROM (
          SELECT strftime('%Y-%m', datetime(date, 'utc')) AS month,
                 CASE WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter) ELSE 'Unnamed reporter' END AS reporter,
                 COUNT(*) AS report_count,
-                SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points
+                SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points,
+                GROUP_CONCAT(DISTINCT location, ', ' ORDER BY location) AS locations
          FROM reports
          WHERE COALESCE(anonymous, 0) = 0
            AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
@@ -1664,14 +1703,16 @@ export class ReportsService {
                 rank: Number(row.rank ?? 0),
                 reportCount: Number(row.report_count ?? 0),
                 points: Number(row.points ?? 0),
+                locations: String(row.locations ?? ""),
             });
             monthlyByMonth.set(String(row.month ?? ""), list);
         }
-        const allTimeRows = allRows(db, `SELECT reporter, SUM(report_count) AS total_reports, SUM(points) AS total_points
+        const allTimeRows = allRows(db, `SELECT reporter, SUM(report_count) AS total_reports, SUM(points) AS total_points, GROUP_CONCAT(DISTINCT locations, ', ' ORDER BY locations) AS locations
        FROM (
          SELECT CASE WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter) ELSE 'Unnamed reporter' END AS reporter,
                 COUNT(*) AS report_count,
-                SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points
+                SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points,
+                GROUP_CONCAT(DISTINCT location, ', ' ORDER BY location) AS locations
          FROM reports
          WHERE COALESCE(anonymous, 0) = 0
            AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
@@ -1688,6 +1729,7 @@ export class ReportsService {
             currentMonth: currentMonthRows.map((row) => ({
                 reporter: String(row.reporter ?? "Unnamed reporter"),
                 reportCount: Number(row.report_count ?? 0),
+                locations: String(row.locations ?? ""),
             })),
             monthlyByMonth: Array.from(monthlyByMonth.entries()).map(([month, reporters]) => ({
                 month,
@@ -1697,6 +1739,188 @@ export class ReportsService {
                 reporter: String(row.reporter ?? "Unnamed reporter"),
                 totalReports: Number(row.total_reports ?? 0),
                 totalPoints: Number(row.total_points ?? 0),
+                locations: String(row.locations ?? ""),
+            })),
+        };
+    }
+    async getLeaderboardByLocation() {
+        if (isPgAvailable()) {
+            const currentMonthSql = `
+        WITH reporter_location_counts AS (
+          SELECT
+            location,
+            CASE
+              WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+              ELSE 'Unnamed reporter'
+            END AS reporter,
+            COUNT(*)::int AS report_count,
+            SUM(CASE
+              WHEN severity = 'Critical' THEN 3
+              WHEN severity = 'Low' THEN 1
+              ELSE 2
+            END)::int AS points
+          FROM reports
+          WHERE COALESCE(anonymous, FALSE) = FALSE
+            AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+            AND ${REPORT_LOCAL_DATE_SQL} >= date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE
+            AND ${REPORT_LOCAL_DATE_SQL} < (date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE '${GOOGLE_SHEETS_TIMEZONE}')::DATE + INTERVAL '1 month')
+          GROUP BY location, reporter
+        ),
+        ranked AS (
+          SELECT
+            location,
+            reporter,
+            report_count,
+            points,
+            ROW_NUMBER() OVER (PARTITION BY location ORDER BY points DESC, report_count DESC, reporter ASC) AS rank
+          FROM reporter_location_counts
+        )
+        SELECT location, reporter, report_count, points, rank
+        FROM ranked
+        WHERE rank <= 15
+        ORDER BY location, rank ASC
+      `;
+            const currentMonthRows = await pgPool.query(currentMonthSql);
+            const allTimeSql = `
+        WITH reporter_location_counts AS (
+          SELECT
+            location,
+            CASE
+              WHEN NULLIF(TRIM(reporter), '') IS NOT NULL THEN TRIM(reporter)
+              ELSE 'Unnamed reporter'
+            END AS reporter,
+            COUNT(*)::int AS report_count,
+            SUM(CASE
+              WHEN severity = 'Critical' THEN 3
+              WHEN severity = 'Low' THEN 1
+              ELSE 2
+            END)::int AS points
+          FROM reports
+          WHERE COALESCE(anonymous, FALSE) = FALSE
+            AND LOWER(COALESCE(TRIM(reporter), '')) <> 'anonymous'
+          GROUP BY location, reporter
+        ),
+        ranked AS (
+          SELECT
+            location,
+            reporter,
+            report_count,
+            points,
+            ROW_NUMBER() OVER (PARTITION BY location ORDER BY points DESC, report_count DESC, reporter ASC) AS rank
+          FROM reporter_location_counts
+        )
+        SELECT location, reporter, report_count, points, rank
+        FROM ranked
+        WHERE rank <= 15
+        ORDER BY location, rank ASC
+      `;
+            const allTimeRows = await pgPool.query(allTimeSql);
+            const groupByLocation = (rows) => {
+                const map = new Map();
+                for (const row of rows) {
+                    const list = map.get(row.location) ?? [];
+                    list.push(row);
+                    map.set(row.location, list);
+                }
+                return Array.from(map.entries())
+                    .map(([location, reporters]) => ({ location, reporters }))
+                    .sort((a, b) => a.location.localeCompare(b.location));
+            };
+            return {
+                currentMonth: groupByLocation(currentMonthRows.rows).map((group) => ({
+                    location: group.location,
+                    reporters: group.reporters.map((row) => ({
+                        reporter: row.reporter,
+                        reportCount: Number(row.report_count ?? 0),
+                        points: Number(row.points ?? 0),
+                        rank: Number(row.rank),
+                    })),
+                })),
+                allTime: groupByLocation(allTimeRows.rows).map((group) => ({
+                    location: group.location,
+                    reporters: group.reporters.map((row) => ({
+                        reporter: row.reporter,
+                        totalReports: Number(row.report_count ?? 0),
+                        totalPoints: Number(row.points ?? 0),
+                        rank: Number(row.rank),
+                    })),
+                })),
+            };
+        }
+        const db = await getDb();
+        const currentMonthStart = getStartOfSheetMonthUtc().toISOString();
+        const currentMonthEnd = getStartOfSheetMonthUtc(new Date(), 1).toISOString();
+        const currentMonthRows = allRows(db, `WITH reporter_location_counts AS (
+        SELECT
+          location,
+          CASE WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter) ELSE 'Unnamed reporter' END AS reporter,
+          COUNT(*) AS report_count,
+          SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points
+        FROM reports
+        WHERE COALESCE(anonymous, 0) = 0
+          AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+          AND date >= ?
+          AND date < ?
+        GROUP BY location, reporter
+      )
+      SELECT location, reporter, report_count, points, rank FROM (
+        SELECT
+          location,
+          reporter,
+          report_count,
+          points,
+          ROW_NUMBER() OVER (PARTITION BY location ORDER BY points DESC, report_count DESC, reporter ASC) AS rank
+        FROM reporter_location_counts
+      ) WHERE rank <= 15 ORDER BY location, rank ASC`, [currentMonthStart, currentMonthEnd]);
+        const allTimeRows = allRows(db, `WITH reporter_location_counts AS (
+        SELECT
+          location,
+          CASE WHEN TRIM(COALESCE(reporter, '')) <> '' THEN TRIM(reporter) ELSE 'Unnamed reporter' END AS reporter,
+          COUNT(*) AS report_count,
+          SUM(CASE WHEN severity = 'Critical' THEN 3 WHEN severity = 'Low' THEN 1 ELSE 2 END) AS points
+        FROM reports
+        WHERE COALESCE(anonymous, 0) = 0
+          AND LOWER(TRIM(COALESCE(reporter, ''))) <> 'anonymous'
+        GROUP BY location, reporter
+      )
+      SELECT location, reporter, report_count, points, rank FROM (
+        SELECT
+          location,
+          reporter,
+          report_count,
+          points,
+          ROW_NUMBER() OVER (PARTITION BY location ORDER BY points DESC, report_count DESC, reporter ASC) AS rank
+        FROM reporter_location_counts
+      ) WHERE rank <= 15 ORDER BY location, rank ASC`);
+        const groupByLocation = (rows) => {
+            const map = new Map();
+            for (const row of rows) {
+                const list = map.get(row.location) ?? [];
+                list.push(row);
+                map.set(row.location, list);
+            }
+            return Array.from(map.entries())
+                .map(([location, reporters]) => ({ location, reporters }))
+                .sort((a, b) => a.location.localeCompare(b.location));
+        };
+        return {
+            currentMonth: groupByLocation(currentMonthRows).map((group) => ({
+                location: group.location,
+                reporters: group.reporters.map((row) => ({
+                    reporter: row.reporter,
+                    reportCount: row.report_count,
+                    points: row.points,
+                    rank: row.rank,
+                })),
+            })),
+            allTime: groupByLocation(allTimeRows).map((group) => ({
+                location: group.location,
+                reporters: group.reporters.map((row) => ({
+                    reporter: row.reporter,
+                    totalReports: row.report_count,
+                    totalPoints: row.points,
+                    rank: row.rank,
+                })),
             })),
         };
     }

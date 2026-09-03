@@ -107,10 +107,10 @@ export declare const TrainingRecordSchema: z.ZodEffects<z.ZodEffects<z.ZodEffect
     employeeName: string;
     scheduledDate: string;
     id?: string | undefined;
+    score?: number | undefined;
     completedDate?: string | undefined;
     recordNo?: string | undefined;
     trainer?: string | undefined;
-    score?: number | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
@@ -125,10 +125,10 @@ export declare const TrainingRecordSchema: z.ZodEffects<z.ZodEffects<z.ZodEffect
     scheduledDate: string;
     status?: "In Progress" | "Completed" | "Cancelled" | "Scheduled" | "Expired" | undefined;
     id?: string | undefined;
+    score?: number | undefined;
     completedDate?: string | undefined;
     recordNo?: string | undefined;
     trainer?: string | undefined;
-    score?: number | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
@@ -166,9 +166,9 @@ export declare const TrainingRecordInputSchema: z.ZodEffects<z.ZodEffects<z.ZodE
     employeeId: string;
     employeeName: string;
     scheduledDate: string;
+    score?: number | undefined;
     completedDate?: string | undefined;
     trainer?: string | undefined;
-    score?: number | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
@@ -182,9 +182,9 @@ export declare const TrainingRecordInputSchema: z.ZodEffects<z.ZodEffects<z.ZodE
     employeeName: string;
     scheduledDate: string;
     status?: "In Progress" | "Completed" | "Cancelled" | "Scheduled" | "Expired" | undefined;
+    score?: number | undefined;
     completedDate?: string | undefined;
     trainer?: string | undefined;
-    score?: number | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;

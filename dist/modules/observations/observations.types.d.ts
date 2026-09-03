@@ -71,8 +71,8 @@ export declare const CreateObservationSchema: z.ZodObject<{
     title: string;
     site: string;
     department: string;
-    createdBy: string;
     severity: "Low" | "Medium" | "High";
+    createdBy: string;
     location: string;
     category: string;
     followUpRequired: boolean;

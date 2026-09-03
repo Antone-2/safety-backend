@@ -55,8 +55,8 @@ export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     unit: string;
     generatedDate: string;
     storedLocation: string;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     disposedDate?: string | undefined;
     disposalMethod?: string | undefined;
     disposalContractor?: string | undefined;
@@ -71,8 +71,8 @@ export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     generatedDate: string;
     storedLocation: string;
     status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     disposedDate?: string | undefined;
     disposalMethod?: string | undefined;
     disposalContractor?: string | undefined;
@@ -87,8 +87,8 @@ export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     unit: string;
     generatedDate: string;
     storedLocation: string;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     disposedDate?: string | undefined;
     disposalMethod?: string | undefined;
     disposalContractor?: string | undefined;
@@ -103,8 +103,8 @@ export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     generatedDate: string;
     storedLocation: string;
     status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     disposedDate?: string | undefined;
     disposalMethod?: string | undefined;
     disposalContractor?: string | undefined;
@@ -119,8 +119,8 @@ export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     unit: string;
     generatedDate: string;
     storedLocation: string;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     disposedDate?: string | undefined;
     disposalMethod?: string | undefined;
     disposalContractor?: string | undefined;
@@ -135,8 +135,8 @@ export declare const CreateWasteSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     generatedDate: string;
     storedLocation: string;
     status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     disposedDate?: string | undefined;
     disposalMethod?: string | undefined;
     disposalContractor?: string | undefined;
@@ -162,8 +162,8 @@ export declare const UpdateWasteSchema: z.ZodObject<{
     type?: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical" | undefined;
     status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
     description?: string | undefined;
-    photoUrl?: string | null | undefined;
     notes?: string | null | undefined;
+    photoUrl?: string | null | undefined;
     category?: string | undefined;
     quantity?: number | undefined;
     unit?: string | undefined;
@@ -177,8 +177,8 @@ export declare const UpdateWasteSchema: z.ZodObject<{
     type?: "Hazardous" | "Non-Hazardous" | "Recyclable" | "Organic" | "E-Waste" | "Chemical" | undefined;
     status?: "Pending" | "Stored" | "Disposed" | "Recycled" | undefined;
     description?: string | undefined;
-    photoUrl?: string | null | undefined;
     notes?: string | null | undefined;
+    photoUrl?: string | null | undefined;
     category?: string | undefined;
     quantity?: number | undefined;
     unit?: string | undefined;
@@ -420,8 +420,8 @@ export declare const CreateSpillSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     date: string;
-    createdBy: string;
     severity: "Critical" | "Minor" | "Major";
+    createdBy: string;
     location: string;
     quantity: number;
     unit: string;
@@ -436,8 +436,8 @@ export declare const CreateSpillSchema: z.ZodObject<{
     nemaReportDate?: string | undefined;
 }, {
     date: string;
-    createdBy: string;
     severity: "Critical" | "Minor" | "Major";
+    createdBy: string;
     location: string;
     quantity: number;
     unit: string;

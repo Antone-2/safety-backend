@@ -123,7 +123,7 @@ export declare const CreateDocumentSchema: z.ZodObject<{
     classification: z.ZodDefault<z.ZodOptional<z.ZodString>>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    type: "Permit" | "Other" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form";
+    type: "Other" | "Permit" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form";
     version: string;
     title: string;
     site: string;
@@ -136,20 +136,20 @@ export declare const CreateDocumentSchema: z.ZodObject<{
     classification: string;
     code?: string | undefined;
     owner?: string | undefined;
+    reviewer?: string | undefined;
+    fileName?: string | undefined;
+    fileUrl?: string | undefined;
+    mimeType?: string | undefined;
+    fileSize?: number | undefined;
     approver?: string | undefined;
     expiryDate?: string | undefined;
     nextReviewDate?: string | undefined;
     documentNo?: string | undefined;
     content?: string | undefined;
-    fileUrl?: string | undefined;
-    fileName?: string | undefined;
-    fileSize?: number | undefined;
-    mimeType?: string | undefined;
-    reviewer?: string | undefined;
     parentId?: string | undefined;
     reviewCycleDays?: number | undefined;
 }, {
-    type: "Permit" | "Other" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form";
+    type: "Other" | "Permit" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form";
     title: string;
     site: string;
     department: string;
@@ -160,16 +160,16 @@ export declare const CreateDocumentSchema: z.ZodObject<{
     code?: string | undefined;
     version?: string | undefined;
     owner?: string | undefined;
+    reviewer?: string | undefined;
+    fileName?: string | undefined;
+    fileUrl?: string | undefined;
+    mimeType?: string | undefined;
+    fileSize?: number | undefined;
     approver?: string | undefined;
     expiryDate?: string | undefined;
     nextReviewDate?: string | undefined;
     documentNo?: string | undefined;
     content?: string | undefined;
-    fileUrl?: string | undefined;
-    fileName?: string | undefined;
-    fileSize?: number | undefined;
-    mimeType?: string | undefined;
-    reviewer?: string | undefined;
     tags?: string[] | undefined;
     parentId?: string | undefined;
     reviewCycleDays?: number | undefined;
@@ -203,23 +203,23 @@ export declare const UpdateDocumentSchema: z.ZodObject<{
     classification: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     code?: string | null | undefined;
-    type?: "Permit" | "Other" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form" | undefined;
+    type?: "Other" | "Permit" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form" | undefined;
     status?: "Draft" | "Under Review" | "Approved" | "Obsolete" | undefined;
     owner?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    reviewer?: string | null | undefined;
+    fileName?: string | null | undefined;
+    fileUrl?: string | null | undefined;
+    mimeType?: string | null | undefined;
+    fileSize?: number | null | undefined;
     approver?: string | null | undefined;
     effectiveDate?: string | undefined;
     category?: string | undefined;
     expiryDate?: string | null | undefined;
     nextReviewDate?: string | null | undefined;
     content?: string | null | undefined;
-    fileUrl?: string | null | undefined;
-    fileName?: string | null | undefined;
-    fileSize?: number | null | undefined;
-    mimeType?: string | null | undefined;
-    reviewer?: string | null | undefined;
     tags?: string[] | null | undefined;
     reviewCycleDays?: number | null | undefined;
     classification?: string | null | undefined;
@@ -228,23 +228,23 @@ export declare const UpdateDocumentSchema: z.ZodObject<{
     obsoleteReason?: string | null | undefined;
 }, {
     code?: string | null | undefined;
-    type?: "Permit" | "Other" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form" | undefined;
+    type?: "Other" | "Permit" | "SDS" | "Policy" | "Procedure" | "Guideline" | "Form" | undefined;
     status?: "Draft" | "Under Review" | "Approved" | "Obsolete" | undefined;
     owner?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    reviewer?: string | null | undefined;
+    fileName?: string | null | undefined;
+    fileUrl?: string | null | undefined;
+    mimeType?: string | null | undefined;
+    fileSize?: number | null | undefined;
     approver?: string | null | undefined;
     effectiveDate?: string | undefined;
     category?: string | undefined;
     expiryDate?: string | null | undefined;
     nextReviewDate?: string | null | undefined;
     content?: string | null | undefined;
-    fileUrl?: string | null | undefined;
-    fileName?: string | null | undefined;
-    fileSize?: number | null | undefined;
-    mimeType?: string | null | undefined;
-    reviewer?: string | null | undefined;
     tags?: string[] | null | undefined;
     reviewCycleDays?: number | null | undefined;
     classification?: string | null | undefined;
@@ -264,19 +264,19 @@ export declare const CreateDocumentVersionSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     version: string;
     changeSummary: string;
-    content?: string | undefined;
-    fileUrl?: string | undefined;
     fileName?: string | undefined;
+    fileUrl?: string | undefined;
     fileSize?: number | undefined;
     checksum?: string | undefined;
+    content?: string | undefined;
 }, {
     version: string;
     changeSummary: string;
-    content?: string | undefined;
-    fileUrl?: string | undefined;
     fileName?: string | undefined;
+    fileUrl?: string | undefined;
     fileSize?: number | undefined;
     checksum?: string | undefined;
+    content?: string | undefined;
 }>;
 export type CreateDocumentVersionInput = z.infer<typeof CreateDocumentVersionSchema>;
 export declare const SubmitForReviewSchema: z.ZodObject<{
@@ -286,13 +286,13 @@ export declare const SubmitForReviewSchema: z.ZodObject<{
     comments: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     version?: string | undefined;
-    comments?: string | undefined;
     reviewer?: string | undefined;
+    comments?: string | undefined;
     reviewerName?: string | undefined;
 }, {
     version?: string | undefined;
-    comments?: string | undefined;
     reviewer?: string | undefined;
+    comments?: string | undefined;
     reviewerName?: string | undefined;
 }>;
 export type SubmitForReviewInput = z.infer<typeof SubmitForReviewSchema>;
@@ -303,13 +303,13 @@ export declare const ApproveDocumentSchema: z.ZodObject<{
     effectiveDate: z.ZodOptional<z.ZodString>;
     reviewCycleDays: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    status: "Rejected" | "Approved" | "Pending";
+    status: "Approved" | "Rejected" | "Pending";
     version?: string | undefined;
     comments?: string | undefined;
     effectiveDate?: string | undefined;
     reviewCycleDays?: number | undefined;
 }, {
-    status?: "Rejected" | "Approved" | "Pending" | undefined;
+    status?: "Approved" | "Rejected" | "Pending" | undefined;
     version?: string | undefined;
     comments?: string | undefined;
     effectiveDate?: string | undefined;

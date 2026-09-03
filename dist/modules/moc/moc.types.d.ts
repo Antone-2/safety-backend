@@ -57,7 +57,7 @@ export declare const CreateMocSchema: z.ZodObject<{
     rejectionReason: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Closed" | "Draft" | "Rejected" | "Under Review" | "Approved" | "Implementation" | "PSSR";
+    status: "Draft" | "Under Review" | "Approved" | "Closed" | "Rejected" | "Implementation" | "PSSR";
     title: string;
     site: string;
     department: string;
@@ -90,7 +90,7 @@ export declare const CreateMocSchema: z.ZodObject<{
     requestedBy: string;
     requestedAt: string;
     justification: string;
-    status?: "Closed" | "Draft" | "Rejected" | "Under Review" | "Approved" | "Implementation" | "PSSR" | undefined;
+    status?: "Draft" | "Under Review" | "Approved" | "Closed" | "Rejected" | "Implementation" | "PSSR" | undefined;
     dueDate?: string | undefined;
     assignedTo?: string | undefined;
     approver?: string | undefined;
@@ -127,7 +127,7 @@ export declare const UpdateMocSchema: z.ZodObject<{
     closedAt: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     rejectionReason: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Closed" | "Draft" | "Rejected" | "Under Review" | "Approved" | "Implementation" | "PSSR" | undefined;
+    status?: "Draft" | "Under Review" | "Approved" | "Closed" | "Rejected" | "Implementation" | "PSSR" | undefined;
     dueDate?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
@@ -149,7 +149,7 @@ export declare const UpdateMocSchema: z.ZodObject<{
     closedAt?: string | null | undefined;
     rejectionReason?: string | null | undefined;
 }, {
-    status?: "Closed" | "Draft" | "Rejected" | "Under Review" | "Approved" | "Implementation" | "PSSR" | undefined;
+    status?: "Draft" | "Under Review" | "Approved" | "Closed" | "Rejected" | "Implementation" | "PSSR" | undefined;
     dueDate?: string | null | undefined;
     title?: string | undefined;
     site?: string | undefined;
@@ -178,12 +178,12 @@ export declare const MocTransitionSchema: z.ZodObject<{
     approvedAt: z.ZodOptional<z.ZodString>;
     rejectionReason: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    event: "close" | "approve" | "reject" | "submit-review" | "start-implementation" | "complete-pssr";
+    event: "close" | "reject" | "approve" | "submit-review" | "start-implementation" | "complete-pssr";
     approver?: string | undefined;
     approvedAt?: string | undefined;
     rejectionReason?: string | undefined;
 }, {
-    event: "close" | "approve" | "reject" | "submit-review" | "start-implementation" | "complete-pssr";
+    event: "close" | "reject" | "approve" | "submit-review" | "start-implementation" | "complete-pssr";
     approver?: string | undefined;
     approvedAt?: string | undefined;
     rejectionReason?: string | undefined;

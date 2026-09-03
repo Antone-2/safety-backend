@@ -500,6 +500,7 @@ export declare class ReportsService {
         currentMonth: {
             reporter: string;
             reportCount: number;
+            locations: string;
         }[];
         monthlyByMonth: {
             month: string;
@@ -508,12 +509,34 @@ export declare class ReportsService {
                 rank: number;
                 reportCount: number;
                 points: number;
+                locations: string;
             }[];
         }[];
         allTime: {
             reporter: string;
             totalReports: number;
             totalPoints: number;
+            locations: string;
+        }[];
+    }>;
+    getLeaderboardByLocation(): Promise<{
+        currentMonth: {
+            location: string;
+            reporters: {
+                reporter: string;
+                reportCount: number;
+                points: number;
+                rank: number;
+            }[];
+        }[];
+        allTime: {
+            location: string;
+            reporters: {
+                reporter: string;
+                totalReports: number;
+                totalPoints: number;
+                rank: number;
+            }[];
         }[];
     }>;
     private bulkUpdateStatusPg;

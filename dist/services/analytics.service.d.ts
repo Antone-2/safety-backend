@@ -49,19 +49,19 @@ export declare const ReportSchema: z.ZodObject<{
     createdBy: string;
     format: "PDF" | "Excel" | "CSV" | "JSON";
     id?: string | undefined;
+    recipients?: string | undefined;
     parameters?: string | undefined;
     schedule?: string | undefined;
-    recipients?: string | undefined;
     lastGenerated?: string | undefined;
 }, {
     type: "Incident" | "Environmental" | "Custom" | "CAPA" | "Compliance" | "Training" | "Financial";
     name: string;
     createdBy: string;
     id?: string | undefined;
+    recipients?: string | undefined;
     format?: "PDF" | "Excel" | "CSV" | "JSON" | undefined;
     parameters?: string | undefined;
     schedule?: string | undefined;
-    recipients?: string | undefined;
     lastGenerated?: string | undefined;
 }>;
 export declare class AnalyticsService {

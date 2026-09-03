@@ -54,6 +54,15 @@ const OTP_MAX_REQUESTS_PER_IP = Number(
 const OTP_MAX_REQUESTS_PER_DEVICE = Number(
   process.env.AUTH_OTP_MAX_REQUESTS_PER_DEVICE || 10,
 );
+const OTP_MAX_REQUESTS_PER_SECOND_PER_EMAIL = Number(
+  process.env.AUTH_OTP_MAX_REQUESTS_PER_SECOND_PER_EMAIL || 1,
+);
+const OTP_MAX_REQUESTS_PER_SECOND_PER_IP = Number(
+  process.env.AUTH_OTP_MAX_REQUESTS_PER_SECOND_PER_IP || 2,
+);
+const OTP_MAX_REQUESTS_PER_SECOND_PER_DEVICE = Number(
+  process.env.AUTH_OTP_MAX_REQUESTS_PER_SECOND_PER_DEVICE || 1,
+);
 const ACCESS_TOKEN_TTL_MINUTES = Number(
   process.env.AUTH_ACCESS_TOKEN_TTL_MINUTES || 480,
 );
@@ -101,6 +110,20 @@ function buildOfflineDevUser(email: string) {
     name: configuredName || toDisplayName(normalized) || "Offline Developer",
     role: configuredRole || "EHS-manager",
   };
+}
+
+function saveOfflineOtpChallenge(
+  email: string,
+  code: string,
+  user?: AuthUserRecord,
+) {
+  const fallbackUser = user ?? buildOfflineDevUser(email);
+  offlineOtpChallenges.set(email, {
+    code,
+    expiresAt: Date.now() + OTP_TTL_MINUTES * 60000,
+    name: fallbackUser.name,
+    role: fallbackUser.role,
+  });
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -676,7 +699,7 @@ const db = await getDb();
 
     if (isPgConfigured()) {
       try {
-        const result = await pgPool.query(
+        const result = await queryAuthPg(
           `SELECT count, first_seen_at AS "firstSeenAt", blocked_until AS "blockedUntil"
            FROM auth_rate_limits
            WHERE scope = $1 AND identifier = $2 AND action = $3
@@ -696,7 +719,7 @@ const db = await getDb();
         const shouldReset = !row || Date.now() - firstSeen > windowMs;
         const nextCount = shouldReset ? 1 : Number(row.count || 0) + 1;
         const nextBlockedUntil = nextCount > input.max ? blockedUntil : null;
-        await pgPool.query(
+        await queryAuthPg(
           `INSERT INTO auth_rate_limits (scope, identifier, action, count, first_seen_at, last_seen_at, blocked_until)
            VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
            ON CONFLICT (scope, identifier, action) DO UPDATE SET
@@ -712,6 +735,7 @@ const db = await getDb();
             nextBlockedUntil,
             shouldReset,
           ],
+          "auth rate-limit update",
         );
         return {
           allowed: nextCount <= input.max,
@@ -1673,29 +1697,50 @@ const db = await getDb();
       return res.status(400).json({ error: parsed.error.errors });
 
     const email = normalizeEmail(parsed.data.email);
-    const checks = [
-      await enforceAuthRateLimit({
+    const checks = await Promise.all([
+      enforceAuthRateLimit({
+        scope: "email",
+        identifier: email,
+        action: "otp.request.per_second",
+        max: OTP_MAX_REQUESTS_PER_SECOND_PER_EMAIL,
+        windowMinutes: 1 / 60,
+      }),
+      enforceAuthRateLimit({
+        scope: "ip",
+        identifier: clientIp(req),
+        action: "otp.request.per_second",
+        max: OTP_MAX_REQUESTS_PER_SECOND_PER_IP,
+        windowMinutes: 1 / 60,
+      }),
+      enforceAuthRateLimit({
+        scope: "device",
+        identifier: deviceFingerprint(req),
+        action: "otp.request.per_second",
+        max: OTP_MAX_REQUESTS_PER_SECOND_PER_DEVICE,
+        windowMinutes: 1 / 60,
+      }),
+      enforceAuthRateLimit({
         scope: "email",
         identifier: email,
         action: "otp.request",
         max: OTP_MAX_REQUESTS_PER_EMAIL,
         windowMinutes: OTP_REQUEST_WINDOW_MINUTES,
       }),
-      await enforceAuthRateLimit({
+      enforceAuthRateLimit({
         scope: "ip",
         identifier: clientIp(req),
         action: "otp.request",
         max: OTP_MAX_REQUESTS_PER_IP,
         windowMinutes: OTP_REQUEST_WINDOW_MINUTES,
       }),
-      await enforceAuthRateLimit({
+      enforceAuthRateLimit({
         scope: "device",
         identifier: deviceFingerprint(req),
         action: "otp.request",
         max: OTP_MAX_REQUESTS_PER_DEVICE,
         windowMinutes: OTP_REQUEST_WINDOW_MINUTES,
       }),
-    ];
+    ]);
     const blocked = checks.find((check) => !check.allowed);
     if (blocked) {
       return res.status(429).json({
@@ -1712,12 +1757,7 @@ const db = await getDb();
         await audit(req, "otp.request", email, false, undefined, "Account lookup unavailable");
         if (process.env.NODE_ENV !== "production") {
           const code = String(randomInt(100000, 1000000));
-          offlineOtpChallenges.set(email, {
-            code,
-            expiresAt: Date.now() + OTP_TTL_MINUTES * 60000,
-            name: buildOfflineDevUser(email).name,
-            role: buildOfflineDevUser(email).role,
-          });
+          saveOfflineOtpChallenge(email, code);
           return res.json({
             data: {
               ok: true,
@@ -1778,9 +1818,23 @@ const db = await getDb();
     } catch (error) {
       if (error instanceof ExternalServiceError) {
         await audit(req, "otp.request", email, false, user.id, "OTP storage unavailable");
+        if (process.env.NODE_ENV !== "production") {
+          saveOfflineOtpChallenge(email, code, user);
+          return res.json({
+            data: {
+              ok: true,
+              delivered: false,
+              mode: "offline-development",
+              message:
+                "Database unavailable in development. Use the fallback login code shown below.",
+              expiresMinutes: OTP_TTL_MINUTES,
+              devCode: code,
+            },
+          });
+        }
         return res.status(503).json({
           error:
-            "Authentication is temporarily unavailable because the database. Please try again shortly.",
+            "Authentication is temporarily unavailable because the database is not ready. Please try again shortly.",
         });
       }
       throw error;

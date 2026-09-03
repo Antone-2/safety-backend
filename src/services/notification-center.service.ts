@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { sendTestEmail } from "../lib/email.js";
+import { sendSms, sendTestEmail, sendWhatsApp } from "../lib/email.js";
 import { pgPool } from "../shared/infrastructure/database/postgres.client.js";
 
-export type NotificationChannel = "email" | "sms" | "whatsapp" | "in-app";
+export type NotificationChannel = "email" | "sms" | "whatsapp" | "in-app" | "teams";
 export type NotificationRecipient = {
   channel: NotificationChannel;
   recipient: string;
@@ -149,13 +149,10 @@ export class NotificationCenterService {
   }
 
   async processDue(limit = 25) {
-    const result = await pgPool.query<{ id: string }>(
-      `SELECT id FROM notification_jobs
-       WHERE status IN ('queued','retrying')
-         AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
-       ORDER BY created_at LIMIT $1`,
-      [Math.min(Math.max(limit, 1), 100)],
-    );
+    const result = await pgPool.query<{ id: string }>(`WITH due AS (
+      SELECT id FROM notification_jobs WHERE ((status IN ('queued','retrying') AND (next_attempt_at IS NULL OR next_attempt_at<=NOW())) OR (status='processing' AND processing_started_at<NOW()-INTERVAL '10 minutes'))
+      ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT $1)
+      UPDATE notification_jobs j SET status='processing',processing_started_at=NOW(),updated_at=NOW() FROM due WHERE j.id=due.id RETURNING j.id`,[Math.min(Math.max(limit,1),100)]);
     return Promise.all(result.rows.map((row) => this.processJob(row.id)));
   }
 
@@ -212,7 +209,7 @@ export class NotificationCenterService {
     const status = failed === 0 ? "delivered" : nextAttemptAt ? "retrying" : "failed";
     await pgPool.query(
       `UPDATE notification_jobs SET status=$1, attempts=$2, next_attempt_at=$3,
-       last_error=$4, updated_at=NOW() WHERE id=$5`,
+       last_error=$4,processing_started_at=NULL, updated_at=NOW() WHERE id=$5`,
       [status, attempts, nextAttemptAt, failed ? `${failed} recipient delivery failure(s)` : null, jobId],
     );
     return { jobId, status, delivered, failed, attempts, nextAttemptAt };
@@ -257,12 +254,34 @@ export class NotificationCenterService {
   }) {
     const result = await pgPool.query(
       `INSERT INTO notification_digest_subscriptions
-       (id,user_id,recipient,cadence,channels,active)
-       VALUES ($1,$2,$3,$4,$5::jsonb,TRUE) RETURNING *`,
+       (id,user_id,recipient,cadence,channels,active,next_run_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,TRUE,CASE WHEN $4='weekly' THEN NOW()+INTERVAL '7 days' ELSE NOW()+INTERVAL '1 day' END) RETURNING *`,
       [randomUUID(), input.userId || null, input.recipient, input.cadence || "daily", JSON.stringify(input.channels || ["email", "in-app"])],
     );
     const row = result.rows[0];
     return this.mapDigestRow(row);
+  }
+
+  async queueDigestItem(subscriptionId: string, input: { eventKey: string; resourceType?: string; resourceId?: string; payload: Record<string, unknown> }) {
+    await pgPool.query(`INSERT INTO notification_digest_items (subscription_id,event_key,resource_type,resource_id,payload) VALUES ($1,$2,$3,$4,$5::jsonb)`, [subscriptionId,input.eventKey,input.resourceType||null,input.resourceId||null,JSON.stringify(input.payload)]);
+  }
+
+  async processDigests(limit = 25) {
+    const subscriptions = await pgPool.query(`WITH due AS (SELECT id FROM notification_digest_subscriptions WHERE active=TRUE AND next_run_at<=NOW() AND (processing_until IS NULL OR processing_until<NOW()) ORDER BY next_run_at FOR UPDATE SKIP LOCKED LIMIT $1)
+      UPDATE notification_digest_subscriptions s SET processing_until=NOW()+INTERVAL '10 minutes',updated_at=NOW() FROM due WHERE s.id=due.id RETURNING s.*`, [Math.min(Math.max(limit,1),100)]);
+    const results = [];
+    for (const subscription of subscriptions.rows) {
+      const items = await pgPool.query(`SELECT * FROM notification_digest_items WHERE subscription_id=$1 AND delivered_at IS NULL ORDER BY created_at LIMIT 250`, [subscription.id]);
+      if (items.rowCount) {
+        const messages = items.rows.map((item) => String(item.payload?.message || item.event_key));
+        const channels = (Array.isArray(subscription.channels) ? subscription.channels : ["email"]).filter((channel: string) => channel !== "in-app") as NotificationChannel[];
+        if (channels.length) await this.enqueue({ eventKey: "assignment.digest", workflow: "assignment", resourceType: "digest", resourceId: subscription.id, payload: { message: `${items.rowCount} assignment update${items.rowCount === 1 ? "" : "s"}:\n\n${messages.map((message,index) => `${index+1}. ${message}`).join("\n")}`, count: items.rowCount }, recipients: channels.map((channel) => ({ channel, recipient: subscription.recipient })), createdBy: "Notification digest scheduler" });
+        await pgPool.query("UPDATE notification_digest_items SET delivered_at=NOW() WHERE id=ANY($1::uuid[])", [items.rows.map((item) => item.id)]);
+      }
+      await pgPool.query(`UPDATE notification_digest_subscriptions SET next_run_at=CASE WHEN cadence='weekly' THEN NOW()+INTERVAL '7 days' ELSE NOW()+INTERVAL '1 day' END,processing_until=NULL,updated_at=NOW() WHERE id=$1`, [subscription.id]);
+      results.push({ subscriptionId: subscription.id, items: items.rowCount || 0 });
+    }
+    return results;
   }
 
   async listDigests(filters?: { userId?: string; recipient?: string }) {
@@ -342,6 +361,26 @@ export class NotificationCenterService {
       } catch (error) {
         return { delivered: false, error: error instanceof Error ? error.message : String(error) };
       }
+    }
+    if (channel === "sms") {
+      try {
+        const delivered = await sendSms(recipient, body);
+        return { delivered, providerMessageId: delivered ? "twilio" : undefined, error: delivered ? undefined : "SMS provider is not configured or rejected the message." };
+      } catch (error) { return { delivered: false, error: error instanceof Error ? error.message : String(error) }; }
+    }
+    if (channel === "whatsapp") {
+      try {
+        const delivered = await sendWhatsApp(recipient, body);
+        return { delivered, providerMessageId: delivered ? "twilio-whatsapp" : undefined, error: delivered ? undefined : "WhatsApp provider is not configured or rejected the message." };
+      } catch (error) { return { delivered: false, error: error instanceof Error ? error.message : String(error) }; }
+    }
+    if (channel === "teams") {
+      try {
+        const url = new URL(recipient);
+        if (url.protocol !== "https:") return { delivered: false, error: "Teams recipient must be an HTTPS workflow webhook URL." };
+        const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "message", attachments: [{ contentType: "application/vnd.microsoft.card.adaptive", content: { type: "AdaptiveCard", version: "1.4", body: [{ type: "TextBlock", weight: "Bolder", text: subject }, { type: "TextBlock", wrap: true, text: body }] } }] }) });
+        return { delivered: response.ok, providerMessageId: response.headers.get("request-id") || "teams-workflow", error: response.ok ? undefined : `Teams webhook returned ${response.status}.` };
+      } catch (error) { return { delivered: false, error: error instanceof Error ? error.message : String(error) }; }
     }
     return { delivered: false, error: `${channel} provider is not configured in this deployment.` };
   }

@@ -12,17 +12,17 @@ export declare const JsaStepSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     id: string;
     description: string;
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
     hazards: string[];
     controls: string[];
     existingRisk: "Critical" | "Low" | "Medium" | "High";
-    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }, {
     id: string;
     description: string;
+    residualRisk: "Critical" | "Low" | "Medium" | "High";
     hazards: string[];
     controls: string[];
     existingRisk: "Critical" | "Low" | "Medium" | "High";
-    residualRisk: "Critical" | "Low" | "Medium" | "High";
 }>;
 export declare const JsaSchema: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
@@ -41,23 +41,23 @@ export declare const JsaSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }, {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }>, "many">>>;
     createdBy: z.ZodString;
     reviewedBy: z.ZodOptional<z.ZodString>;
     reviewedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "active" | "draft" | "completed" | "in-review" | "archived";
+    status: "active" | "completed" | "draft" | "in-review" | "archived";
     title: string;
     department: string;
     createdBy: string;
@@ -65,10 +65,10 @@ export declare const JsaSchema: z.ZodObject<{
     steps: {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[];
     id?: string | undefined;
     description?: string | undefined;
@@ -79,7 +79,7 @@ export declare const JsaSchema: z.ZodObject<{
     department: string;
     createdBy: string;
     location: string;
-    status?: "active" | "draft" | "completed" | "in-review" | "archived" | undefined;
+    status?: "active" | "completed" | "draft" | "in-review" | "archived" | undefined;
     id?: string | undefined;
     description?: string | undefined;
     reviewedBy?: string | undefined;
@@ -87,10 +87,10 @@ export declare const JsaSchema: z.ZodObject<{
     steps?: {
         id: string;
         description: string;
+        residualRisk: "Critical" | "Low" | "Medium" | "High";
         hazards: string[];
         controls: string[];
         existingRisk: "Critical" | "Low" | "Medium" | "High";
-        residualRisk: "Critical" | "Low" | "Medium" | "High";
     }[] | undefined;
 }>;
 export type JsaInput = z.infer<typeof JsaSchema>;
@@ -106,10 +106,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -127,10 +127,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -148,10 +148,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -169,10 +169,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -190,10 +190,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -211,10 +211,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -232,10 +232,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -253,10 +253,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;
@@ -274,10 +274,10 @@ export declare class JsaService extends BaseService {
         steps: {
             id: string;
             description: string;
+            residualRisk: "Critical" | "Low" | "Medium" | "High";
             hazards: string[];
             controls: string[];
             existingRisk: "Critical" | "Low" | "Medium" | "High";
-            residualRisk: "Critical" | "Low" | "Medium" | "High";
         }[];
         createdBy: string;
         reviewedBy: {} | undefined;

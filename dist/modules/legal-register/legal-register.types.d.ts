@@ -133,10 +133,10 @@ export declare const CreateLegalObligationSchema: z.ZodObject<{
     frequency: string;
     responsibility: string;
     registerEntryId: string;
-    lifecycle: "Closed" | "Active" | "Draft" | "Under Review" | "Action Required" | "Implemented";
+    lifecycle: "Draft" | "Under Review" | "Closed" | "Active" | "Action Required" | "Implemented";
     dueDate?: string | undefined;
-    createdBy?: string | undefined;
     notes?: string | undefined;
+    createdBy?: string | undefined;
     nextReviewDate?: string | undefined;
     lastReviewDate?: string | undefined;
 }, {
@@ -148,10 +148,10 @@ export declare const CreateLegalObligationSchema: z.ZodObject<{
     responsibility: string;
     registerEntryId: string;
     dueDate?: string | undefined;
-    createdBy?: string | undefined;
     notes?: string | undefined;
+    createdBy?: string | undefined;
     nextReviewDate?: string | undefined;
-    lifecycle?: "Closed" | "Active" | "Draft" | "Under Review" | "Action Required" | "Implemented" | undefined;
+    lifecycle?: "Draft" | "Under Review" | "Closed" | "Active" | "Action Required" | "Implemented" | undefined;
     lastReviewDate?: string | undefined;
 }>;
 export type CreateLegalObligationInput = z.infer<typeof CreateLegalObligationSchema> & {
@@ -177,13 +177,13 @@ export declare const UpdateLegalObligationSchema: z.ZodObject<{
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     requirement?: string | undefined;
     frequency?: string | undefined;
     responsibility?: string | undefined;
-    notes?: string | null | undefined;
     nextReviewDate?: string | null | undefined;
     registerEntryId?: string | undefined;
-    lifecycle?: "Closed" | "Active" | "Draft" | "Under Review" | "Action Required" | "Implemented" | undefined;
+    lifecycle?: "Draft" | "Under Review" | "Closed" | "Active" | "Action Required" | "Implemented" | undefined;
     lastReviewDate?: string | null | undefined;
     evidenceCount?: number | undefined;
     openActionsCount?: number | undefined;
@@ -192,13 +192,13 @@ export declare const UpdateLegalObligationSchema: z.ZodObject<{
     title?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     requirement?: string | undefined;
     frequency?: string | undefined;
     responsibility?: string | undefined;
-    notes?: string | null | undefined;
     nextReviewDate?: string | null | undefined;
     registerEntryId?: string | undefined;
-    lifecycle?: "Closed" | "Active" | "Draft" | "Under Review" | "Action Required" | "Implemented" | undefined;
+    lifecycle?: "Draft" | "Under Review" | "Closed" | "Active" | "Action Required" | "Implemented" | undefined;
     lastReviewDate?: string | null | undefined;
     evidenceCount?: number | undefined;
     openActionsCount?: number | undefined;
@@ -233,9 +233,9 @@ export declare const CreateObligationReviewSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status: "Planned" | "In Progress" | "Completed" | "Verified" | "Overdue";
     title: string;
+    reviewer: string;
     findings: string;
     followUpRequired: boolean;
-    reviewer: string;
     reviewDate: string;
     obligationId: string;
     conclusion: string;
@@ -243,8 +243,8 @@ export declare const CreateObligationReviewSchema: z.ZodObject<{
     followUpDate?: string | undefined;
 }, {
     title: string;
-    findings: string;
     reviewer: string;
+    findings: string;
     reviewDate: string;
     obligationId: string;
     conclusion: string;
@@ -268,18 +268,18 @@ export declare const UpdateObligationReviewSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     status?: "Planned" | "In Progress" | "Completed" | "Verified" | "Overdue" | undefined;
     title?: string | undefined;
+    reviewer?: string | undefined;
     findings?: string | undefined;
     followUpRequired?: boolean | undefined;
-    reviewer?: string | undefined;
     reviewDate?: string | undefined;
     conclusion?: string | undefined;
     followUpDate?: string | null | undefined;
 }, {
     status?: "Planned" | "In Progress" | "Completed" | "Verified" | "Overdue" | undefined;
     title?: string | undefined;
+    reviewer?: string | undefined;
     findings?: string | undefined;
     followUpRequired?: boolean | undefined;
-    reviewer?: string | undefined;
     reviewDate?: string | undefined;
     conclusion?: string | undefined;
     followUpDate?: string | null | undefined;
@@ -305,21 +305,21 @@ export declare const CreateObligationEvidenceSchema: z.ZodObject<{
     description: z.ZodOptional<z.ZodString>;
     uploadedBy: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    type: "Other" | "Document" | "Certificate" | "Inspection" | "Audit" | "Photo";
+    type: "Document" | "Certificate" | "Inspection" | "Other" | "Audit" | "Photo";
     name: string;
     url: string;
     obligationId: string;
     description?: string | undefined;
-    uploadedBy?: string | undefined;
     reviewId?: string | undefined;
+    uploadedBy?: string | undefined;
 }, {
-    type: "Other" | "Document" | "Certificate" | "Inspection" | "Audit" | "Photo";
+    type: "Document" | "Certificate" | "Inspection" | "Other" | "Audit" | "Photo";
     name: string;
     url: string;
     obligationId: string;
     description?: string | undefined;
-    uploadedBy?: string | undefined;
     reviewId?: string | undefined;
+    uploadedBy?: string | undefined;
 }>;
 export type CreateObligationEvidenceInput = z.infer<typeof CreateObligationEvidenceSchema> & {
     uploadedBy: string;
@@ -354,8 +354,8 @@ export declare const CreateObligationActionSchema: z.ZodObject<{
     title: string;
     description: string;
     obligationId: string;
-    createdBy?: string | undefined;
     reviewId?: string | undefined;
+    createdBy?: string | undefined;
 }, {
     dueDate: string;
     owner: string;
@@ -363,8 +363,8 @@ export declare const CreateObligationActionSchema: z.ZodObject<{
     description: string;
     obligationId: string;
     status?: "In Progress" | "Completed" | "Verified" | "Closed" | "Open" | undefined;
-    createdBy?: string | undefined;
     reviewId?: string | undefined;
+    createdBy?: string | undefined;
 }>;
 export type CreateObligationActionInput = z.infer<typeof CreateObligationActionSchema> & {
     createdBy: string;

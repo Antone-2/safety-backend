@@ -326,7 +326,7 @@ async function getCorrectiveActionNotificationHistory(reportId) {
     }
     return history;
 }
-async function createLinkedCapa(request) {
+async function createLinkedCapa(request, client) {
     if (!isPgConfigured())
         return null;
     const dueDate = request.actionPlanDueDate ||
@@ -335,7 +335,7 @@ async function createLinkedCapa(request) {
             .map((item) => item.byWhen)
             .find(Boolean) ||
         new Date().toISOString();
-    const result = await pgPool.query(`INSERT INTO capa (
+    const result = await (client ?? pgPool).query(`INSERT INTO capa (
       capa_no, type, status, priority, title, description, source, source_ref,
       linked_incident_id, root_cause, action_plan, owner, department, site, due_date,
       attachments, created_by
@@ -943,19 +943,31 @@ export async function submitCorrectiveActionRequest(input) {
     const now = new Date().toISOString();
     let capaId = null;
     if (isPgConfigured()) {
-        capaId = await createLinkedCapa({
-            ...existing,
-            unsafeEventType: input.unsafeEventType,
-            immediateActionTaken: input.immediateActionTaken,
-            completedTasks: input.completedTasks,
-            rootCauseAnalysis: input.rootCauseAnalysis,
-            actionPlanDueDate: input.actionPlanDueDate ?? null,
-            actionPlanItems: input.actionPlanItems,
-            submittedAt: now,
-            updatedAt: now,
-            status: "submitted",
-        });
-        const result = await pgPool.query(`UPDATE corrective_action_requests
+        const client = await pgPool.connect();
+        let record;
+        try {
+            await client.query("BEGIN");
+            const lockedResult = await client.query("SELECT * FROM corrective_action_requests WHERE access_token = $1 FOR UPDATE", [input.token]);
+            if (!lockedResult.rows[0])
+                throw new Error("Corrective action request not found");
+            const locked = mapRecord(lockedResult.rows[0]);
+            if (locked.status === "submitted") {
+                await client.query("COMMIT");
+                return locked;
+            }
+            capaId = await createLinkedCapa({
+                ...locked,
+                unsafeEventType: input.unsafeEventType,
+                immediateActionTaken: input.immediateActionTaken,
+                completedTasks: input.completedTasks,
+                rootCauseAnalysis: input.rootCauseAnalysis,
+                actionPlanDueDate: input.actionPlanDueDate ?? null,
+                actionPlanItems: input.actionPlanItems,
+                submittedAt: now,
+                updatedAt: now,
+                status: "submitted",
+            }, client);
+            const result = await client.query(`UPDATE corrective_action_requests
        SET status = 'submitted',
            unsafe_event_type = $1,
            report_description = $2,
@@ -969,18 +981,27 @@ export async function submitCorrectiveActionRequest(input) {
            updated_at = $9
        WHERE access_token = $10
        RETURNING *`, [
-            input.unsafeEventType,
-            input.description,
-            input.immediateActionTaken,
-            input.completedTasks,
-            input.rootCauseAnalysis,
-            input.actionPlanDueDate ?? null,
-            JSON.stringify(input.actionPlanItems),
-            capaId,
-            now,
-            input.token,
-        ]);
-        const record = mapRecord(result.rows[0]);
+                input.unsafeEventType,
+                input.description,
+                input.immediateActionTaken,
+                input.completedTasks,
+                input.rootCauseAnalysis,
+                input.actionPlanDueDate ?? null,
+                JSON.stringify(input.actionPlanItems),
+                capaId,
+                now,
+                input.token,
+            ]);
+            record = mapRecord(result.rows[0]);
+            await client.query("COMMIT");
+        }
+        catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        }
+        finally {
+            client.release();
+        }
         const summary = serializeActionPlan(record.actionPlanItems);
         const notifyRecipients = Array.from(new Set([
             record.assignedByEmail || "",

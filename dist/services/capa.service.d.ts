@@ -40,7 +40,7 @@ export declare const CapaSchema: z.ZodObject<{
     updatedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     type: "Corrective" | "Preventive" | "Improvement";
-    status: "In Progress" | "Completed" | "Open" | "Overdue" | "Cancelled";
+    status: "In Progress" | "Completed" | "Cancelled" | "Open" | "Overdue";
     dueDate: string;
     owner: string;
     title: string;
@@ -81,7 +81,7 @@ export declare const CapaSchema: z.ZodObject<{
     description: string;
     createdBy: string;
     type?: "Corrective" | "Preventive" | "Improvement" | undefined;
-    status?: "In Progress" | "Completed" | "Open" | "Overdue" | "Cancelled" | undefined;
+    status?: "In Progress" | "Completed" | "Cancelled" | "Open" | "Overdue" | undefined;
     id?: string | undefined;
     attachments?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;

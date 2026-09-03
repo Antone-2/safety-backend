@@ -52,8 +52,8 @@ export declare const CreateFireEquipmentSchema: z.ZodObject<{
     location: string;
     assetTag: string;
     building: string;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     serialNumber?: string | undefined;
     manufacturer?: string | undefined;
     model?: string | undefined;
@@ -70,8 +70,8 @@ export declare const CreateFireEquipmentSchema: z.ZodObject<{
     assetTag: string;
     building: string;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
-    photoUrl?: string | undefined;
     notes?: string | undefined;
+    photoUrl?: string | undefined;
     serialNumber?: string | undefined;
     manufacturer?: string | undefined;
     model?: string | undefined;
@@ -103,9 +103,9 @@ export declare const UpdateFireEquipmentSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     type?: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector" | undefined;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
+    notes?: string | null | undefined;
     location?: string | undefined;
     photoUrl?: string | null | undefined;
-    notes?: string | null | undefined;
     assetTag?: string | undefined;
     serialNumber?: string | null | undefined;
     manufacturer?: string | null | undefined;
@@ -120,9 +120,9 @@ export declare const UpdateFireEquipmentSchema: z.ZodObject<{
 }, {
     type?: "Extinguisher" | "Hydrant" | "Alarm" | "Sprinkler" | "EmergencyLight" | "FireDoor" | "Detector" | undefined;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
+    notes?: string | null | undefined;
     location?: string | undefined;
     photoUrl?: string | null | undefined;
-    notes?: string | null | undefined;
     assetTag?: string | undefined;
     serialNumber?: string | null | undefined;
     manufacturer?: string | null | undefined;

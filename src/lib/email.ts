@@ -519,7 +519,7 @@ function createTransporter() {
   });
 }
 
-async function sendSms(to: string, body: string): Promise<boolean> {
+export async function sendSms(to: string, body: string): Promise<boolean> {
   if (!hasTwilioConfig()) return false;
   try {
     const { default: twilio } = await import("twilio");
@@ -746,6 +746,19 @@ function reportAssignmentUrl(reportId: string) {
     `/report/${encodeURIComponent(reportId)}`,
     frontendUrl,
   ).toString();
+}
+
+export async function sendWhatsApp(to: string, body: string): Promise<boolean> {
+  if (!process.env.TWILIO_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_WHATSAPP_FROM) return false;
+  try {
+    const { default: twilio } = await import("twilio");
+    const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+    await client.messages.create({ body, from: process.env.TWILIO_WHATSAPP_FROM.startsWith("whatsapp:") ? process.env.TWILIO_WHATSAPP_FROM : `whatsapp:${process.env.TWILIO_WHATSAPP_FROM}`, to: to.startsWith("whatsapp:") ? to : `whatsapp:${to}` });
+    return true;
+  } catch (error) {
+    console.error("WhatsApp send failed:", error);
+    return false;
+  }
 }
 
 function capaAssignmentUrl(capaId: string) {

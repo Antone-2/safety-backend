@@ -97,11 +97,11 @@ export declare const DrillSchema: z.ZodEffects<z.ZodObject<{
     scheduledDate: string;
     coordinator: string;
     id?: string | undefined;
+    participants?: number | undefined;
     findings?: string | undefined;
     duration?: number | undefined;
     scenario?: string | undefined;
     actualDate?: string | undefined;
-    participants?: number | undefined;
     observations?: string | undefined;
     improvements?: string | undefined;
 }, {
@@ -114,11 +114,11 @@ export declare const DrillSchema: z.ZodEffects<z.ZodObject<{
     coordinator: string;
     status?: "Completed" | "Cancelled" | "Scheduled" | undefined;
     id?: string | undefined;
+    participants?: number | undefined;
     findings?: string | undefined;
     duration?: number | undefined;
     scenario?: string | undefined;
     actualDate?: string | undefined;
-    participants?: number | undefined;
     observations?: string | undefined;
     improvements?: string | undefined;
 }>, {
@@ -131,11 +131,11 @@ export declare const DrillSchema: z.ZodEffects<z.ZodObject<{
     scheduledDate: string;
     coordinator: string;
     id?: string | undefined;
+    participants?: number | undefined;
     findings?: string | undefined;
     duration?: number | undefined;
     scenario?: string | undefined;
     actualDate?: string | undefined;
-    participants?: number | undefined;
     observations?: string | undefined;
     improvements?: string | undefined;
 }, {
@@ -148,11 +148,11 @@ export declare const DrillSchema: z.ZodEffects<z.ZodObject<{
     coordinator: string;
     status?: "Completed" | "Cancelled" | "Scheduled" | undefined;
     id?: string | undefined;
+    participants?: number | undefined;
     findings?: string | undefined;
     duration?: number | undefined;
     scenario?: string | undefined;
     actualDate?: string | undefined;
-    participants?: number | undefined;
     observations?: string | undefined;
     improvements?: string | undefined;
 }>;

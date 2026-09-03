@@ -32,3 +32,4 @@ export declare function createGovernanceRouter(): import("express-serve-static-c
 export declare function createAnalyticsRouter(): import("express-serve-static-core").Router;
 export declare function createNotificationsRouter(): import("express-serve-static-core").Router;
 export declare function createSettingsRouter(): import("express-serve-static-core").Router;
+export * from "./assignments/assignments.module.js";

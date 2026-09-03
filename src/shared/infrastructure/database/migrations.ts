@@ -2789,6 +2789,512 @@ CREATE INDEX IF NOT EXISTS idx_statutory_audit_type ON statutory_audit_records(a
       CREATE INDEX IF NOT EXISTS idx_obligation_actions_due_date ON obligation_actions(due_date ASC);
     `,
   },
+  {
+    id: "072_assignment_work_management",
+    description: "First-class report assignments, participants, lifecycle events and SLA tracking",
+    sql: `
+      CREATE TABLE IF NOT EXISTS report_assignments (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'Assigned' CHECK (status IN (
+          'Draft','Assigned','Viewed','Accepted','In Progress','Paused','Submitted',
+          'Under Review','Rework','Approved','Verified','Closed','Rejected','Cancelled'
+        )),
+        priority TEXT NOT NULL DEFAULT 'Medium' CHECK (priority IN ('Low','Medium','High','Critical')),
+        assignee_id TEXT,
+        assignee_email TEXT NOT NULL,
+        assignee_name TEXT,
+        assigned_by_id TEXT,
+        assigned_by_email TEXT NOT NULL,
+        assigned_by_name TEXT,
+        site TEXT,
+        department TEXT,
+        assignment_reason TEXT,
+        rejection_reason TEXT,
+        pause_reason TEXT,
+        rework_reason TEXT,
+        cancellation_reason TEXT,
+        response_due_at TIMESTAMPTZ,
+        due_at TIMESTAMPTZ,
+        verification_due_at TIMESTAMPTZ,
+        accepted_at TIMESTAMPTZ,
+        started_at TIMESTAMPTZ,
+        submitted_at TIMESTAMPTZ,
+        approved_at TIMESTAMPTZ,
+        verified_at TIMESTAMPTZ,
+        closed_at TIMESTAMPTZ,
+        viewed_at TIMESTAMPTZ,
+        paused_at TIMESTAMPTZ,
+        sla_paused_seconds INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_report_assignments_report ON report_assignments(report_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_report_assignments_assignee ON report_assignments(lower(assignee_email), status, due_at);
+      CREATE INDEX IF NOT EXISTS idx_report_assignments_scope ON report_assignments(site, department, status);
+      CREATE INDEX IF NOT EXISTS idx_report_assignments_due ON report_assignments(status, due_at);
+
+      CREATE TABLE IF NOT EXISTS assignment_participants (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        user_id TEXT,
+        email TEXT NOT NULL,
+        name TEXT,
+        role TEXT NOT NULL CHECK (role IN ('assignee','backup','delegate','copied','watcher','reviewer','verifier')),
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (assignment_id, email, role)
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_participants_email ON assignment_participants(lower(email), active);
+
+      CREATE TABLE IF NOT EXISTS assignment_events (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT,
+        actor_id TEXT,
+        actor_email TEXT NOT NULL,
+        actor_name TEXT,
+        reason TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_events_timeline ON assignment_events(assignment_id, created_at DESC);
+    `,
+  },
+  {
+    id: "073_assignment_collaboration",
+    description: "Assignment tasks, dependencies, evidence, comments and watchers",
+    sql: `
+      CREATE TABLE IF NOT EXISTS assignment_tasks (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        parent_task_id TEXT REFERENCES assignment_tasks(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        owner_email TEXT NOT NULL,
+        owner_name TEXT,
+        status TEXT NOT NULL DEFAULT 'Planned' CHECK (status IN ('Planned','Assigned','In Progress','Blocked','Completed','Verified','Cancelled')),
+        milestone BOOLEAN NOT NULL DEFAULT FALSE,
+        percent_complete INTEGER NOT NULL DEFAULT 0 CHECK (percent_complete BETWEEN 0 AND 100),
+        estimated_minutes INTEGER,
+        due_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        verified_at TIMESTAMPTZ,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_tasks_assignment ON assignment_tasks(assignment_id, status, due_at);
+
+      CREATE TABLE IF NOT EXISTS assignment_task_dependencies (
+        task_id TEXT NOT NULL REFERENCES assignment_tasks(id) ON DELETE CASCADE,
+        depends_on_task_id TEXT NOT NULL REFERENCES assignment_tasks(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (task_id, depends_on_task_id),
+        CHECK (task_id <> depends_on_task_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS assignment_evidence (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        task_id TEXT REFERENCES assignment_tasks(id) ON DELETE CASCADE,
+        file_name TEXT NOT NULL,
+        file_url TEXT NOT NULL,
+        mime_type TEXT,
+        file_size BIGINT,
+        checksum TEXT NOT NULL,
+        description TEXT,
+        evidence_type TEXT NOT NULL DEFAULT 'Other',
+        review_status TEXT NOT NULL DEFAULT 'Pending' CHECK (review_status IN ('Pending','Accepted','Rejected')),
+        review_notes TEXT,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMPTZ,
+        uploaded_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_evidence_assignment ON assignment_evidence(assignment_id, task_id);
+
+      CREATE TABLE IF NOT EXISTS assignment_comments (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        parent_comment_id TEXT REFERENCES assignment_comments(id) ON DELETE CASCADE,
+        author_id TEXT,
+        author_email TEXT NOT NULL,
+        author_name TEXT,
+        body TEXT NOT NULL,
+        visibility TEXT NOT NULL DEFAULT 'shared' CHECK (visibility IN ('shared','internal')),
+        mentions JSONB NOT NULL DEFAULT '[]'::jsonb,
+        edited_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_comments_thread ON assignment_comments(assignment_id, created_at);
+    `,
+  },
+  {
+    id: "074_assignment_templates_policies",
+    description: "Reusable assignment templates and configurable SLA escalation policies",
+    sql: `
+      CREATE TABLE IF NOT EXISTS assignment_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        report_type TEXT,
+        severity TEXT,
+        site TEXT,
+        department TEXT,
+        default_priority TEXT NOT NULL DEFAULT 'Medium',
+        response_sla_hours INTEGER,
+        completion_sla_hours INTEGER,
+        verification_sla_hours INTEGER,
+        default_assignee_role TEXT,
+        default_reviewer_email TEXT,
+        default_verifier_email TEXT,
+        task_blueprint JSONB NOT NULL DEFAULT '[]'::jsonb,
+        evidence_requirements JSONB NOT NULL DEFAULT '[]'::jsonb,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_templates_match ON assignment_templates(active,report_type,severity,site,department);
+
+      CREATE TABLE IF NOT EXISTS assignment_escalation_policies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        severity TEXT,
+        site TEXT,
+        response_sla_hours INTEGER NOT NULL,
+        completion_sla_hours INTEGER NOT NULL,
+        levels JSONB NOT NULL DEFAULT '[]'::jsonb,
+        business_calendar JSONB NOT NULL DEFAULT '{}'::jsonb,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `,
+  },
+  {
+    id: "075_assignment_sla_notifications",
+    description: "Assignment SLA escalation state and user notification preferences",
+    sql: `
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS escalation_level INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS next_escalation_at TIMESTAMPTZ;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS last_escalated_at TIMESTAMPTZ;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS sla_policy_id TEXT REFERENCES assignment_escalation_policies(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS idx_assignment_escalation_due ON report_assignments(status,next_escalation_at);
+
+      CREATE TABLE IF NOT EXISTS assignment_notification_preferences (
+        user_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        channels JSONB NOT NULL DEFAULT '["email","in-app"]'::jsonb,
+        assignment_events JSONB NOT NULL DEFAULT '["assigned","due-soon","overdue","review","rework","escalated"]'::jsonb,
+        digest_cadence TEXT NOT NULL DEFAULT 'immediate' CHECK (digest_cadence IN ('immediate','daily','weekly')),
+        quiet_hours_start TIME,
+        quiet_hours_end TIME,
+        timezone TEXT NOT NULL DEFAULT 'Africa/Nairobi',
+        critical_bypass_quiet_hours BOOLEAN NOT NULL DEFAULT TRUE,
+        phone TEXT,
+        teams_recipient TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `,
+  },
+  {
+    id: "076_assignment_compliance_controls",
+    description: "Effectiveness reviews, digital sign-off, retention, legal hold and immutable assignment events",
+    sql: `
+      CREATE TABLE IF NOT EXISTS assignment_effectiveness_reviews (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        reviewer_id TEXT,
+        reviewer_email TEXT NOT NULL,
+        reviewer_name TEXT,
+        outcome TEXT NOT NULL CHECK (outcome IN ('Effective','Partially Effective','Ineffective')),
+        effectiveness_score INTEGER NOT NULL CHECK (effectiveness_score BETWEEN 0 AND 100),
+        residual_risk TEXT NOT NULL CHECK (residual_risk IN ('Low','Medium','High','Critical')),
+        recurrence_detected BOOLEAN NOT NULL DEFAULT FALSE,
+        follow_up_inspection_required BOOLEAN NOT NULL DEFAULT FALSE,
+        follow_up_due_at TIMESTAMPTZ,
+        notes TEXT NOT NULL,
+        reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_effectiveness_assignment ON assignment_effectiveness_reviews(assignment_id,reviewed_at DESC);
+
+      CREATE TABLE IF NOT EXISTS assignment_signatures (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        signature_type TEXT NOT NULL CHECK (signature_type IN ('submission','approval','verification','closure','reopening')),
+        signer_id TEXT,
+        signer_email TEXT NOT NULL,
+        signer_name TEXT,
+        declaration TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        signed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_signatures_assignment ON assignment_signatures(assignment_id,signed_at);
+
+      CREATE TABLE IF NOT EXISTS assignment_retention_policies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        site TEXT,
+        severity TEXT,
+        retention_years INTEGER NOT NULL CHECK (retention_years BETWEEN 1 AND 100),
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS assignment_legal_holds (
+        id TEXT PRIMARY KEY,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL,
+        placed_by TEXT NOT NULL,
+        placed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        released_by TEXT,
+        released_at TIMESTAMPTZ
+      );
+
+      ALTER TABLE assignment_events ADD COLUMN IF NOT EXISTS event_hash TEXT;
+      ALTER TABLE assignment_events ADD COLUMN IF NOT EXISTS previous_hash TEXT;
+
+      CREATE OR REPLACE FUNCTION prevent_assignment_event_mutation() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'assignment_events is append-only';
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TABLE IF NOT EXISTS assignment_event_chain_seals (
+        assignment_id TEXT PRIMARY KEY REFERENCES report_assignments(id) ON DELETE CASCADE,
+        event_count INTEGER NOT NULL,
+        seal_hash TEXT NOT NULL,
+        sealed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      INSERT INTO assignment_event_chain_seals (assignment_id,event_count,seal_hash)
+      SELECT assignment_id,count(*)::integer,
+        encode(digest(string_agg(concat_ws('|',id,event_type,from_status,to_status,actor_id,
+          actor_email,actor_name,reason,metadata::text,created_at::text),E'\n' ORDER BY created_at,id),'sha256'),'hex')
+      FROM assignment_events WHERE event_hash IS NULL GROUP BY assignment_id
+      ON CONFLICT (assignment_id) DO NOTHING;
+
+      CREATE OR REPLACE FUNCTION hash_assignment_event() RETURNS trigger AS $$
+      DECLARE prior TEXT;
+      BEGIN
+        SELECT event_hash INTO prior FROM assignment_events
+        WHERE assignment_id=NEW.assignment_id AND event_hash IS NOT NULL
+        ORDER BY created_at DESC,id DESC LIMIT 1;
+        IF prior IS NULL THEN
+          SELECT seal_hash INTO prior FROM assignment_event_chain_seals WHERE assignment_id=NEW.assignment_id;
+        END IF;
+        NEW.previous_hash := prior;
+        NEW.event_hash := encode(digest(concat_ws('|',NEW.id,NEW.assignment_id,NEW.event_type,
+          NEW.from_status,NEW.to_status,NEW.actor_id,NEW.actor_email,NEW.actor_name,NEW.reason,
+          NEW.metadata::text,NEW.created_at::text,COALESCE(prior,'')),'sha256'),'hex');
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS assignment_events_hash_before_insert ON assignment_events;
+      CREATE TRIGGER assignment_events_hash_before_insert BEFORE INSERT ON assignment_events
+      FOR EACH ROW EXECUTE FUNCTION hash_assignment_event();
+      CREATE TRIGGER assignment_events_immutable BEFORE UPDATE OR DELETE ON assignment_events
+      FOR EACH ROW EXECUTE FUNCTION prevent_assignment_event_mutation();
+    `,
+  },
+  {
+    id: "077_assignment_history_integrity",
+    description: "Backfill legacy report assignments and centrally hash the immutable event chain",
+    sql: `
+      DROP TRIGGER IF EXISTS assignment_events_immutable ON assignment_events;
+
+      INSERT INTO report_assignments (
+        id,report_id,status,priority,assignee_id,assignee_email,assignee_name,
+        assigned_by_email,assigned_by_name,site,department,assignment_reason,
+        due_at,closed_at,created_at,updated_at
+      )
+      SELECT
+        'legacy-' || encode(digest(r.id, 'sha256'),'hex'),r.id,
+        CASE WHEN lower(r.status) IN ('closed','resolved','completed') THEN 'Closed'
+             WHEN lower(r.status) IN ('in progress','investigating') THEN 'In Progress'
+             ELSE 'Assigned' END,
+        CASE WHEN initcap(lower(r.severity)) IN ('Low','Medium','High','Critical')
+             THEN initcap(lower(r.severity)) ELSE 'Medium' END,
+        u.id::text,
+        COALESCE(u.email,NULLIF(trim(r.assigned_to),''),NULLIF(trim(r.reporter_email),''),'unknown@local.invalid'),
+        COALESCE(u.name,NULLIF(trim(r.assigned_to),''),'Legacy assignee'),
+        'system@local.invalid','Legacy migration',r.location,r.department,
+        'Imported from the legacy report assignment fields',r.due_at,
+        CASE WHEN lower(r.status) IN ('closed','resolved','completed') THEN r.updated_at END,
+        r.created_at,r.updated_at
+      FROM reports r
+      LEFT JOIN LATERAL (
+        SELECT id,email,name FROM users
+        WHERE lower(email)=lower(r.assigned_to) OR lower(name)=lower(r.assigned_to)
+        ORDER BY CASE WHEN lower(email)=lower(r.assigned_to) THEN 0 ELSE 1 END LIMIT 1
+      ) u ON TRUE
+      WHERE NULLIF(trim(r.assigned_to),'') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM report_assignments a WHERE a.report_id=r.id);
+
+      INSERT INTO assignment_participants (id,assignment_id,user_id,email,name,role,created_at)
+      SELECT gen_random_uuid()::text,a.id,a.assignee_id,a.assignee_email,a.assignee_name,'assignee',a.created_at
+      FROM report_assignments a
+      WHERE NOT EXISTS (
+        SELECT 1 FROM assignment_participants p
+        WHERE p.assignment_id=a.id AND lower(p.email)=lower(a.assignee_email) AND p.role='assignee'
+      );
+
+      INSERT INTO assignment_participants (id,assignment_id,user_id,email,name,role,created_at)
+      SELECT gen_random_uuid()::text,a.id,u.id::text,copy.email,u.name,'copied',a.created_at
+      FROM report_assignments a
+      JOIN reports r ON r.id=a.report_id
+      CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(r.assigned_to_copy,'[]'::jsonb)) copy(email)
+      LEFT JOIN users u ON lower(u.email)=lower(copy.email)
+      WHERE NULLIF(trim(copy.email),'') IS NOT NULL
+      ON CONFLICT (assignment_id,email,role) DO NOTHING;
+
+      INSERT INTO assignment_events (
+        id,assignment_id,event_type,to_status,actor_email,actor_name,reason,metadata,created_at
+      )
+      SELECT gen_random_uuid()::text,a.id,'legacy-imported',a.status,'system@local.invalid','Legacy migration',
+        'Imported from legacy report assignment fields',jsonb_build_object('reportId',a.report_id),a.created_at
+      FROM report_assignments a
+      WHERE NOT EXISTS (SELECT 1 FROM assignment_events e WHERE e.assignment_id=a.id);
+
+    `,
+  },
+  {
+    id: "078_assignment_templates_idempotency",
+    description: "Version assignment templates and make create and bulk operations safely retryable",
+    sql: `
+      ALTER TABLE assignment_templates ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE assignment_templates ADD COLUMN IF NOT EXISTS supersedes_template_id TEXT REFERENCES assignment_templates(id) ON DELETE SET NULL;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS template_id TEXT REFERENCES assignment_templates(id) ON DELETE SET NULL;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS template_version INTEGER;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS evidence_requirements JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+      CREATE TABLE IF NOT EXISTS assignment_idempotency_keys (
+        actor_email TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        response JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (actor_email,operation,idempotency_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_idempotency_expiry ON assignment_idempotency_keys(created_at);
+    `,
+  },
+  {
+    id: "079_assignment_sync_outbox",
+    description: "Durably reconcile legacy report assignment fields with first-class assignments",
+    sql: `
+      CREATE TABLE IF NOT EXISTS assignment_sync_outbox (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        actor JSONB NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_assignment_sync_open_report ON assignment_sync_outbox(report_id) WHERE status IN ('pending','processing','failed');
+      CREATE INDEX IF NOT EXISTS idx_assignment_sync_due ON assignment_sync_outbox(status,next_attempt_at);
+    `,
+  },
+  {
+    id: "080_assignment_retention_enforcement",
+    description: "Schedule and enforce assignment record retention without bypassing legal holds",
+    sql: `
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS retention_until TIMESTAMPTZ;
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_assignment_retention_due ON report_assignments(retention_until) WHERE archived_at IS NULL;
+    `,
+  },
+  {
+    id: "081_notification_digest_delivery",
+    description: "Persist and deliver scheduled assignment notification digests",
+    sql: `
+      CREATE TABLE IF NOT EXISTS notification_digest_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        subscription_id UUID NOT NULL REFERENCES notification_digest_subscriptions(id) ON DELETE CASCADE,
+        event_key TEXT NOT NULL,
+        resource_type TEXT,
+        resource_id TEXT,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        delivered_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_notification_digest_items_pending ON notification_digest_items(subscription_id,created_at) WHERE delivered_at IS NULL;
+      UPDATE notification_digest_subscriptions SET next_run_at=CASE WHEN cadence='weekly' THEN NOW()+INTERVAL '7 days' ELSE NOW()+INTERVAL '1 day' END WHERE next_run_at IS NULL;
+    `,
+  },
+  {
+    id: "082_assignment_routing_rules",
+    description: "Add prioritized rules for automatic report assignment",
+    sql: `
+      CREATE TABLE IF NOT EXISTS assignment_routing_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        report_type TEXT,
+        severity TEXT,
+        site TEXT,
+        department TEXT,
+        assignee_email TEXT NOT NULL,
+        copied_emails JSONB NOT NULL DEFAULT '[]'::jsonb,
+        template_id TEXT REFERENCES assignment_templates(id) ON DELETE SET NULL,
+        priority TEXT CHECK (priority IS NULL OR priority IN ('Low','Medium','High','Critical')),
+        rule_order INTEGER NOT NULL DEFAULT 100,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_routing_match ON assignment_routing_rules(active,rule_order,report_type,severity,site,department);
+    `,
+  },
+  {
+    id: "083_assignment_comment_revisions",
+    description: "Preserve immutable assignment comment edit history",
+    sql: `
+      CREATE TABLE IF NOT EXISTS assignment_comment_revisions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        comment_id TEXT NOT NULL REFERENCES assignment_comments(id) ON DELETE CASCADE,
+        assignment_id TEXT NOT NULL REFERENCES report_assignments(id) ON DELETE CASCADE,
+        previous_body TEXT NOT NULL,
+        new_body TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        edited_by TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_assignment_comment_revisions ON assignment_comment_revisions(comment_id,created_at);
+    `,
+  },
+  {
+    id: "084_assignment_signature_verification",
+    description: "Store cryptographically verifiable assignment signature payloads",
+    sql: `
+      ALTER TABLE assignment_signatures ADD COLUMN IF NOT EXISTS canonical_payload TEXT;
+      ALTER TABLE assignment_signatures ADD COLUMN IF NOT EXISTS signature_mac TEXT;
+      ALTER TABLE assignment_signatures ADD COLUMN IF NOT EXISTS key_id TEXT;
+      ALTER TABLE assignment_signatures ADD COLUMN IF NOT EXISTS algorithm TEXT NOT NULL DEFAULT 'legacy-sha256';
+    `,
+  },
+  {
+    id: "085_assignment_worker_claims",
+    description: "Prevent duplicate SLA, digest and notification processing across backend instances",
+    sql: `
+      ALTER TABLE report_assignments ADD COLUMN IF NOT EXISTS escalation_claimed_until TIMESTAMPTZ;
+      ALTER TABLE notification_digest_subscriptions ADD COLUMN IF NOT EXISTS processing_until TIMESTAMPTZ;
+      ALTER TABLE notification_jobs ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_assignment_escalation_claim ON report_assignments(escalation_claimed_until) WHERE escalation_claimed_until IS NOT NULL;
+    `,
+  },
 ];
 
 async function ensureMigrationsTable(client: PoolClient) {

@@ -41,7 +41,7 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
         const result = await pgPool.query(
           `SELECT id::text, name, email, phone, role
            FROM users
-           WHERE role = ANY($1::text[])
+           WHERE active = TRUE AND role = ANY($1::text[])
            ORDER BY name`,
           [roleFilter],
         );
@@ -50,6 +50,7 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
       const result = await pgPool.query(
         `SELECT id::text, name, email, phone, role
          FROM users
+         WHERE active = TRUE
          ORDER BY name`,
       );
       return result.rows.map(mapPgUser);
@@ -63,7 +64,7 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
     const placeholders = roleFilter.map(() => "?").join(",");
     const rows = allRows(
       db,
-      `SELECT id, name, email, phone, role FROM users WHERE role IN (${placeholders})`,
+      `SELECT id, name, email, phone, role FROM users WHERE active = 1 AND role IN (${placeholders})`,
       roleFilter,
     ) as any[];
     return rows.map((r: any) => ({
@@ -75,7 +76,7 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
     }));
   }
 
-  const rows = allRows(db, "SELECT id, name, email, phone, role FROM users") as any[];
+  const rows = allRows(db, "SELECT id, name, email, phone, role FROM users WHERE active = 1") as any[];
   return rows.map((r: any) => ({
     id: r.id,
     name: r.name,
@@ -88,9 +89,18 @@ export async function listUsers(roleFilter?: string[]): Promise<AppUser[]> {
 export async function findUserByIdentifier(identifier: string): Promise<AppUser | null> {
   if (!identifier) return null;
 
+  if (isPgConfigured()) {
+    const result = await pgPool.query(
+      `SELECT id::text, name, email, phone, role FROM users
+       WHERE (lower(email) = lower($1) OR id::text = $1) AND active = TRUE LIMIT 1`,
+      [identifier],
+    );
+    return result.rows[0] ? mapPgUser(result.rows[0]) : null;
+  }
+
   const db = await getDb();
   const row = (
-    allRows(db, "SELECT id, name, email, phone, role FROM users WHERE email = ? OR id = ? LIMIT 1", [
+    allRows(db, "SELECT id, name, email, phone, role FROM users WHERE (lower(email) = lower(?) OR id = ?) AND active = 1 LIMIT 1", [
       identifier,
       identifier,
     ])[0] as any

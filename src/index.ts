@@ -19,6 +19,8 @@ import { logger } from "./shared/utils/logger.js";
 import { startMonthlyLeaderboardScheduler } from "./services/leaderboard.service.js";
 import { startDatabaseMaintenanceScheduler } from "./services/maintenance.service.js";
 import { startCorrectiveActionReminderScheduler } from "./services/corrective-action-request.service.js";
+import { startAssignmentSlaScheduler } from "./services/assignment-sla.service.js";
+import { startAssignmentSyncScheduler } from "./modules/assignments/assignments.service.js";
 import * as Sentry from "@sentry/node";
 
 import { createAuthRouter } from "./modules/auth/auth.module.js";
@@ -60,6 +62,7 @@ import {
   createSafetyAlertsRouter,
   createCalibrationsRouter,
   createLegalRegisterRouter,
+  createAssignmentsRouter,
 } from "./modules/index.js";
 
 import googleFormsRouter, {
@@ -152,10 +155,14 @@ app.get("/health", async (_req, res) => {
       checkDatabase(),
       checkRedis(),
     ]);
-    const healthy = dbCheck.ok && redisCheck.ok;
+    const redisRequired = env.REQUIRE_REDIS === "true";
+    const healthy = dbCheck.ok && (!redisRequired || redisCheck.ok);
     res.status(healthy ? 200 : 503).json({
       status: healthy ? "ok" : "degraded",
-      checks: { database: dbCheck, redis: redisCheck },
+      checks: {
+        database: dbCheck,
+        redis: { ...redisCheck, required: redisRequired },
+      },
       metrics: metricsService.getSnapshot(),
     });
   } catch (error) {
@@ -189,6 +196,7 @@ mountAll(API_PREFIXES, "/auth", createAuthRouter());
 mountAll(API_PREFIXES, "/users", createUsersRouter());
 
 mountAll(API_PREFIXES, "/reports", createReportsRouter());
+mountAll(API_PREFIXES, "/assignments", createAssignmentsRouter());
 
 mountAll(API_PREFIXES, "/google-forms", googleFormsRouter);
 mountAll(API_PREFIXES, "/reference", referenceRouter);
@@ -372,6 +380,8 @@ async function bootstrap() {
       startMonthlyLeaderboardScheduler();
       startDatabaseMaintenanceScheduler();
       startCorrectiveActionReminderScheduler();
+      startAssignmentSlaScheduler();
+      startAssignmentSyncScheduler();
     }
     if (bullMqReady) {
       await import("./jobs/scheduler.js");

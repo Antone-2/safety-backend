@@ -25,10 +25,10 @@ export declare const HazardReportSchema: z.ZodObject<{
     status: string;
     department: string;
     description: string;
-    createdBy: string;
     severity: "Critical" | "Low" | "Medium" | "High";
+    createdBy: string;
     location: string;
-    category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
+    category: "Other" | "Confined Space" | "Electrical" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
     reportedBy: string;
     id?: string | undefined;
     immediateActionTaken?: string | undefined;
@@ -44,10 +44,10 @@ export declare const HazardReportSchema: z.ZodObject<{
 }, {
     department: string;
     description: string;
-    createdBy: string;
     severity: "Critical" | "Low" | "Medium" | "High";
+    createdBy: string;
     location: string;
-    category: "Confined Space" | "Electrical" | "Other" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
+    category: "Other" | "Confined Space" | "Electrical" | "Chemical Spill" | "PPE Violation" | "Falling Object" | "Manual Handling" | "Noise Exposure" | "Slip/Trip" | "Vehicle/Forklift" | "Inhalation/Fumes" | "Fire/Ignition" | "Fall from Height";
     reportedBy: string;
     status?: string | undefined;
     id?: string | undefined;

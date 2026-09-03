@@ -80,7 +80,6 @@ export declare const InvestigationSchema: z.ZodObject<{
     title: string;
     description: string;
     priority: "Critical" | "Low" | "Medium" | "High";
-    createdBy: string;
     evidence: {
         name: string;
         uploadedAt: string;
@@ -90,6 +89,7 @@ export declare const InvestigationSchema: z.ZodObject<{
         url?: string | undefined;
         description?: string | undefined;
     }[];
+    createdBy: string;
     incidentId: string;
     investigator: string;
     id?: string | undefined;
@@ -116,7 +116,6 @@ export declare const InvestigationSchema: z.ZodObject<{
     id?: string | undefined;
     dueDate?: string | undefined;
     priority?: "Critical" | "Low" | "Medium" | "High" | undefined;
-    rootCause?: string | undefined;
     evidence?: {
         name: string;
         uploadedAt: string;
@@ -126,6 +125,7 @@ export declare const InvestigationSchema: z.ZodObject<{
         url?: string | undefined;
         description?: string | undefined;
     }[] | undefined;
+    rootCause?: string | undefined;
     completedDate?: string | undefined;
     findings?: string | undefined;
     investigationNo?: string | undefined;

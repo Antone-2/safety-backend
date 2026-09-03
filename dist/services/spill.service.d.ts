@@ -23,8 +23,8 @@ export declare const SpillSchema: z.ZodObject<{
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     date: string;
-    createdBy: string;
     severity: "Critical" | "Minor" | "Major";
+    createdBy: string;
     location: string;
     quantity: number;
     unit: string;
@@ -43,8 +43,8 @@ export declare const SpillSchema: z.ZodObject<{
     spillNo?: string | undefined;
 }, {
     date: string;
-    createdBy: string;
     severity: "Critical" | "Minor" | "Major";
+    createdBy: string;
     location: string;
     quantity: number;
     unit: string;

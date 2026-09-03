@@ -15,16 +15,16 @@ export declare const InvestigationInputSchema: z.ZodObject<{
     description: string;
     type?: string | undefined;
     department?: string | undefined;
-    location?: string | undefined;
     evidence?: string[] | undefined;
+    location?: string | undefined;
     incidentId?: string | undefined;
     witnessStatements?: string[] | undefined;
 }, {
     description: string;
     type?: string | undefined;
     department?: string | undefined;
-    location?: string | undefined;
     evidence?: string[] | undefined;
+    location?: string | undefined;
     incidentId?: string | undefined;
     witnessStatements?: string[] | undefined;
 }>;
@@ -98,8 +98,8 @@ export declare const ChatbotInputSchema: z.ZodObject<{
     conversationId: z.ZodOptional<z.ZodString>;
     maxResults: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    maxResults: number;
     query: string;
+    maxResults: number;
     context?: Record<string, any> | undefined;
     conversationId?: string | undefined;
 }, {
@@ -366,8 +366,8 @@ export declare const DocumentSearchInputSchema: z.ZodObject<{
     maxResults: z.ZodDefault<z.ZodNumber>;
     includeSummary: z.ZodDefault<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    maxResults: number;
     query: string;
+    maxResults: number;
     includeSummary: boolean;
     category?: string | undefined;
 }, {
@@ -405,16 +405,16 @@ export declare const SafetyAlertInputSchema: z.ZodObject<{
     channels: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     department?: string | undefined;
-    siteId?: string | undefined;
     severity?: "notice" | "critical" | "warning" | undefined;
-    triggerEvent?: string | undefined;
     channels?: string[] | undefined;
+    siteId?: string | undefined;
+    triggerEvent?: string | undefined;
 }, {
     department?: string | undefined;
-    siteId?: string | undefined;
     severity?: "notice" | "critical" | "warning" | undefined;
-    triggerEvent?: string | undefined;
     channels?: string[] | undefined;
+    siteId?: string | undefined;
+    triggerEvent?: string | undefined;
 }>;
 export type SafetyAlertInput = z.infer<typeof SafetyAlertInputSchema>;
 export declare const CorrectiveActionInputSchema: z.ZodObject<{

@@ -1,4 +1,4 @@
-export type NotificationChannel = "email" | "sms" | "whatsapp" | "in-app";
+export type NotificationChannel = "email" | "sms" | "whatsapp" | "in-app" | "teams";
 export type NotificationRecipient = {
     channel: NotificationChannel;
     recipient: string;
@@ -62,6 +62,16 @@ export declare class NotificationCenterService {
         createdAt: any;
         updatedAt: any;
     }>;
+    queueDigestItem(subscriptionId: string, input: {
+        eventKey: string;
+        resourceType?: string;
+        resourceId?: string;
+        payload: Record<string, unknown>;
+    }): Promise<void>;
+    processDigests(limit?: number): Promise<{
+        subscriptionId: any;
+        items: number;
+    }[]>;
     listDigests(filters?: {
         userId?: string;
         recipient?: string;

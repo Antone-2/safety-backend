@@ -55,13 +55,13 @@ export declare const IncidentSchema: z.ZodObject<{
     regulatoryNotificationRequired: boolean;
     complianceRequired: boolean;
     id?: string | undefined;
+    dueAt?: string | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
     photoUrl?: string | undefined;
     photos?: string[] | undefined;
     assignedTo?: string | undefined;
     assignedToCopy?: string[] | undefined;
-    dueAt?: string | undefined;
     resolutionDays?: number | undefined;
     rootCause?: string | undefined;
     correctiveAction?: string | undefined;
@@ -85,6 +85,7 @@ export declare const IncidentSchema: z.ZodObject<{
     id?: string | undefined;
     source?: string | undefined;
     anonymous?: boolean | undefined;
+    dueAt?: string | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
     isNearMiss?: boolean | undefined;
@@ -93,7 +94,6 @@ export declare const IncidentSchema: z.ZodObject<{
     assignedTo?: string | undefined;
     assignedToCopy?: string[] | undefined;
     slaHours?: number | undefined;
-    dueAt?: string | undefined;
     resolutionDays?: number | undefined;
     rootCause?: string | undefined;
     correctiveAction?: string | undefined;
@@ -157,13 +157,13 @@ export declare const IncidentInputSchema: z.ZodObject<Omit<{
     slaHours: number;
     regulatoryNotificationRequired: boolean;
     complianceRequired: boolean;
+    dueAt?: string | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
     photoUrl?: string | undefined;
     photos?: string[] | undefined;
     assignedTo?: string | undefined;
     assignedToCopy?: string[] | undefined;
-    dueAt?: string | undefined;
     resolutionDays?: number | undefined;
     rootCause?: string | undefined;
     correctiveAction?: string | undefined;
@@ -184,6 +184,7 @@ export declare const IncidentInputSchema: z.ZodObject<Omit<{
     status?: "Closed" | "Open" | "Investigating" | "Root Cause Analysis" | "CAPA Open" | undefined;
     source?: string | undefined;
     anonymous?: boolean | undefined;
+    dueAt?: string | undefined;
     reporterEmail?: string | undefined;
     reporterPhone?: string | undefined;
     isNearMiss?: boolean | undefined;
@@ -192,7 +193,6 @@ export declare const IncidentInputSchema: z.ZodObject<Omit<{
     assignedTo?: string | undefined;
     assignedToCopy?: string[] | undefined;
     slaHours?: number | undefined;
-    dueAt?: string | undefined;
     resolutionDays?: number | undefined;
     rootCause?: string | undefined;
     correctiveAction?: string | undefined;

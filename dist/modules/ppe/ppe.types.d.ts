@@ -43,14 +43,14 @@ export declare const CreatePpeSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    type: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other";
+    type: "Other" | "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit";
     status: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost";
     site: string;
     description: string;
     createdBy: string;
     department?: string | undefined;
-    assignedTo?: string | undefined;
     notes?: string | undefined;
+    assignedTo?: string | undefined;
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
     serialNumber?: string | undefined;
@@ -59,14 +59,14 @@ export declare const CreatePpeSchema: z.ZodObject<{
     issuedDate?: string | undefined;
     inspectionDueDate?: string | undefined;
 }, {
-    type: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other";
+    type: "Other" | "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit";
     site: string;
     description: string;
     createdBy: string;
     status?: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost" | undefined;
     department?: string | undefined;
-    assignedTo?: string | undefined;
     notes?: string | undefined;
+    assignedTo?: string | undefined;
     certificateUrl?: string | undefined;
     expiryDate?: string | undefined;
     serialNumber?: string | undefined;
@@ -92,13 +92,13 @@ export declare const UpdatePpeSchema: z.ZodObject<{
     certificateUrl: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    type?: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other" | undefined;
+    type?: "Other" | "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | undefined;
     status?: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost" | undefined;
     site?: string | undefined;
     department?: string | null | undefined;
     description?: string | undefined;
-    assignedTo?: string | null | undefined;
     notes?: string | null | undefined;
+    assignedTo?: string | null | undefined;
     certificateUrl?: string | null | undefined;
     expiryDate?: string | null | undefined;
     serialNumber?: string | null | undefined;
@@ -107,13 +107,13 @@ export declare const UpdatePpeSchema: z.ZodObject<{
     issuedDate?: string | null | undefined;
     inspectionDueDate?: string | null | undefined;
 }, {
-    type?: "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | "Other" | undefined;
+    type?: "Other" | "Hard Hat" | "Safety Shoes" | "Safety Glasses" | "Gloves" | "Respirator" | "Ear Protection" | "Coveralls" | "Face Shield" | "Chemical Suit" | undefined;
     status?: "Expired" | "Damaged" | "Issued" | "Returned" | "Lost" | undefined;
     site?: string | undefined;
     department?: string | null | undefined;
     description?: string | undefined;
-    assignedTo?: string | null | undefined;
     notes?: string | null | undefined;
+    assignedTo?: string | null | undefined;
     certificateUrl?: string | null | undefined;
     expiryDate?: string | null | undefined;
     serialNumber?: string | null | undefined;

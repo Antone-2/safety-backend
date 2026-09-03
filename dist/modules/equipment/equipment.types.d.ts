@@ -65,9 +65,9 @@ export declare const CreateEquipmentSchema: z.ZodObject<{
     location: string;
     category: string;
     assetTag: string;
+    notes?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
-    notes?: string | undefined;
     serialNumber?: string | undefined;
     manufacturer?: string | undefined;
     model?: string | undefined;
@@ -88,9 +88,9 @@ export declare const CreateEquipmentSchema: z.ZodObject<{
     category: string;
     assetTag: string;
     status?: "Operational" | "Under Maintenance" | "Retired" | "Defective" | undefined;
+    notes?: string | undefined;
     photoUrl?: string | undefined;
     assignedTo?: string | undefined;
-    notes?: string | undefined;
     serialNumber?: string | undefined;
     manufacturer?: string | undefined;
     model?: string | undefined;
@@ -131,10 +131,10 @@ export declare const UpdateEquipmentSchema: z.ZodObject<{
     name?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     location?: string | undefined;
     photoUrl?: string | null | undefined;
     assignedTo?: string | null | undefined;
-    notes?: string | null | undefined;
     category?: string | undefined;
     assetTag?: string | undefined;
     serialNumber?: string | null | undefined;
@@ -153,10 +153,10 @@ export declare const UpdateEquipmentSchema: z.ZodObject<{
     name?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
+    notes?: string | null | undefined;
     location?: string | undefined;
     photoUrl?: string | null | undefined;
     assignedTo?: string | null | undefined;
-    notes?: string | null | undefined;
     category?: string | undefined;
     assetTag?: string | undefined;
     serialNumber?: string | null | undefined;

@@ -73,8 +73,8 @@ export declare const CreateScaffoldSchema: z.ZodObject<{
     length?: number | undefined;
     status?: "Erected" | "In Use" | "Under Inspection" | "Dismantled" | "Tagged Out" | undefined;
     width?: number | undefined;
-    photos?: string[] | undefined;
     notes?: string | undefined;
+    photos?: string[] | undefined;
     nextInspectionDate?: string | undefined;
     floor?: string | undefined;
     room?: string | undefined;
@@ -107,9 +107,9 @@ export declare const UpdateScaffoldSchema: z.ZodObject<{
     type?: string | undefined;
     status?: "Erected" | "In Use" | "Under Inspection" | "Dismantled" | "Tagged Out" | undefined;
     width?: number | null | undefined;
+    notes?: string | null | undefined;
     location?: string | undefined;
     photos?: string[] | null | undefined;
-    notes?: string | null | undefined;
     nextInspectionDate?: string | null | undefined;
     building?: string | undefined;
     floor?: string | null | undefined;
@@ -125,9 +125,9 @@ export declare const UpdateScaffoldSchema: z.ZodObject<{
     type?: string | undefined;
     status?: "Erected" | "In Use" | "Under Inspection" | "Dismantled" | "Tagged Out" | undefined;
     width?: number | null | undefined;
+    notes?: string | null | undefined;
     location?: string | undefined;
     photos?: string[] | null | undefined;
-    notes?: string | null | undefined;
     nextInspectionDate?: string | null | undefined;
     building?: string | undefined;
     floor?: string | null | undefined;

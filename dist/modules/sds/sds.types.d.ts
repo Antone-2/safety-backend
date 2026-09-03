@@ -47,13 +47,13 @@ export declare const CreateSdsSchema: z.ZodObject<{
     notes: z.ZodOptional<z.ZodString>;
     createdBy: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    status: "Active" | "Under Review" | "Expired" | "Archived";
+    status: "Under Review" | "Active" | "Expired" | "Archived";
     createdBy: string;
     chemicalName: string;
     version?: string | undefined;
+    notes?: string | undefined;
     location?: string | undefined;
     ppeRequired?: string | undefined;
-    notes?: string | undefined;
     effectiveDate?: string | undefined;
     casNumber?: string | undefined;
     formula?: string | undefined;
@@ -69,11 +69,11 @@ export declare const CreateSdsSchema: z.ZodObject<{
 }, {
     createdBy: string;
     chemicalName: string;
-    status?: "Active" | "Under Review" | "Expired" | "Archived" | undefined;
+    status?: "Under Review" | "Active" | "Expired" | "Archived" | undefined;
     version?: string | undefined;
+    notes?: string | undefined;
     location?: string | undefined;
     ppeRequired?: string | undefined;
-    notes?: string | undefined;
     effectiveDate?: string | undefined;
     casNumber?: string | undefined;
     formula?: string | undefined;
@@ -108,11 +108,11 @@ export declare const UpdateSdsSchema: z.ZodObject<{
     location: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     notes: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
-    status?: "Active" | "Under Review" | "Expired" | "Archived" | undefined;
+    status?: "Under Review" | "Active" | "Expired" | "Archived" | undefined;
     version?: string | null | undefined;
+    notes?: string | null | undefined;
     location?: string | null | undefined;
     ppeRequired?: string | null | undefined;
-    notes?: string | null | undefined;
     effectiveDate?: string | null | undefined;
     casNumber?: string | null | undefined;
     formula?: string | null | undefined;
@@ -127,11 +127,11 @@ export declare const UpdateSdsSchema: z.ZodObject<{
     spillProcedures?: string | null | undefined;
     nextReviewDate?: string | null | undefined;
 }, {
-    status?: "Active" | "Under Review" | "Expired" | "Archived" | undefined;
+    status?: "Under Review" | "Active" | "Expired" | "Archived" | undefined;
     version?: string | null | undefined;
+    notes?: string | null | undefined;
     location?: string | null | undefined;
     ppeRequired?: string | null | undefined;
-    notes?: string | null | undefined;
     effectiveDate?: string | null | undefined;
     casNumber?: string | null | undefined;
     formula?: string | null | undefined;

@@ -313,11 +313,11 @@ export function createAuthRouter() {
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
                 maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-                path: "/api/auth",
+                path: "/",
             });
             return;
         }
-        res.clearCookie("ehs_refresh", { path: "/api/auth" });
+        res.clearCookie("ehs_refresh", { path: "/" });
     }
     function issueOfflineDevLogin(req, res, email) {
         const user = buildOfflineDevUser(email);
@@ -424,8 +424,9 @@ export function createAuthRouter() {
              request_count = auth_otp_challenges.request_count + 1`, [email, codeHash, userId, expiresAt, requestedAt], "auth OTP challenge save");
                 return;
             }
-            catch {
-                // Fall through to SQLite fallback.
+            catch (error) {
+                console.error("Failed to save OTP challenge to PostgreSQL:", error);
+                throw new ExternalServiceError("auth-storage", "Authentication storage is temporarily unavailable. Please try again.");
             }
         }
         try {
@@ -1502,7 +1503,7 @@ export function createAuthRouter() {
             sameSite: cookieSameSite,
             secure: env.NODE_ENV === "production",
             maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-            path: "/api/auth",
+            path: "/",
         });
         res.json({ data: { token, user, csrfToken } });
     });
@@ -1592,7 +1593,7 @@ export function createAuthRouter() {
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
                 maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-                path: "/api/auth",
+                path: "/",
             });
             res.json({ data: { token, user, csrfToken } });
         }
@@ -1651,7 +1652,7 @@ export function createAuthRouter() {
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
                 maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-                path: "/api/auth",
+                path: "/",
             });
             const csrfToken = randomBytes(24).toString("base64url");
             res.cookie("ehs_csrf", csrfToken, {
@@ -1980,7 +1981,7 @@ export function createAuthRouter() {
             return res.status(401).json({ error: "Invalid verification code" });
         }
         await completeEmailChange(req.user.id, change.newEmail);
-        res.clearCookie("ehs_refresh", { path: "/api/auth" });
+        res.clearCookie("ehs_refresh", { path: "/" });
         res.json({ data: { ok: true, email: change.newEmail, requiresLogin: true } });
     });
     router.patch("/users/:id", authenticateUser, requireRole(["super-admin", "EHS-manager"]), async (req, res) => {
@@ -2117,7 +2118,7 @@ export function createAuthRouter() {
         await revokeSession(String(req.user.jti), req.user.id);
         await audit(req, "logout", req.user.email, true, req.user.id);
         res.clearCookie("ehs_access", { path: "/" });
-        res.clearCookie("ehs_refresh", { path: "/api/auth" });
+        res.clearCookie("ehs_refresh", { path: "/" });
         res.clearCookie("ehs_csrf", { path: "/" });
         res.json({ data: { ok: true } });
     });
@@ -2300,7 +2301,7 @@ export function createAuthRouter() {
                 sameSite: cookieSameSite,
                 secure: env.NODE_ENV === "production",
                 maxAge: REFRESH_SESSION_TTL_DAYS * 86400000,
-                path: "/api/auth",
+                path: "/",
             });
             res.json({ data: { token: accessToken, user, csrfToken } });
         }

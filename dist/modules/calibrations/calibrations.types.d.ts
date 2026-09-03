@@ -78,8 +78,8 @@ export declare const CreateCalibrationSchema: z.ZodObject<{
     criticality: "Critical" | "Low" | "Medium" | "High";
     calibrationType: "Routine" | "Initial" | "External Lab" | "Internal Check" | "Repair Verification";
     outOfTolerance: boolean;
-    location?: string | undefined;
     notes?: string | undefined;
+    location?: string | undefined;
     actionRequired?: string | undefined;
     certificateUrl?: string | undefined;
     equipmentId?: string | undefined;
@@ -98,8 +98,8 @@ export declare const CreateCalibrationSchema: z.ZodObject<{
     createdBy: string;
     equipmentName: string;
     status?: "Planned" | "Overdue" | "Calibrated" | "Out of Service" | undefined;
-    location?: string | undefined;
     notes?: string | undefined;
+    location?: string | undefined;
     actionRequired?: string | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | undefined;
@@ -145,8 +145,8 @@ export declare const UpdateCalibrationSchema: z.ZodObject<{
     dueDate?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
-    location?: string | null | undefined;
     notes?: string | null | undefined;
+    location?: string | null | undefined;
     actionRequired?: string | null | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | null | undefined;
@@ -168,8 +168,8 @@ export declare const UpdateCalibrationSchema: z.ZodObject<{
     dueDate?: string | undefined;
     site?: string | undefined;
     department?: string | undefined;
-    location?: string | null | undefined;
     notes?: string | null | undefined;
+    location?: string | null | undefined;
     actionRequired?: string | null | undefined;
     passed?: boolean | undefined;
     certificateUrl?: string | null | undefined;

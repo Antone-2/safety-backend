@@ -37,10 +37,10 @@ export declare const MedicalRecordSchema: z.ZodObject<{
     examType: "Other" | "Pre-employment" | "Periodic" | "Exit" | "Incident-related" | "Specific Hazard";
     id?: string | undefined;
     notes?: string | undefined;
+    results?: string | undefined;
     findings?: string | undefined;
     reportUrl?: string | undefined;
     recordNo?: string | undefined;
-    results?: string | undefined;
     restrictions?: string | undefined;
     doctorRegistration?: string | undefined;
     clinicName?: string | undefined;
@@ -57,10 +57,10 @@ export declare const MedicalRecordSchema: z.ZodObject<{
     examType: "Other" | "Pre-employment" | "Periodic" | "Exit" | "Incident-related" | "Specific Hazard";
     id?: string | undefined;
     notes?: string | undefined;
+    results?: string | undefined;
     findings?: string | undefined;
     reportUrl?: string | undefined;
     recordNo?: string | undefined;
-    results?: string | undefined;
     restrictions?: string | undefined;
     fitnessForWork?: boolean | undefined;
     doctorRegistration?: string | undefined;
